@@ -11,6 +11,9 @@ dependencies = [
     "asyncpg>=0.30.0",
     "alembic>=1.14.0",
     "pydantic-settings>=2.6.0",
+    "pydantic[email]>=2.0.0",
+    "bcrypt>=4.0.0",
+    "python-jose[cryptography]>=3.3.0",
 ]
 
 [dependency-groups]
@@ -48,6 +51,7 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
+exclude = ["migrations"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -14,7 +14,10 @@ export default defineConfig({
 			prettier: false,
 			biome: false,
 			override: {
-				mutator: undefined,
+				mutator: {
+					path: "./src/api/fetcher.ts",
+					name: "customFetch",
+				},
 				query: {
 					useQuery: true,
 					useMutation: true,

@@ -23,6 +23,9 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/planflow
       DEBUG: "true"
+      SECRET_KEY: dev-secret-key-not-for-production
+      FRONTEND_ORIGIN: http://localhost:5173
+      COOKIE_SECURE: "false"
     volumes:
       - ./backend:/app
       - /app/.venv

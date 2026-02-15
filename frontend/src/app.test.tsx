@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { App } from "./app";
 
 describe("App", () => {
-	it("renders the application", async () => {
+	it("renders the login page when unauthenticated", async () => {
 		render(<App />);
 		await waitFor(() => {
-			expect(screen.getByText("PlanFlow")).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Log in" })).toBeInTheDocument();
 		});
 	});
 });

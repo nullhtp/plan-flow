@@ -9,6 +9,9 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlmodel import SQLModel
 
+# Import all domain models so Alembic autogenerate can detect them.
+# The import registers models with SQLModel.metadata; the binding is unused.
+import app.domains.auth.models as _  # pyright: ignore[reportUnusedImport]  # noqa: F401
 from app.core.config import settings
 
 # Alembic Config object
