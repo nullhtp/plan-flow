@@ -1,0 +1,21 @@
+repos:
+  # Backend: Ruff linting and formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.1
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # Frontend: Biome linting and formatting (uses project-local biome)
+  - repo: local
+    hooks:
+      - id: biome-check
+        name: biome check (frontend)
+        language: script
+        entry: scripts/biome-check.sh
+        files: ^frontend/.*\.(ts|tsx|js|jsx|css)$
+        exclude: ^frontend/src/api/generated/
+        pass_filenames: true

@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+*.so
+
+# Node.js
+node_modules/
+
+# Build output
+frontend/dist/
+backend/dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Linter/formatter caches
+.ruff_cache/
+
+# Alembic
+backend/migrations/versions/*.pyc
+
+# Generated API client and OpenAPI spec (regenerated via codegen)
+frontend/src/api/generated/
+frontend/openapi.json
+
+# Docker
+docker-compose.override.yml
+
+# OS
+Thumbs.db
