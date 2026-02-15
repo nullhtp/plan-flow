@@ -59,15 +59,16 @@ Set up the monorepo, tooling, and dev infrastructure. Nothing user-facing — th
 - **Frontend scaffolding**
   - React + TypeScript + Vite
   - React Query configured
-  - Router setup (React Router or TanStack Router)
+  - Router setup ( TanStack Router)
   - Base UI component library chosen and installed (e.g., Shadcn/ui, Radix, or Mantine)
-  - ESLint + Prettier configured
+  - Biome configured
 - **Backend scaffolding**
   - FastAPI project structure (routers, services, schemas, models)
   - SQLAlchemy or equivalent ORM configured
   - Alembic for database migrations
   - PostgreSQL connection (local Docker or hosted dev instance)
-  - Ruff or Black + isort for Python formatting/linting
+  - Ruff for Python formatting/linting
+  - Pyright
 - **OpenAPI code generation pipeline**
   - Backend auto-generates OpenAPI spec
   - Frontend auto-generates TypeScript API client + types from spec
@@ -77,7 +78,7 @@ Set up the monorepo, tooling, and dev infrastructure. Nothing user-facing — th
   - Dockerfiles for frontend and backend
 - **CI pipeline** (GitHub Actions or similar)
   - Lint + format check (frontend and backend)
-  - Type check (frontend `tsc --noEmit`, backend `mypy` or `pyright`)
+  - Type check (frontend `tsc --noEmit`, backend `pyright`)
   - Test runner wired up (even if no tests yet)
 - **Git setup**
   - `.gitignore`, branch strategy decided
@@ -486,6 +487,7 @@ M0 (Foundation)
 ```
 
 Notes:
+
 - M6 and M7 can partially overlap — M7 doesn't strictly require M6 to be fully complete
 - M8 (Polish) should start after M6 and M7 are substantially done, but minor polish can happen throughout
 - M9 (Deploy) can start in parallel with late M8 work — infrastructure setup doesn't depend on final polish
@@ -494,14 +496,14 @@ Notes:
 
 ## Risk Register
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| AI output quality is inconsistent | Generated boards are useless or require heavy manual editing | Invest in prompt engineering + structured output validation. Test with 20+ diverse goals before Alpha. Add regeneration as escape hatch. |
-| AI costs higher than expected | Burns through budget during development and testing | Use cheaper models for classification/questions, strong models for board generation. Track cost per request from M2 onwards. Set per-user rate limits. |
-| Board UI drag-and-drop complexity | Interactions feel buggy, position persistence breaks | Use a proven library (dnd-kit or @hello-pangea/dnd). Solve the position persistence model early (fractional indexing or gap-based ordering). |
-| Scope creep during polish phase | M8 expands indefinitely, never ships | Timebox M8. Define a "good enough" bar before starting. Ship, then iterate. |
-| OpenRouter provider outages | AI features completely unavailable | Configure fallback models. Cache recent AI outputs. Degrade gracefully (board editing works without AI). |
-| Solo developer burnout | Progress stalls | Milestones are designed to produce shippable increments. Alpha is a real checkpoint. Take breaks between milestones. |
+| Risk                              | Impact                                                       | Mitigation                                                                                                                                             |
+| --------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AI output quality is inconsistent | Generated boards are useless or require heavy manual editing | Invest in prompt engineering + structured output validation. Test with 20+ diverse goals before Alpha. Add regeneration as escape hatch.               |
+| AI costs higher than expected     | Burns through budget during development and testing          | Use cheaper models for classification/questions, strong models for board generation. Track cost per request from M2 onwards. Set per-user rate limits. |
+| Board UI drag-and-drop complexity | Interactions feel buggy, position persistence breaks         | Use a proven library (dnd-kit or @hello-pangea/dnd). Solve the position persistence model early (fractional indexing or gap-based ordering).           |
+| Scope creep during polish phase   | M8 expands indefinitely, never ships                         | Timebox M8. Define a "good enough" bar before starting. Ship, then iterate.                                                                            |
+| OpenRouter provider outages       | AI features completely unavailable                           | Configure fallback models. Cache recent AI outputs. Degrade gracefully (board editing works without AI).                                               |
+| Solo developer burnout            | Progress stalls                                              | Milestones are designed to produce shippable increments. Alpha is a real checkpoint. Take breaks between milestones.                                   |
 
 ---
 

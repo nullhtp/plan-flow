@@ -1,31 +1,322 @@
 # Project Context
 
 ## Purpose
-[Describe your project's purpose and goals]
+
+PlanFlow is an AI-powered SaaS that turns any goal into a structured kanban board. Users describe what they want to accomplish in plain language, the system asks adaptive questions to understand the specifics, then generates a custom kanban board with goal-specific columns and actionable tasks. The AI stays involved throughout execution, helping users complete tasks and suggesting follow-up goals.
+
+Full project specification: `_docs/PROJECT.md`
+Roadmap: `_docs/ROADMAP.md`
 
 ## Tech Stack
-- [List your primary technologies]
-- [e.g., TypeScript, React, Node.js]
+
+### Frontend
+- **React 19** + **TypeScript** (strict mode)
+- **Vite** — build tool and dev server
+- **TanStack Router** — type-safe routing with search params validation
+- **TanStack Query (React Query)** — server state, caching, optimistic updates
+- **Shadcn/ui** — copy-paste Radix-based components
+- **Tailwind CSS v4** — utility-first CSS (CSS-first config, no `tailwind.config.js`)
+- **Orval** — generates React Query hooks + TypeScript types from OpenAPI spec
+- **Biome** — linting and formatting (replaces ESLint + Prettier)
+
+### Backend
+- **FastAPI** — Python async web framework
+- **Python 3.12+**
+- **SQLModel** — ORM built on SQLAlchemy 2.0 + Pydantic (designed for FastAPI)
+- **Alembic** — database migrations
+- **PostgreSQL** — primary database
+- **LangChain / LangGraph** — LLM orchestration and stateful AI pipelines
+- **OpenRouter** — multi-provider LLM gateway (GPT-4o, Claude, Llama, etc.)
+- **Ruff** — formatting and linting (replaces Black + isort + flake8)
+- **Pyright** — static type checking (strict mode)
+- **uv** — Python package and virtualenv management
+
+### Infrastructure
+- **Docker** + **Docker Compose** — local development environment
+- **pnpm** — frontend package manager
+- **Monorepo** — single repository, `/frontend` and `/backend` at the root
+
+### API Contract
+- Backend auto-generates OpenAPI spec via FastAPI
+- Frontend consumes spec via Orval to auto-generate TypeScript types + React Query hooks
+- Single source of truth: backend Pydantic/SQLModel schemas define the contract
 
 ## Project Conventions
 
 ### Code Style
-[Describe your code style preferences, formatting rules, and naming conventions]
+
+#### Python (Backend)
+- **PEP 8** naming: `snake_case` for functions/variables, `PascalCase` for classes, `UPPER_CASE` for constants
+- **Ruff** for formatting and linting — configured in `pyproject.toml`
+- **Pyright strict mode** — all functions must have type annotations
+- Line length: 88 characters (Ruff default)
+- Use `from __future__ import annotations` for modern type syntax
+- Pydantic models for all request/response schemas
+- SQLModel models for database entities (combine Pydantic + SQLAlchemy)
+- Async everywhere — use `async def` for all route handlers and service functions that do I/O
+
+#### TypeScript (Frontend)
+- **Biome** for formatting and linting — configured in `biome.json`
+- **Strict TypeScript** — `strict: true` in `tsconfig.json`, no `any` unless explicitly justified
+- Functional components only — no class components
+- Custom hooks for reusable logic (prefix with `use`)
+- Named exports preferred over default exports
+- File naming: `kebab-case.tsx` for components, `kebab-case.ts` for utilities
+- Component naming: `PascalCase` matching the file (e.g., `board-view.tsx` exports `BoardView`)
+- Co-locate related files: component + hook + types in the same directory
+
+#### Shared
+- No magic strings — use constants or enums
+- No commented-out code in main branch
+- TODO comments must reference a specific task or issue
 
 ### Architecture Patterns
-[Document your architectural decisions and patterns]
+
+#### Backend Structure (Domain-Based)
+
+Each domain owns its own models, schemas, router, and service. Shared infrastructure lives in `core/`.
+
+```
+backend/
+├── app/
+│   ├── main.py              # FastAPI app, middleware, startup, router aggregation
+│   ├── core/                # Shared infrastructure (not a domain)
+│   │   ├── config.py        # Settings via pydantic-settings
+│   │   ├── db.py            # Database engine, session factory, base model
+│   │   ├── deps.py          # Shared dependencies (DB session, current user)
+│   │   ├── security.py      # Password hashing, JWT/token utilities
+│   │   └── exceptions.py    # Shared exception types and handlers
+│   ├── domains/
+│   │   ├── auth/
+│   │   │   ├── models.py    # User SQLModel
+│   │   │   ├── schemas.py   # RegisterRequest, LoginRequest, TokenResponse, etc.
+│   │   │   ├── router.py    # POST /auth/register, /auth/login, etc.
+│   │   │   ├── service.py   # Auth business logic
+│   │   │   └── deps.py      # Domain-specific dependencies (e.g., get_current_user)
+│   │   ├── goals/
+│   │   │   ├── models.py    # Goal, Conversation SQLModels
+│   │   │   ├── schemas.py   # GoalCreate, GoalResponse, QuestionSchema, etc.
+│   │   │   ├── router.py    # POST /goals, GET /goals, POST /goals/:id/answers, etc.
+│   │   │   └── service.py   # Goal CRUD, question flow orchestration
+│   │   ├── boards/
+│   │   │   ├── models.py    # Board, Column, Task, Subtask SQLModels
+│   │   │   ├── schemas.py   # BoardResponse, TaskCreate, TaskUpdate, etc.
+│   │   │   ├── router.py    # Board/column/task CRUD and reorder endpoints
+│   │   │   └── service.py   # Board CRUD, position management, board generation orchestration
+│   │   └── ai/
+│   │       ├── schemas.py   # AI input/output schemas (structured output definitions)
+│   │       ├── router.py    # POST /tasks/:id/chat, POST /goals/:id/adapt-board, etc.
+│   │       ├── service.py   # High-level AI operations (classify, generate, chat)
+│   │       ├── pipeline.py  # LangGraph graph definition and state
+│   │       ├── nodes/       # Individual LangGraph nodes
+│   │       │   ├── classify.py
+│   │       │   ├── questions.py
+│   │       │   ├── generate_board.py
+│   │       │   └── chat.py
+│   │       └── prompts/     # System prompts and output JSON schemas
+│   │           ├── classify.py
+│   │           ├── questions.py
+│   │           └── generate_board.py
+├── migrations/              # Alembic migrations
+├── tests/
+│   ├── domains/             # Tests mirror domain structure
+│   │   ├── auth/
+│   │   ├── goals/
+│   │   ├── boards/
+│   │   └── ai/
+│   ├── conftest.py          # Shared fixtures (db session, test client, auth helpers)
+│   └── factories.py         # Test data factories
+├── pyproject.toml
+└── Dockerfile
+```
+
+**Domain rules:**
+- Each domain is self-contained: owns its models, schemas, router, and service
+- A domain may import from `core/` (shared infrastructure)
+- A domain may import **models and schemas** from other domains when needed (e.g., `boards` references `goals.models.Goal`)
+- A domain must NOT import **services or routers** from other domains — use dependency injection or pass data through the router/service layer instead
+- Cross-domain business logic that involves multiple domains lives in the calling domain's service (e.g., `boards/service.py` calls `ai/service.py` for board generation)
+- The `ai/` domain is a service provider — other domains call it, it does not call other domain services
+- Routers call services, never access the DB directly
+- Services contain business logic and DB access
+- All models from all domains are importable by Alembic for migration auto-generation
+
+#### Frontend Structure
+```
+frontend/
+├── src/
+│   ├── main.tsx                 # App entry point
+│   ├── app.tsx                  # Root component, providers
+│   ├── routes/                  # TanStack Router route definitions
+│   ├── features/                # Feature-based modules
+│   │   ├── auth/
+│   │   │   ├── components/
+│   │   │   ├── hooks/
+│   │   │   └── types.ts
+│   │   ├── goals/
+│   │   │   ├── components/
+│   │   │   ├── hooks/
+│   │   │   └── types.ts
+│   │   ├── board/
+│   │   │   ├── components/
+│   │   │   ├── hooks/
+│   │   │   └── types.ts
+│   │   └── ai-chat/
+│   │       ├── components/
+│   │       └── hooks/
+│   ├── shared/                  # Shared utilities, components, hooks
+│   │   ├── components/          # Generic UI components (wrappers over Shadcn)
+│   │   ├── hooks/
+│   │   ├── lib/                 # Utility functions
+│   │   └── types.ts             # Shared TypeScript types
+│   ├── api/                     # Orval-generated API client + hooks
+│   └── styles/                  # Global styles, Tailwind config
+├── public/
+├── index.html
+├── biome.json
+├── tsconfig.json
+├── vite.config.ts
+└── package.json
+```
+
+**Frontend rules:**
+- Feature modules are self-contained — a feature can import from `shared/` and `api/` but not from other features
+- Cross-feature communication happens through routes (URL state) or a shared context at the app level
+- API layer is auto-generated — never hand-write API calls, always regenerate from OpenAPI spec
+- React Query manages all server state — no manual fetch + useState for API data
+
+#### AI Pipeline Pattern
+- LangGraph defines the pipeline as a state graph
+- Each node is a single responsibility (classify goal, generate questions, generate board, etc.)
+- All LLM outputs use structured output (JSON schemas) — never parse free-text
+- Prompts are stored as separate files or constants, not inline in business logic
+- AI service exposes simple async functions to the rest of the backend — callers don't know about LangGraph internals
 
 ### Testing Strategy
-[Explain your testing approach and requirements]
+
+Tests are integrated into each milestone, focused on critical paths.
+
+#### Backend
+- **pytest** + **pytest-asyncio** for async test support
+- **httpx** `AsyncClient` for API integration tests (test FastAPI app directly)
+- Test layers:
+  - **Unit tests** — services and utility functions
+  - **Integration tests** — API endpoints with real DB (test database, reset between tests)
+  - **AI output tests** — validate LLM output against JSON schemas, test with mocked LLM responses for determinism
+- Test naming: `test_<module>/test_<function_or_scenario>.py`
+- Fixtures for: database session, authenticated user, sample goals/boards
+
+#### Frontend
+- **Vitest** for unit and component tests
+- **Testing Library** (`@testing-library/react`) for component interaction tests
+- Test what matters: user flows, form validation, error states, conditional rendering
+- Mock API responses via MSW (Mock Service Worker) or Orval-generated mocks
+- No snapshot tests unless explicitly justified
+
+#### AI-Specific Testing
+- Golden tests: known goal inputs → validate output structure (not exact content)
+- Schema validation: every LLM response must parse against its Pydantic/JSON schema
+- Fallback tests: verify behavior when LLM returns malformed output or times out
 
 ### Git Workflow
-[Describe your branching strategy and commit conventions]
+
+#### Branching
+- **Trunk-based development** — `main` is the primary branch
+- Short-lived feature branches: `feat/description`, `fix/description`, `refactor/description`
+- Branches merge back to `main` via PR (even solo — keeps history clean)
+- No long-lived `develop` or `staging` branches
+
+#### Commit Messages
+- **Conventional Commits** format:
+  ```
+  feat: add goal classification AI node
+  fix: correct task position after drag-and-drop
+  refactor: extract board service from router
+  chore: update dependencies
+  docs: add API endpoint documentation
+  test: add integration tests for auth endpoints
+  ```
+- Scope is optional but encouraged for clarity:
+  ```
+  feat(ai): add board generation pipeline
+  fix(board): correct column reorder persistence
+  ```
+- Commits should be atomic — one logical change per commit
+
+#### PR Conventions
+- PR title follows Conventional Commits format
+- PR description references the relevant openspec change if applicable
+- All CI checks must pass before merge
 
 ## Domain Context
-[Add domain-specific knowledge that AI assistants need to understand]
+
+### Key Domain Concepts
+- **Goal** — a user's desired outcome described in natural language (e.g., "Move from Berlin to Lisbon")
+- **Board** — a kanban board generated from a goal, with custom columns and tasks
+- **Column** — a stage/phase in the goal's workflow (e.g., "Research", "Book Services", "Pack")
+- **Task** — an actionable item within a column, with progressive metadata
+- **Progressive metadata** — task fields (due date, priority, time estimate) that the AI adds only when relevant to the goal type
+- **Adaptive questioning** — AI generates goal-specific questions as a dynamic form, not a chat
+- **Cross-goal intelligence** — AI remembers context from a user's past goals to improve future plans
+- **AI-assisted execution** — ongoing AI help during task completion (guidance, adaptation, blocker resolution)
+
+### AI Pipeline Stages
+1. **Goal classification** — determine domain, complexity, key dimensions
+2. **Question generation** — produce 3–7 adaptive form fields
+3. **Board generation** — create columns + tasks + metadata from goal + answers
+4. **Execution support** — task-level chat, board adaptation, follow-up suggestions
+
+### Business Rules
+- Board generation is purely dynamic — no pre-built templates
+- Users can freely edit everything the AI generates (full manual control)
+- Unlimited active boards during MVP (no limits)
+- Email + password auth only for MVP (no OAuth)
+- All features free during MVP — no payment infrastructure
+- Single-user only — no collaboration features in MVP
 
 ## Important Constraints
-[List any technical, business, or regulatory constraints]
+
+### Technical Constraints
+- **Monorepo** — frontend and backend must coexist in one repository
+- **OpenAPI as contract** — backend defines the API, frontend generates client from it. No hand-written API calls on the frontend.
+- **Structured AI output only** — all LLM responses must conform to JSON schemas. No free-text parsing.
+- **Async Python** — all I/O-bound operations in the backend must be async
+- **No SSR** — frontend is a client-side SPA (Vite), not server-rendered
+
+### Operational Constraints
+- Solo developer + AI coding assistants
+- Full-time availability
+- MVP target: 1–2 months
+- Hosting strategy TBD — code must be containerized (Docker) for portability
+
+### Cost Constraints
+- AI API costs must be monitored — use cheaper models for low-stakes pipeline stages (classification), stronger models for high-stakes stages (board generation)
+- OpenRouter enables model switching without code changes
 
 ## External Dependencies
-[Document key external services, APIs, or systems]
+
+### APIs
+- **OpenRouter** (`https://openrouter.ai/api/v1`) — LLM gateway for all AI operations. Provides access to OpenAI, Anthropic, Meta, and other models through a single API.
+
+### Key Libraries (Backend)
+- **FastAPI** — web framework
+- **SQLModel** — ORM (SQLAlchemy 2.0 + Pydantic)
+- **Alembic** — database migrations
+- **LangChain** — LLM abstraction and tooling
+- **LangGraph** — stateful AI pipeline orchestration
+- **Pydantic v2** — data validation (used by FastAPI, SQLModel, and AI output schemas)
+- **uvicorn** — ASGI server
+
+### Key Libraries (Frontend)
+- **React 19** — UI framework
+- **TanStack Router** — routing
+- **TanStack Query** — server state management
+- **Shadcn/ui** — component library (Radix primitives + Tailwind)
+- **Tailwind CSS v4** — styling
+- **Orval** — OpenAPI → React Query codegen
+- **dnd-kit** or **@hello-pangea/dnd** — drag-and-drop for kanban board (TBD)
+
+### Infrastructure
+- **PostgreSQL** — primary database
+- **Docker** — containerization for local dev and deployment
+- **GitHub Actions** (planned) — CI/CD pipeline
