@@ -1,7 +1,7 @@
 # task-dag Specification
 
 ## Purpose
-TBD - created by archiving change replace-kanban-with-dag. Update Purpose after archive.
+DAG validation and structural integrity for task dependency graphs. Provides cycle detection (Kahn's algorithm), goal node validation (single sink), and query helpers for dependency traversal and lock status computation.
 ## Requirements
 ### Requirement: DAG Validation Utility
 The system SHALL provide a utility function that validates a set of tasks and dependency edges form a valid directed acyclic graph. The utility SHALL use topological sort (Kahn's algorithm) to detect cycles. The utility SHALL be located in `app/domains/boards/dag_utils.py` and be callable from both the AI service (to validate AI output) and the board service (to validate persistence input).

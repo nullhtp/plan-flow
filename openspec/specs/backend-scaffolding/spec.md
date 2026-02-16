@@ -1,7 +1,7 @@
 # backend-scaffolding Specification
 
 ## Purpose
-TBD - created by archiving change setup-project-foundation. Update Purpose after archive.
+Backend project scaffolding. Covers FastAPI application structure (domain-based layout), SQLModel ORM with Alembic migrations, PostgreSQL connection, pydantic-settings configuration, Ruff formatting/linting, and Pyright strict type checking.
 ## Requirements
 ### Requirement: FastAPI Application Structure
 The backend SHALL follow the domain-based structure defined in project conventions: `app/main.py` as the entry point, `app/core/` for shared infrastructure, and `app/domains/` for domain modules.

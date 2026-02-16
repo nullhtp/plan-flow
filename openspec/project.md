@@ -2,7 +2,7 @@
 
 ## Purpose
 
-PlanFlow is an AI-powered SaaS that turns any goal into a structured kanban board. Users describe what they want to accomplish in plain language, the system asks adaptive questions to understand the specifics, then generates a custom kanban board with goal-specific columns and actionable tasks. The AI stays involved throughout execution, helping users complete tasks and suggesting follow-up goals.
+PlanFlow is an AI-powered SaaS that turns any goal into a structured task graph (DAG). Users describe what they want to accomplish in plain language, the system asks adaptive questions to understand the specifics, then generates a directed acyclic graph of tasks with explicit dependency edges, parallel paths, convergence nodes, and a final goal node. The AI stays involved throughout execution, helping users complete tasks and suggesting follow-up goals.
 
 Full project specification: `_docs/PROJECT.md`
 Roadmap: `_docs/ROADMAP.md`
@@ -99,10 +99,11 @@ backend/
 │   │   │   ├── router.py    # POST /goals, GET /goals, POST /goals/:id/answers, etc.
 │   │   │   └── service.py   # Goal CRUD, question flow orchestration
 │   │   ├── boards/
-│   │   │   ├── models.py    # Board, Column, Task, Subtask SQLModels
-│   │   │   ├── schemas.py   # BoardResponse, TaskCreate, TaskUpdate, etc.
-│   │   │   ├── router.py    # Board/column/task CRUD and reorder endpoints
-│   │   │   └── service.py   # Board CRUD, position management, board generation orchestration
+│   │   │   ├── models.py    # Board, Task, TaskDependency, Subtask SQLModels
+│   │   │   ├── schemas.py   # BoardResponse, EdgeResponse, TaskCreate, TaskUpdate, etc.
+│   │   │   ├── router.py    # Board/task/subtask CRUD endpoints (no columns)
+│   │   │   ├── service.py   # Board CRUD, DAG persistence, status validation, board generation orchestration
+│   │   │   └── dag_utils.py # DAG validation (Kahn's algorithm), goal node validation
 │   │   └── ai/
 │   │       ├── schemas.py   # AI input/output schemas (structured output definitions)
 │   │       ├── router.py    # POST /tasks/:id/chat, POST /goals/:id/adapt-board, etc.
@@ -158,8 +159,10 @@ frontend/
 │   │   │   ├── hooks/
 │   │   │   └── types.ts
 │   │   ├── board/
-│   │   │   ├── components/
-│   │   │   ├── hooks/
+│   │   │   ├── components/      # DagView, TaskNode, GoalNode, TaskDetailPanel, etc.
+│   │   │   ├── hooks/           # useBoard, useBoardList, useTaskMutations, etc.
+│   │   │   ├── utils/           # dagre-layout.ts (React Flow + dagre auto-layout)
+│   │   │   ├── __tests__/
 │   │   │   └── types.ts
 │   │   └── ai-chat/
 │   │       ├── components/
@@ -188,7 +191,8 @@ frontend/
 #### AI Pipeline Pattern
 - LangGraph defines the pipeline as a state graph
 - Each node is a single responsibility (classify goal, generate questions, generate board, etc.)
-- All LLM outputs use structured output (JSON schemas) — never parse free-text
+- All LLM outputs use structured output (JSON schemas via `.with_structured_output()`) — never parse free-text
+- Board generation produces a flat list of tasks with `depends_on` arrays forming a DAG — validated via Kahn's algorithm before persistence
 - Prompts are stored as separate files or constants, not inline in business logic
 - AI service exposes simple async functions to the rest of the backend — callers don't know about LangGraph internals
 
@@ -230,7 +234,7 @@ Tests are integrated into each milestone, focused on critical paths.
 - **Conventional Commits** format:
   ```
   feat: add goal classification AI node
-  fix: correct task position after drag-and-drop
+  fix: correct task status transition validation
   refactor: extract board service from router
   chore: update dependencies
   docs: add API endpoint documentation
@@ -252,23 +256,28 @@ Tests are integrated into each milestone, focused on critical paths.
 
 ### Key Domain Concepts
 - **Goal** — a user's desired outcome described in natural language (e.g., "Move from Berlin to Lisbon")
-- **Board** — a kanban board generated from a goal, with custom columns and tasks
-- **Column** — a stage/phase in the goal's workflow (e.g., "Research", "Book Services", "Pack")
-- **Task** — an actionable item within a column, with progressive metadata
+- **Board** — a task graph (DAG) generated from a goal, containing tasks connected by dependency edges
+- **Task** — an actionable item with status (`not_started` / `in_progress` / `done`), progressive metadata, and dependency relationships
+- **TaskDependency** — a directed edge in the DAG: the dependent task is blocked until the prerequisite task is `done`
+- **Goal node** — exactly one task per board with `is_goal_node: true`, the final sink of the DAG representing the user's original goal. Depends on all leaf tasks.
+- **Convergence node** — a task that depends on multiple parallel paths, merging independent work streams into a shared milestone
+- **Lock mechanic** — a task is locked (`is_locked: true`) when any of its dependencies is not `done`. Locked tasks cannot be started. This creates a game-like unlock experience.
 - **Progressive metadata** — task fields (due date, priority, time estimate) that the AI adds only when relevant to the goal type
 - **Adaptive questioning** — AI generates goal-specific questions as a dynamic form, not a chat
 - **Cross-goal intelligence** — AI remembers context from a user's past goals to improve future plans
 - **AI-assisted execution** — ongoing AI help during task completion (guidance, adaptation, blocker resolution)
 
 ### AI Pipeline Stages
-1. **Goal classification** — determine domain, complexity, key dimensions
-2. **Question generation** — produce 3–7 adaptive form fields
-3. **Board generation** — create columns + tasks + metadata from goal + answers
+1. **Goal classification** — determine domain, complexity, key dimensions; reject if confidence < threshold
+2. **Question generation** — produce 3–7 adaptive form fields (+ optional 1 follow-up round)
+3. **Board generation** — create flat task list with dependency edges forming a valid DAG, including convergence nodes and a single goal node
 4. **Execution support** — task-level chat, board adaptation, follow-up suggestions
 
 ### Business Rules
 - Board generation is purely dynamic — no pre-built templates
-- Users can freely edit everything the AI generates (full manual control)
+- AI generates dependency graph; users can edit task details but not dependencies manually (AI-only for MVP)
+- Task status transitions are validated server-side: `in_progress` requires all dependencies `done`; `done` requires currently `in_progress`
+- Exactly one goal node per board (DAG sink) — board completion is detected by goal node status
 - Unlimited active boards during MVP (no limits)
 - Email + password auth only for MVP (no OAuth)
 - All features free during MVP — no payment infrastructure
@@ -314,7 +323,9 @@ Tests are integrated into each milestone, focused on critical paths.
 - **Shadcn/ui** — component library (Radix primitives + Tailwind)
 - **Tailwind CSS v4** — styling
 - **Orval** — OpenAPI → React Query codegen
-- **dnd-kit** or **@hello-pangea/dnd** — drag-and-drop for kanban board (TBD)
+- **@xyflow/react** (React Flow v12) — interactive DAG graph visualization (pan, zoom, custom nodes)
+- **dagre** — hierarchical auto-layout for the DAG (top-to-bottom positioning)
+- **canvas-confetti** — celebration animation when goal node is completed
 
 ### Infrastructure
 - **PostgreSQL** — primary database

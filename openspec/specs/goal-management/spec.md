@@ -1,7 +1,7 @@
 # goal-management Specification
 
 ## Purpose
-TBD - created by archiving change add-goal-understanding. Update Purpose after archive.
+Goal lifecycle management. Covers the goal data model, status state machine (input through active/completed/archived), create/get/answer endpoints, and the adaptive questioning flow including follow-up question rounds.
 ## Requirements
 ### Requirement: Goal Data Model
 The system SHALL store goals as database records with the following fields: `id` (UUID primary key), `user_id` (FK to User), `title` (AI-generated or user-provided), `original_input` (raw user text), `status` (pipeline state enum), `ai_context` (JSON), `created_at`, and `updated_at`. The `ai_context` JSON field SHALL store classification output, generated questions, user answers, follow-up questions, and follow-up answers.

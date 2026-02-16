@@ -9,7 +9,7 @@
 
 **Two-phase MVP.** The MVP is split into Alpha and Beta:
 
-- **Alpha** — the core magic: goal → questions → board generation → manual board editing. This is the minimum needed to validate the product's core value ("describe a goal, get a real plan").
+- **Alpha** — the core magic: goal → questions → DAG generation → task graph interaction. This is the minimum needed to validate the product's core value ("describe a goal, get a real plan with dependencies").
 - **Beta** — AI-assisted execution, cross-goal intelligence, and polish. These features deepen engagement but depend on users already having boards to work with.
 
 **Testing integrated.** Each milestone includes testing for its deliverables. Focus on critical paths: AI output validation, board CRUD correctness, auth security. No coverage targets — test what matters.
@@ -173,87 +173,112 @@ The first half of the AI pipeline: user enters a goal, AI classifies it and gene
 
 ## M3: AI Pipeline — Board Generation
 
-The second half of the AI pipeline: given a goal + answers, AI generates a complete board with custom columns and tasks.
+The second half of the AI pipeline: given a goal + answers, AI generates a DAG of tasks with dependency edges.
 
 ### Deliverables
 
 - **Backend — AI Service**
   - **Board generation node** — takes goal + ai_context (answers), produces structured board JSON:
-    - Columns: title, position, description
-    - Tasks per column: title, description, position, and progressive metadata (due_date, priority, estimated_minutes — included only when relevant)
-  - Structured output enforcement — board JSON validated against schema
-  - Board, Column, Task, Subtask models + migrations
-  - Board creation service — takes AI-generated JSON and persists to DB (creates Board → Columns → Tasks in a transaction)
+    - Flat list of tasks: id, title, description, `depends_on` (array of prerequisite task IDs), `is_goal_node` (boolean), and progressive metadata (due_date, priority, estimated_minutes — included only when relevant)
+    - Dependency edges forming a valid DAG (no cycles)
+    - Exactly one task with `is_goal_node: true` as the DAG sink
+    - Convergence nodes where parallel paths merge into milestones
+  - Structured output enforcement — board JSON validated against Pydantic schema
+  - DAG validation — Kahn's algorithm for cycle detection, goal node validation (single sink, no dependents)
+  - Board, Task, TaskDependency, Subtask models + migrations
+  - Board creation service — takes AI-generated JSON, validates DAG structure, and persists to DB (creates Board → Tasks → TaskDependency edges in a transaction)
 - **API Endpoints**
   - `POST /goals/:id/generate-board` — triggers board generation from goal context
-  - `GET /boards/:id` — returns full board with columns and tasks (nested)
+  - `GET /boards/:id` — returns full board with tasks, dependency edges, and computed `is_locked` per task
 - **Prompt Engineering**
-  - System prompt for board generation — instructs AI to create goal-specific columns (not generic To Do/Doing/Done), actionable tasks with clear descriptions, logical ordering
+  - System prompt for board generation — instructs AI to create a valid DAG with parallel paths, convergence nodes, and exactly one goal node
   - Prompt includes the goal text, classification, and all answers as context
-  - Output schema for board structure
+  - Output schema for DAG structure (tasks with `depends_on` arrays)
   - Progressive metadata instructions — AI decides which metadata fields to include based on goal type
   - Test with the same diverse goal types from M2
 
 ### Tests
 
-- Board generation produces valid columns + tasks for a variety of goal types
-- Generated columns are goal-specific (not generic)
-- Generated tasks have descriptions and are placed in correct columns
+- Board generation produces valid DAG with tasks and dependency edges for a variety of goal types
+- Generated DAGs include parallel paths for independent work streams
+- Generated tasks have descriptions and correct dependency relationships
+- Exactly one goal node exists per board, serving as the DAG sink
 - Progressive metadata is present where expected (deadlines for time-bound goals) and absent where not (hobby goals)
-- Database persistence: generated board is correctly stored with all relations
-- API returns full nested board structure (board → columns → tasks)
+- DAG validation catches cycles and rejects invalid graphs
+- Database persistence: generated board is correctly stored with all relations (tasks + edges)
+- API returns full board structure with tasks, edges, and computed `is_locked` fields
 
 ---
 
-## M4: Board UI — Display & Manual Editing
+## M4: Board UI — DAG Visualization & Task Interaction
 
-The kanban board interface. Users can view their generated board and fully edit it: drag-and-drop tasks, add/remove/edit columns and tasks, reorder everything.
+The task graph interface. Users can view their generated DAG, interact with tasks (toggle status, edit details), and see dependencies visually.
 
 ### Deliverables
 
-- **Board View**
-  - Kanban board layout — columns displayed horizontally, tasks as cards within columns
-  - Drag-and-drop tasks between columns and within columns (reordering)
-  - Drag-and-drop columns to reorder
+- **DAG View**
+  - React Flow-based DAG visualization — tasks as custom nodes, dependencies as bezier curve edges
+  - Dagre auto-layout (top-to-bottom hierarchy) — no manual node positioning
+  - Pan (drag background) and zoom (scroll wheel) support
+  - Clean plain canvas (no dot grid), styled minimap in bottom-right corner
   - Optimistic updates via React Query — UI updates immediately, syncs with server in background
-  - Loading skeleton while board data loads
+  - Loading spinner while board data loads
+- **Task Node Display**
+  - Custom task nodes with very rounded corners, soft shadows, status-dependent coloring
+  - Lock icon and muted appearance for tasks with unmet prerequisites
+  - Priority color tinting (rose=high, amber=medium, sky=low)
+  - Due date, subtask progress, and estimated time shown on nodes when present
+  - Enhanced green treatment for completed tasks
+  - Smooth CSS transitions on status changes
+  - Connection handles hidden (nodes not user-connectable)
+- **Goal Node Display**
+  - Larger node with accent border for the final goal node
+  - Progress bar showing completed/total tasks across the board
+  - Trophy icon when completed, lock icon when locked
+  - Completing the goal node triggers a confetti celebration animation
+- **Edge Styling**
+  - Smooth bezier curve edges with arrowheads
+  - Thick colored edges for unlocked paths, thin gray edges for locked paths
 - **Task Interactions**
-  - Click task to open detail panel/modal
-  - Task detail view: title, description, due date, priority, estimated time, subtasks, AI guidance
-  - Edit task inline (title, description, metadata)
-  - Add new task to any column
-  - Delete task
-  - Add/edit/complete subtasks within a task
-- **Column Interactions**
-  - Rename column
-  - Add new column
-  - Delete column (with confirmation — moves or deletes contained tasks)
+  - Click task node to open slide-in detail panel (right side)
+  - Task detail panel: edit title, description, due date, priority, estimated minutes, status
+  - Status toggle: click node status icon to cycle `not_started` → `in_progress` → `done`
+  - Locked task status toggle disabled (tooltip shows blocking tasks)
+  - "Dependencies" section listing prerequisite tasks
+  - "Unlocks" section listing dependent tasks
+  - Delete task with confirmation (warns about dependent tasks)
+  - Task detail panel state reflected in URL via `?task=<taskId>` search param
+- **Subtask Checklist**
+  - Subtasks rendered as checklist in detail panel
+  - Add, toggle, and delete subtasks with optimistic updates
 - **API Endpoints (CRUD)**
-  - `PATCH /boards/:id/columns` — reorder columns
-  - `POST /boards/:id/columns` — add column
-  - `PATCH /columns/:id` — update column (rename)
-  - `DELETE /columns/:id` — delete column
-  - `POST /columns/:id/tasks` — add task
-  - `PATCH /tasks/:id` — update task (title, description, metadata, column move, reorder)
-  - `DELETE /tasks/:id` — delete task
+  - `GET /boards` — list boards with progress stats
+  - `GET /boards/:id` — full board with tasks, edges, is_locked, is_completed
+  - `PATCH /boards/:id` — update board title
+  - `POST /boards/:id/tasks` — add task
+  - `PATCH /tasks/:id` — update task (title, description, metadata, status with dependency validation)
+  - `DELETE /tasks/:id` — delete task (cascades to subtasks and dependency edges)
   - `POST /tasks/:id/subtasks` — add subtask
   - `PATCH /subtasks/:id` — update subtask
   - `DELETE /subtasks/:id` — delete subtask
 - **Board List**
-  - Dashboard page showing all user's boards/goals
-  - Board status indicators (active, completed, archived)
-  - Navigation from dashboard to individual boards
+  - Home page showing all user's boards as cards with progress bars
+  - Board cards show title, goal title, task completion fraction, and progress percentage
+  - Navigation from home to individual boards
+  - Empty state with "Create a goal" prompt
 
 ### Tests
 
-- Board renders correctly with columns and tasks from API data
-- Drag-and-drop updates task position and column — persists to server
-- Column reorder persists
+- DAG renders correctly with nodes and edges from API data
+- Task status toggle updates status and persists to server
+- Locked tasks cannot be started (server returns 409, UI shows lock)
+- Completing a task unlocks dependents (visual transition from locked to unlocked)
+- Goal node completion triggers celebration animation
 - CRUD operations for tasks: create, read, update, delete — all persist correctly
-- CRUD operations for columns: create, rename, delete — all persist correctly
 - Subtask operations: add, toggle complete, delete
 - Optimistic update: UI reflects change before server confirms
-- Optimistic update rollback: if server rejects, UI reverts
+- Optimistic update rollback: if server rejects, UI reverts and shows toast
+- Task detail panel opens/closes correctly and reflects in URL
 
 ---
 
@@ -264,30 +289,30 @@ Connect all pieces into the complete end-to-end flow. This is primarily integrat
 ### Deliverables
 
 - **End-to-end flow wired up**
-  - User signs up → enters goal → answers questions → board is generated → board is displayed and editable
+  - User signs up → enters goal → answers questions → DAG is generated → task graph is displayed and interactive
   - All transitions are smooth (no manual page refreshes, proper loading states, error handling)
 - **Navigation and UX flow**
-  - Clear path from goal input through questions to board
+  - Clear path from goal input through questions to task graph
   - "Generating your board..." transition with appropriate feedback (progress indicator or streaming)
   - Back navigation — user can revisit their answers before generating
   - Board generation error recovery — if AI fails, user can retry without re-entering everything
 - **Goal management**
   - `GET /goals` — list all user's goals
   - Goal status transitions (active → completed, active → archived)
-  - Mark goal as complete from board view
+  - Mark goal as complete from board view (completing the goal node)
 - **Board regeneration**
   - User can ask AI to regenerate the entire board (re-run generation with same or modified answers)
-  - "Regenerate" action with confirmation (destructive — replaces current board)
+  - "Regenerate" action with confirmation (destructive — replaces current graph)
 - **Edge cases**
-  - Empty states (no goals yet, no tasks in a column)
+  - Empty states (no goals yet, no boards yet)
   - Long goal text handling
   - AI timeout handling with user-friendly messaging
   - Network error handling and retry UI
 
 ### Tests
 
-- Full E2E flow: register → create goal → answer questions → generate board → edit tasks → complete goal
-- Board regeneration produces a new board, old board data is replaced
+- Full E2E flow: register → create goal → answer questions → generate DAG → toggle task statuses → complete goal node → celebration
+- Board regeneration produces a new graph, old board data is replaced
 - Error states render correctly (AI timeout, network error)
 - Empty states render correctly
 - Goal status transitions work correctly
@@ -296,9 +321,9 @@ Connect all pieces into the complete end-to-end flow. This is primarily integrat
 
 ## --- ALPHA RELEASE ---
 
-At this point, the core product loop works end-to-end. A user can describe a goal, answer AI-generated questions, receive a fully structured kanban board, and manually work through it. The board is persistent, editable, and the user's data is secured behind auth.
+At this point, the core product loop works end-to-end. A user can describe a goal, answer AI-generated questions, receive a fully structured task DAG with dependencies, and work through it by completing tasks to unlock dependents. The board is persistent, interactive, and the user's data is secured behind auth.
 
-**Alpha is testable with real users.** The "wow moment" — describing a goal and seeing it become a plan — is fully functional. Share with early testers, collect feedback.
+**Alpha is testable with real users.** The "wow moment" — describing a goal and seeing it become a visual dependency graph with unlockable tasks — is fully functional. Share with early testers, collect feedback.
 
 ---
 
@@ -316,14 +341,14 @@ Phase 3 of the core loop. The AI helps users execute their tasks, not just plan 
   - Conversation persisted in the Conversation model (phase: execution, linked to task)
 - **AI board adaptation**
   - User can request board-level changes through AI: "My budget changed, update the plan", "I have less time than expected"
-  - AI modifies the board structure (add/remove/modify tasks, reorder) based on the request
+  - AI modifies the graph structure (add/remove/modify tasks and dependency edges) based on the request
   - Changes are shown as a diff or preview before applying (user confirms)
 - **Blocker resolution**
   - When a user is stuck on a task, they can tell the AI
   - AI responds with: alternative approaches, subtask breakdown, simplified version of the task, or suggests skipping and coming back later
   - AI can create subtasks directly on the task from within the chat
 - **Goal completion flow**
-  - When all tasks are done (or user manually marks goal complete), AI generates follow-up suggestions
+  - When the goal node is marked as done (all prerequisites are done), AI generates follow-up suggestions
   - Follow-up suggestions are based on: what the user accomplished, natural next steps, the goal domain
   - User can start a new goal directly from a suggestion (pre-fills the goal input)
 - **API Endpoints**
@@ -337,9 +362,9 @@ Phase 3 of the core loop. The AI helps users execute their tasks, not just plan 
 
 - Task chat: AI receives correct context (goal, board state, task details)
 - Task chat: conversation is persisted and retrievable
-- Board adaptation: AI-generated changes are structurally valid
+- Board adaptation: AI-generated changes produce a valid DAG (no cycles)
 - Board adaptation: user confirmation applies changes correctly
-- Board adaptation: user rejection leaves board unchanged
+- Board adaptation: user rejection leaves graph unchanged
 - Blocker resolution: AI creates valid subtasks
 - Goal completion: follow-up suggestions are relevant to the completed goal
 - Follow-up goal: pre-fills goal input correctly
@@ -385,8 +410,8 @@ Tighten everything up before public release. Fix what's broken, smooth what's ro
 - **UI/UX polish**
   - Responsive design — works on tablet and mobile browsers (not optimized, but usable)
   - Consistent loading states, error messages, and empty states across all pages
-  - Keyboard shortcuts for common board actions (if time permits)
-  - Smooth transitions and animations for board interactions
+  - Keyboard shortcuts for common task graph actions (if time permits)
+  - Smooth transitions and animations for task status changes and graph interactions
   - Accessibility basics: semantic HTML, focus management, ARIA labels on interactive elements
 - **Error handling hardening**
   - AI failure graceful degradation — every AI call has a fallback (retry, cached response, or manual mode)
@@ -394,9 +419,9 @@ Tighten everything up before public release. Fix what's broken, smooth what's ro
   - Rate limiting on all public endpoints
   - Input sanitization and validation on all user inputs
 - **Performance**
-  - Board rendering performance with many tasks (50+ tasks)
+  - DAG rendering performance with many tasks (50+ tasks and edges)
   - API response times — board load under 500ms, AI operations have streaming or progress feedback
-  - Database query optimization (N+1 prevention, proper indexes)
+  - Database query optimization (N+1 prevention, proper indexes on task_dependency)
 - **Security**
   - Auth token security review
   - API authorization checks — users can only access their own data
@@ -414,7 +439,7 @@ Tighten everything up before public release. Fix what's broken, smooth what's ro
 ### Tests
 
 - Authorization: user A cannot access user B's goals, boards, or tasks
-- Performance: board with 50 tasks renders and is interactive
+- Performance: DAG with 50 tasks and dependency edges renders and is interactive
 - AI failures: UI degrades gracefully, user can retry
 - All previously passing tests still pass (regression)
 
@@ -498,11 +523,12 @@ Notes:
 
 | Risk                              | Impact                                                       | Mitigation                                                                                                                                             |
 | --------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| AI output quality is inconsistent | Generated boards are useless or require heavy manual editing | Invest in prompt engineering + structured output validation. Test with 20+ diverse goals before Alpha. Add regeneration as escape hatch.               |
+| AI output quality is inconsistent | Generated DAGs are useless (too linear, cycles, poor dependencies) | Invest in prompt engineering + structured output validation + DAG cycle detection. Test with 20+ diverse goals before Alpha. Add regeneration as escape hatch. |
 | AI costs higher than expected     | Burns through budget during development and testing          | Use cheaper models for classification/questions, strong models for board generation. Track cost per request from M2 onwards. Set per-user rate limits. |
-| Board UI drag-and-drop complexity | Interactions feel buggy, position persistence breaks         | Use a proven library (dnd-kit or @hello-pangea/dnd). Solve the position persistence model early (fractional indexing or gap-based ordering).           |
+| AI generates poor dependency graphs | Too linear (no parallelism), missing convergence nodes, cycles | Validate DAG structure post-generation (topological sort). Add prompt engineering to encourage parallel paths. Retry on cycle detection. |
+| React Flow + dagre rendering issues | Large graphs render slowly or layout looks cluttered        | Lazy-load the DAG view. Dagre handles hierarchical layout well for 5-30 tasks. React Flow supports tree-shaking. Cap task count at 30. |
 | Scope creep during polish phase   | M8 expands indefinitely, never ships                         | Timebox M8. Define a "good enough" bar before starting. Ship, then iterate.                                                                            |
-| OpenRouter provider outages       | AI features completely unavailable                           | Configure fallback models. Cache recent AI outputs. Degrade gracefully (board editing works without AI).                                               |
+| OpenRouter provider outages       | AI features completely unavailable                           | Configure fallback models. Cache recent AI outputs. Degrade gracefully (task editing works without AI).                                               |
 | Solo developer burnout            | Progress stalls                                              | Milestones are designed to produce shippable increments. Alpha is a real checkpoint. Take breaks between milestones.                                   |
 
 ---

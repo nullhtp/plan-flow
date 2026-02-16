@@ -1,7 +1,7 @@
 # monorepo-structure Specification
 
 ## Purpose
-TBD - created by archiving change setup-project-foundation. Update Purpose after archive.
+Monorepo directory layout. Defines the `/frontend` and `/backend` top-level structure, shared tooling configuration, and root-level Makefile for common development commands.
 ## Requirements
 ### Requirement: Monorepo Directory Layout
 The repository SHALL contain a `/frontend` directory for the React/TypeScript application and a `/backend` directory for the FastAPI/Python application at the repository root.

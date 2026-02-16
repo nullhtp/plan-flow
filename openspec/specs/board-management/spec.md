@@ -1,7 +1,7 @@
 # board-management Specification
 
 ## Purpose
-TBD - created by archiving change add-board-generation. Update Purpose after archive.
+Backend board data model, persistence, and CRUD API. Manages boards (one per goal), tasks with status and dependency tracking, task dependency edges (DAG structure), subtasks with fractional index ordering, and the AI board generation orchestration endpoint.
 ## Requirements
 ### Requirement: Board Data Model
 The system SHALL store boards as database records with the following fields: `id` (UUID primary key), `goal_id` (FK to Goal, unique), `title` (string), `created_at`, and `updated_at`. Each goal SHALL have at most one board (one-to-one relationship enforced by the unique constraint on `goal_id`).

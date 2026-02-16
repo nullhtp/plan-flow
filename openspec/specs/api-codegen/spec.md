@@ -1,7 +1,7 @@
 # api-codegen Specification
 
 ## Purpose
-TBD - created by archiving change setup-project-foundation. Update Purpose after archive.
+OpenAPI code generation pipeline. Backend auto-generates the OpenAPI spec via FastAPI, and the frontend uses Orval to generate TypeScript types and React Query hooks from that spec.
 ## Requirements
 ### Requirement: OpenAPI Spec Generation
 The backend SHALL auto-generate an OpenAPI specification accessible at the `/openapi.json` endpoint.

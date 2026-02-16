@@ -1,7 +1,7 @@
 # git-hooks Specification
 
 ## Purpose
-TBD - created by archiving change setup-project-foundation. Update Purpose after archive.
+Git configuration and hooks. Covers .gitignore rules for the monorepo and pre-commit hooks for linting, formatting, and type checking across both frontend and backend.
 ## Requirements
 ### Requirement: Git Ignore Configuration
 The repository SHALL include a `.gitignore` file that excludes generated files, dependencies, virtual environments, IDE settings, and OS-specific files for both the Python backend and TypeScript frontend.

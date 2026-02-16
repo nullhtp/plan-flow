@@ -1,7 +1,7 @@
 # docker-dev-env Specification
 
 ## Purpose
-TBD - created by archiving change setup-project-foundation. Update Purpose after archive.
+Docker Compose local development environment. Defines services for the FastAPI backend, React frontend, and PostgreSQL database with volume mounts, environment variables, and health checks.
 ## Requirements
 ### Requirement: Docker Compose Local Environment
 The repository SHALL include a `docker-compose.yml` that defines services for the backend, frontend, and PostgreSQL database for local development.

@@ -1,7 +1,7 @@
 # ci-pipeline Specification
 
 ## Purpose
-TBD - created by archiving change setup-project-foundation. Update Purpose after archive.
+GitHub Actions CI pipeline. Runs lint, format, type check, and tests for both frontend and backend on pushes and pull requests to main.
 ## Requirements
 ### Requirement: GitHub Actions CI Workflow
 The repository SHALL include a GitHub Actions workflow that runs on pushes and pull requests to the `main` branch.

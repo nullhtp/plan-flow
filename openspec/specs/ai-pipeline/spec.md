@@ -1,7 +1,7 @@
 # ai-pipeline Specification
 
 ## Purpose
-TBD - created by archiving change add-goal-understanding. Update Purpose after archive.
+AI pipeline for goal understanding and board generation. Covers the LangGraph pipeline with nodes for goal classification (with confidence-based rejection), adaptive question generation (with follow-up rounds), and DAG board generation (flat task list with dependency edges, convergence nodes, and goal node). All nodes use structured output enforcement via Pydantic schemas and OpenRouter LLM gateway.
 ## Requirements
 ### Requirement: OpenRouter LLM Client
 The system SHALL integrate with OpenRouter (`https://openrouter.ai/api/v1`) via LangChain's `ChatOpenAI` class configured with the OpenRouter base URL. The API key and default model SHALL be read from environment variables (`OPENROUTER_API_KEY`, `AI_DEFAULT_MODEL`). The default model SHALL be `openai/gpt-5.2`. Individual LLM calls SHALL have a 20-second timeout.

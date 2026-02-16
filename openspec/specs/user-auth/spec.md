@@ -1,7 +1,7 @@
 # user-auth Specification
 
 ## Purpose
-TBD - created by archiving change add-email-password-auth. Update Purpose after archive.
+Email and password authentication. Covers user registration, login, logout, session management via httpOnly JWT cookies (access + refresh tokens), protected route enforcement, and frontend auth state management.
 ## Requirements
 ### Requirement: User Registration
 The system SHALL allow new users to register with an email address and password via `POST /auth/register`.

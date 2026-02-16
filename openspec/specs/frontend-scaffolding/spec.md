@@ -1,7 +1,7 @@
 # frontend-scaffolding Specification
 
 ## Purpose
-TBD - created by archiving change setup-project-foundation. Update Purpose after archive.
+Frontend project scaffolding. Covers Vite + React 19 + TypeScript (strict mode) setup, TanStack Router and Query configuration, Shadcn/ui component library, Tailwind CSS v4, and Biome for linting/formatting.
 ## Requirements
 ### Requirement: Vite React TypeScript Application
 The frontend SHALL be a React 19 application scaffolded with Vite and TypeScript in strict mode.

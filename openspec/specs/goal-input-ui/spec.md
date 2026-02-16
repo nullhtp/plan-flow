@@ -1,7 +1,7 @@
 # goal-input-ui Specification
 
 ## Purpose
-TBD - created by archiving change add-goal-understanding. Update Purpose after archive.
+Frontend goal creation flow. Covers the new goal page (free-text input with examples), adaptive question form rendering, answer submission with follow-up support, and board generation trigger with loading/error states.
 ## Requirements
 ### Requirement: New Goal Page
 The system SHALL provide a "New Goal" page accessible to authenticated users at route `/goals/new`. The page SHALL display a free-text input field for entering a goal description and a submit button. Below the input, the page SHALL display 4-6 clickable example goal suggestions (e.g., "Move from Berlin to Lisbon", "Learn conversational Japanese in 6 months", "Launch an MVP for my SaaS"). Clicking an example SHALL populate the input field with that text. The page SHALL use the application's existing Shadcn/ui components and Tailwind styling.
