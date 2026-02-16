@@ -1,4 +1,4 @@
-import { Background, Controls, MiniMap, type NodeMouseHandler, ReactFlow } from "@xyflow/react";
+import { Controls, MiniMap, type NodeMouseHandler, ReactFlow } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -86,9 +86,16 @@ export function DagView({ board }: DagViewProps) {
 				maxZoom={1.5}
 				proOptions={{ hideAttribution: true }}
 			>
-				<Background />
 				<Controls showInteractive={false} />
-				<MiniMap nodeStrokeWidth={3} pannable zoomable className="!bottom-4 !right-4" />
+				<MiniMap
+					nodeStrokeWidth={3}
+					nodeColor="#818cf8"
+					nodeStrokeColor="#6366f1"
+					maskColor="rgba(0, 0, 0, 0.08)"
+					pannable
+					zoomable
+					className="!bottom-4 !right-4 !rounded-xl !shadow-md !border !border-border"
+				/>
 			</ReactFlow>
 
 			{/* Task Detail Panel */}

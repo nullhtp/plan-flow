@@ -17,7 +17,7 @@ export function GoalNode({ data }: GoalNodeProps) {
 
 	return (
 		<div
-			className={`relative rounded-xl border-3 px-5 py-4 shadow-md transition-all ${
+			className={`relative rounded-3xl border-3 px-5 py-4 shadow-md cursor-pointer transition-all duration-300 ease-in-out ${
 				isDone
 					? "border-green-500 bg-green-50 dark:bg-green-950/30"
 					: isLocked
@@ -26,7 +26,8 @@ export function GoalNode({ data }: GoalNodeProps) {
 			}`}
 			style={{ width: 320 }}
 		>
-			<Handle type="target" position={Position.Top} className="!bg-amber-500 !w-3 !h-3" />
+			{/* Hidden handle — required by React Flow internally */}
+			<Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0" />
 
 			<div className="flex items-start gap-3">
 				<div className="mt-0.5 shrink-0">

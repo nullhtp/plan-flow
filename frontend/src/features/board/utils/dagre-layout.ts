@@ -71,13 +71,12 @@ export function getLayoutedElements(board: BoardResponse): {
 			type: "default",
 			animated: false,
 			style: {
-				stroke: isLocked ? "#9ca3af" : "#6366f1",
-				strokeWidth: 2,
-				opacity: isLocked ? 0.4 : 0.8,
+				stroke: isLocked ? "#d1d5db" : "#818cf8",
+				strokeWidth: isLocked ? 1.5 : 3,
 			},
 			markerEnd: {
 				type: "arrowclosed" as const,
-				color: isLocked ? "#9ca3af" : "#6366f1",
+				color: isLocked ? "#d1d5db" : "#818cf8",
 			},
 		};
 	});

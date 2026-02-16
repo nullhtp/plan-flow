@@ -2,22 +2,16 @@ import { Handle, Position } from "@xyflow/react";
 import { Calendar, CheckCircle2, Circle, Clock, Lock, PlayCircle } from "lucide-react";
 import type { TaskNodeData } from "../utils/dagre-layout";
 
-const priorityColors: Record<string, string> = {
-	high: "border-red-500 bg-red-50 dark:bg-red-950/20",
-	medium: "border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20",
-	low: "border-blue-500 bg-blue-50 dark:bg-blue-950/20",
-};
-
 const priorityDots: Record<string, string> = {
-	high: "bg-red-500",
-	medium: "bg-yellow-500",
-	low: "bg-blue-500",
+	high: "bg-rose-400",
+	medium: "bg-amber-400",
+	low: "bg-sky-400",
 };
 
 const statusIcons = {
 	not_started: <Circle className="h-4 w-4 text-gray-400" />,
 	in_progress: <PlayCircle className="h-4 w-4 text-blue-500" />,
-	done: <CheckCircle2 className="h-4 w-4 text-green-500" />,
+	done: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
 };
 
 interface TaskNodeProps {
@@ -38,21 +32,26 @@ export function TaskNode({ data }: TaskNodeProps) {
 				.map((t) => t?.title)
 		: [];
 
-	const borderClass = task.priority
-		? (priorityColors[task.priority] ?? "border-border bg-card")
-		: "border-border bg-card";
+	// Status-based coloring: done = green, in_progress = blue, not_started = gray
+	const statusClass =
+		task.status === "done"
+			? "border-emerald-400 bg-emerald-50/80 dark:bg-emerald-950/20"
+			: task.status === "in_progress"
+				? "border-blue-400 bg-blue-50/80 dark:bg-blue-950/20"
+				: "border-gray-300 bg-gray-50/80 dark:bg-gray-900/20";
 
 	return (
 		<div
-			className={`relative rounded-lg border-2 px-4 py-3 shadow-sm transition-all ${borderClass} ${
-				isLocked ? "opacity-50 grayscale" : ""
-			} ${task.status === "done" ? "border-green-500/50" : ""}`}
+			className={`relative rounded-3xl border-2 px-4 py-3 shadow-md cursor-pointer transition-all duration-300 ease-in-out ${statusClass} ${
+				isLocked ? "opacity-60" : ""
+			}`}
 			style={{ width: 280 }}
 			title={isLocked ? `Blocked by: ${blockedByNames.join(", ")}` : undefined}
 		>
-			<Handle type="target" position={Position.Top} className="!bg-indigo-400 !w-2 !h-2" />
+			{/* Hidden handles — required by React Flow internally */}
+			<Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0" />
 
-			<div className="flex items-start gap-2">
+			<div className="flex items-start gap-2.5">
 				<div className="mt-0.5 shrink-0">
 					{isLocked ? (
 						<Lock className="h-4 w-4 text-gray-400" />
@@ -62,13 +61,13 @@ export function TaskNode({ data }: TaskNodeProps) {
 				</div>
 				<div className="min-w-0 flex-1">
 					<p
-						className={`text-sm font-medium leading-tight ${
+						className={`text-sm font-semibold leading-snug tracking-tight ${
 							task.status === "done" ? "line-through text-muted-foreground" : ""
 						}`}
 					>
 						{task.title}
 					</p>
-					<div className="mt-1.5 flex flex-wrap items-center gap-2">
+					<div className="mt-2 flex flex-wrap items-center gap-2.5">
 						{task.priority && (
 							<span
 								className={`inline-block h-2 w-2 rounded-full ${priorityDots[task.priority] ?? "bg-gray-400"}`}
@@ -96,7 +95,7 @@ export function TaskNode({ data }: TaskNodeProps) {
 				</div>
 			</div>
 
-			<Handle type="source" position={Position.Bottom} className="!bg-indigo-400 !w-2 !h-2" />
+			<Handle type="source" position={Position.Bottom} className="!opacity-0 !w-0 !h-0" />
 		</div>
 	);
 }
