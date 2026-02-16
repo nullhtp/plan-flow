@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.domains.auth.router import router as auth_router
+from app.domains.goals.router import router as goals_router
 
 app = FastAPI(
     title="PlanFlow API",
@@ -21,6 +22,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/api")
+app.include_router(goals_router, prefix="/api")
 
 
 @app.get("/health")

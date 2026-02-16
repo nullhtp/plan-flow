@@ -1,19 +1,27 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve .env from the project root (two levels up from this file)
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_PROJECT_ROOT / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/planflow"
+    test_database_url: str = (
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/planflow_test"
+    )
 
     # Application
     app_name: str = "PlanFlow"
@@ -29,6 +37,13 @@ class Settings(BaseSettings):
 
     # CORS
     frontend_origin: str = "http://localhost:5173"
+
+    # AI / OpenRouter
+    openrouter_api_key: str = ""
+    ai_default_model: str = "openai/gpt-5.2"
+    ai_confidence_threshold: float = 0.3
+    ai_llm_timeout: int = 20  # seconds
+    ai_max_retries: int = 3
 
 
 settings = Settings()

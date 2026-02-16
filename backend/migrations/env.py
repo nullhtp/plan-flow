@@ -12,6 +12,7 @@ from sqlmodel import SQLModel
 # Import all domain models so Alembic autogenerate can detect them.
 # The import registers models with SQLModel.metadata; the binding is unused.
 import app.domains.auth.models as _  # pyright: ignore[reportUnusedImport]  # noqa: F401
+import app.domains.goals.models as _goals  # pyright: ignore[reportUnusedImport]  # noqa: F401
 from app.core.config import settings
 
 # Alembic Config object

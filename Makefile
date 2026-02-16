@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help lint format type-check test codegen export-openapi check
+.PHONY: help lint format type-check test codegen export-openapi check \
+       db-migrate db-rollback db-generate db-history db-current db-upgrade-to db-reset
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -59,3 +60,26 @@ export-openapi: ## Export OpenAPI spec from backend
 
 codegen: export-openapi ## Generate TypeScript API client from OpenAPI spec
 	cd frontend && pnpm run codegen
+
+# ── Database Migrations ──────────────────────────────────
+
+db-migrate: ## Run all pending migrations (alembic upgrade head)
+	cd backend && uv run alembic upgrade head
+
+db-rollback: ## Rollback the last migration (alembic downgrade -1)
+	cd backend && uv run alembic downgrade -1
+
+db-generate: ## Auto-generate a new migration (usage: make db-generate name="add_foo_table")
+	cd backend && uv run alembic revision --autogenerate -m "$(name)"
+
+db-history: ## Show migration history
+	cd backend && uv run alembic history --verbose
+
+db-current: ## Show current migration revision
+	cd backend && uv run alembic current
+
+db-upgrade-to: ## Upgrade to a specific revision (usage: make db-upgrade-to rev="abc123")
+	cd backend && uv run alembic upgrade $(rev)
+
+db-reset: ## Drop all tables and re-run all migrations (DESTRUCTIVE)
+	cd backend && uv run alembic downgrade base && uv run alembic upgrade head

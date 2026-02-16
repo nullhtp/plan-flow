@@ -14,12 +14,16 @@ from sqlmodel import SQLModel
 
 from app.core.config import settings
 from app.core.db import get_session
-from app.core.security import hash_password
+from app.core.security import create_access_token, hash_password
 from app.domains.auth.models import User
+from app.domains.goals.models import Goal, GoalStatus
 from app.main import app
 
-# Use NullPool to avoid connection-sharing issues across async event loops
-_engine = create_async_engine(settings.database_url, echo=False, poolclass=NullPool)
+# Use NullPool to avoid connection-sharing issues across async event loops.
+# Use the dedicated test database to avoid destroying dev/prod data.
+_engine = create_async_engine(
+    settings.test_database_url, echo=False, poolclass=NullPool
+)
 _session_factory = async_sessionmaker(
     _engine, class_=AsyncSession, expire_on_commit=False
 )
@@ -69,3 +73,65 @@ async def test_user(session: AsyncSession) -> User:
     await session.commit()
     await session.refresh(user)
     return user
+
+
+@pytest.fixture
+async def auth_client(
+    client: AsyncClient, test_user: User
+) -> AsyncGenerator[AsyncClient, None]:
+    """Provide an authenticated HTTP test client with access token cookie."""
+    token = create_access_token(test_user.id)
+    client.cookies.set("access_token", token)
+    yield client
+
+
+@pytest.fixture
+async def test_goal(session: AsyncSession, test_user: User) -> Goal:
+    """Create a test goal in 'questioning' status with sample AI context."""
+    goal = Goal(
+        user_id=test_user.id,
+        title="Relocate to Lisbon",
+        original_input="Move from Berlin to Lisbon within 3 months",
+        status=GoalStatus.QUESTIONING,
+        ai_context={
+            "classification": {
+                "domain": "relocation",
+                "complexity": 4,
+                "confidence": 0.9,
+                "dimensions": ["timeline", "budget", "housing"],
+                "suggested_title": "Relocate to Lisbon",
+                "rejection_reason": None,
+                "refinement_suggestions": [],
+            },
+            "questions": [
+                {
+                    "id": "q1",
+                    "text": "What is your budget?",
+                    "type": "select",
+                    "options": ["< 5000", "5000-10000", "> 10000"],
+                    "rationale": "Budget determines housing options",
+                    "required": True,
+                },
+                {
+                    "id": "q2",
+                    "text": "Do you have a job lined up?",
+                    "type": "select",
+                    "options": ["Yes", "No", "Remote work"],
+                    "rationale": "Employment affects visa and timeline",
+                    "required": True,
+                },
+                {
+                    "id": "q3",
+                    "text": "Any specific concerns?",
+                    "type": "text",
+                    "options": None,
+                    "rationale": "Helps identify potential blockers",
+                    "required": False,
+                },
+            ],
+        },
+    )
+    session.add(goal)
+    await session.commit()
+    await session.refresh(goal)
+    return goal
