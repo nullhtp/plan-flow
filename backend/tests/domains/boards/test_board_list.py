@@ -1,4 +1,4 @@
-"""Integration tests for board list endpoint."""
+"""Integration tests for board list endpoint (DAG-based)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import pytest
 from httpx import AsyncClient
 
 from app.domains.ai.schemas import (
-    BoardGenerationColumnOutput,
     BoardGenerationOutput,
     BoardGenerationTaskOutput,
 )
@@ -18,45 +17,27 @@ from app.domains.goals.models import Goal
 def _mock_board_output() -> BoardGenerationOutput:
     return BoardGenerationOutput(
         board_title="Test Board",
-        columns=[
-            BoardGenerationColumnOutput(
-                title="To Do",
-                description="Tasks to do",
-                position=0,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Task 1", description="Do thing 1", position=0
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Task 2", description="Do thing 2", position=1
-                    ),
-                ],
+        tasks=[
+            BoardGenerationTaskOutput(
+                id="t1",
+                title="Task 1",
+                description="Do thing 1",
+                depends_on=[],
+                is_goal_node=False,
             ),
-            BoardGenerationColumnOutput(
-                title="In Progress",
-                description="Working on",
-                position=1,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Task 3", description="Do thing 3", position=0
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Task 4", description="Do thing 4", position=1
-                    ),
-                ],
+            BoardGenerationTaskOutput(
+                id="t2",
+                title="Task 2",
+                description="Do thing 2",
+                depends_on=[],
+                is_goal_node=False,
             ),
-            BoardGenerationColumnOutput(
-                title="Done",
-                description="Completed",
-                position=2,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Task 5", description="Do thing 5", position=0
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Task 6", description="Do thing 6", position=1
-                    ),
-                ],
+            BoardGenerationTaskOutput(
+                id="t3",
+                title="Task 3",
+                description="Do thing 3",
+                depends_on=["t1", "t2"],
+                is_goal_node=True,
             ),
         ],
     )
@@ -79,7 +60,7 @@ async def test_list_boards_with_board(
     auth_client: AsyncClient,
     answered_goal: Goal,
 ) -> None:
-    """GET /api/boards returns boards with summary stats."""
+    """GET /api/boards returns boards with summary stats (no column_count)."""
     mock_ai.return_value = _mock_board_output()
 
     # Create a board
@@ -91,10 +72,11 @@ async def test_list_boards_with_board(
     assert len(data) == 1
     board = data[0]
     assert board["title"] == "Test Board"
-    assert board["column_count"] == 3
-    assert board["task_count"] == 6
-    # completed_task_count = tasks in last column (Done)
-    assert board["completed_task_count"] == 2
+    # No column_count — DAG boards don't have columns
+    assert "column_count" not in board
+    assert board["task_count"] == 3
+    # All tasks start as not_started, so completed_task_count = 0
+    assert board["completed_task_count"] == 0
     assert "goal_title" in board
 
 

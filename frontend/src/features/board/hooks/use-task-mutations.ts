@@ -2,7 +2,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
 	getGetBoardEndpointApiBoardsBoardIdGetQueryKey,
-	useCreateTaskEndpointApiColumnsColumnIdTasksPost,
 	useDeleteTaskEndpointApiTasksTaskIdDelete,
 	useUpdateTaskEndpointApiTasksTaskIdPatch,
 } from "@/api/generated/boards/boards";
@@ -15,26 +14,30 @@ export function useTaskMutations(boardId: string) {
 		queryClient.invalidateQueries({ queryKey: boardQueryKey });
 	};
 
-	const createTask = useCreateTaskEndpointApiColumnsColumnIdTasksPost({
-		mutation: {
-			onSuccess: invalidateBoard,
-			onError: () => toast.error("Failed to create task"),
-		},
-	});
-
 	const updateTask = useUpdateTaskEndpointApiTasksTaskIdPatch({
 		mutation: {
 			onSuccess: invalidateBoard,
-			onError: () => toast.error("Failed to update task"),
+			onError: (error: unknown) => {
+				const message =
+					error && typeof error === "object" && "response" in error
+						? ((error as { response?: { data?: { detail?: string } } }).response?.data?.detail ??
+							"Failed to update task")
+						: "Failed to update task";
+				toast.error(message);
+				invalidateBoard();
+			},
 		},
 	});
 
 	const deleteTask = useDeleteTaskEndpointApiTasksTaskIdDelete({
 		mutation: {
 			onSuccess: invalidateBoard,
-			onError: () => toast.error("Failed to delete task"),
+			onError: () => {
+				toast.error("Failed to delete task");
+				invalidateBoard();
+			},
 		},
 	});
 
-	return { createTask, updateTask, deleteTask };
+	return { updateTask, deleteTask };
 }

@@ -5,22 +5,7 @@ from __future__ import annotations
 from app.domains.boards.service import (
     generate_position_after,
     generate_position_between,
-    int_to_fractional,
 )
-
-
-def test_int_to_fractional_basic() -> None:
-    """Converts small integers to expected fractional index strings."""
-    assert int_to_fractional(0) == "a0"
-    assert int_to_fractional(1) == "a1"
-    assert int_to_fractional(9) == "a9"
-    assert int_to_fractional(10) == "aA"
-
-
-def test_int_to_fractional_ordering() -> None:
-    """Fractional index strings from sequential integers sort lexicographically."""
-    values = [int_to_fractional(i) for i in range(20)]
-    assert values == sorted(values)
 
 
 def test_generate_position_between_none_none() -> None:

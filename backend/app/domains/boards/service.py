@@ -10,7 +10,14 @@ from sqlalchemy.orm import selectinload
 
 from app.domains.ai.schemas import BoardGenerationOutput, ClassificationOutput
 from app.domains.ai.service import AIOutputError, generate_board_from_context
-from app.domains.boards.models import Board, BoardColumn, Subtask, Task
+from app.domains.boards.dag_utils import (
+    CyclicDependencyError,
+    GoalNodeValidationError,
+    validate_dag,
+    validate_goal_node,
+)
+from app.domains.boards.models import Board, Subtask, Task, TaskDependency
+from app.domains.boards.schemas import BoardResponse, EdgeResponse, TaskResponse
 from app.domains.goals.models import Goal, GoalStatus
 
 logger = logging.getLogger(__name__)
@@ -79,18 +86,12 @@ def _midpoint_after(s: str) -> str:
 
 
 def generate_position_between(before: str | None, after: str | None) -> str:
-    """Generate a fractional index key between two existing keys.
-
-    - Both None → return a middle-of-range key.
-    - ``before`` is None → return a key before ``after``.
-    - ``after`` is None → return a key after ``before``.
-    """
+    """Generate a fractional index key between two existing keys."""
     if before is None and after is None:
         return "a" + _DIGITS[_BASE // 2]
 
     if before is None:
         assert after is not None
-        # Return something before `after`
         first = _DIGITS.index(after[0]) if after else _BASE // 2
         if first > 0:
             return _DIGITS[first // 2] + _DIGITS[_BASE // 2]
@@ -105,13 +106,6 @@ def generate_position_between(before: str | None, after: str | None) -> str:
 def generate_position_after(last: str | None) -> str:
     """Generate a position key that sorts after *last* (or a first key if None)."""
     return generate_position_between(last, None)
-
-
-def int_to_fractional(n: int) -> str:
-    """Convert an integer position (0-based) to a fractional index string."""
-    if n < _BASE:
-        return f"a{_DIGITS[n]}"
-    return f"b{n:04d}"
 
 
 # ── Error Classes ────────────────────────────────────────
@@ -129,10 +123,6 @@ class GoalNotReadyError(Exception):
     """Raised when a goal is not in 'answered' status for board generation."""
 
 
-class ColumnNotFoundError(Exception):
-    """Raised when a column is not found or not owned by the user."""
-
-
 class TaskNotFoundError(Exception):
     """Raised when a task is not found or not owned by the user."""
 
@@ -141,8 +131,12 @@ class SubtaskNotFoundError(Exception):
     """Raised when a subtask is not found or not owned by the user."""
 
 
-class ColumnNotEmptyError(Exception):
-    """Raised when deleting a column with tasks and no target."""
+class TaskStatusError(Exception):
+    """Raised when a task status transition is invalid."""
+
+
+class DependencyError(Exception):
+    """Raised when dependency constraints are violated."""
 
 
 # ── Ownership Validation ─────────────────────────────────
@@ -161,22 +155,6 @@ async def _validate_board_ownership(
     return board
 
 
-async def _validate_column_ownership(
-    session: AsyncSession, column_id: str, user_id: str
-) -> BoardColumn:
-    """Return column if it belongs to user, else raise ColumnNotFoundError."""
-    column = await session.get(BoardColumn, column_id)
-    if column is None:
-        raise ColumnNotFoundError
-    board = await session.get(Board, column.board_id)
-    if board is None:
-        raise ColumnNotFoundError
-    goal = await session.get(Goal, board.goal_id)
-    if goal is None or goal.user_id != user_id:
-        raise ColumnNotFoundError
-    return column
-
-
 async def _validate_task_ownership(
     session: AsyncSession, task_id: str, user_id: str
 ) -> Task:
@@ -184,10 +162,7 @@ async def _validate_task_ownership(
     task = await session.get(Task, task_id)
     if task is None:
         raise TaskNotFoundError
-    column = await session.get(BoardColumn, task.column_id)
-    if column is None:
-        raise TaskNotFoundError
-    board = await session.get(Board, column.board_id)
+    board = await session.get(Board, task.board_id)
     if board is None:
         raise TaskNotFoundError
     goal = await session.get(Goal, board.goal_id)
@@ -206,16 +181,54 @@ async def _validate_subtask_ownership(
     task = await session.get(Task, subtask.task_id)
     if task is None:
         raise SubtaskNotFoundError
-    column = await session.get(BoardColumn, task.column_id)
-    if column is None:
-        raise SubtaskNotFoundError
-    board = await session.get(Board, column.board_id)
+    board = await session.get(Board, task.board_id)
     if board is None:
         raise SubtaskNotFoundError
     goal = await session.get(Goal, board.goal_id)
     if goal is None or goal.user_id != user_id:
         raise SubtaskNotFoundError
     return subtask
+
+
+# ── Dependency Query Helpers ────────────────────────────
+
+
+async def get_task_dependencies(session: AsyncSession, task_id: str) -> list[Task]:
+    """Return all prerequisite tasks for a given task."""
+    stmt = (
+        select(Task)
+        .join(TaskDependency, TaskDependency.dependency_task_id == Task.id)
+        .where(TaskDependency.dependent_task_id == task_id)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def get_task_dependents(session: AsyncSession, task_id: str) -> list[Task]:
+    """Return all tasks that depend on the given task."""
+    stmt = (
+        select(Task)
+        .join(TaskDependency, TaskDependency.dependent_task_id == Task.id)
+        .where(TaskDependency.dependency_task_id == task_id)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def are_dependencies_met(session: AsyncSession, task_id: str) -> bool:
+    """Check if all prerequisite tasks have status 'done'."""
+    stmt = (
+        select(func.count())
+        .select_from(TaskDependency)
+        .join(Task, TaskDependency.dependency_task_id == Task.id)
+        .where(
+            TaskDependency.dependent_task_id == task_id,
+            Task.status != "done",
+        )
+    )
+    result = await session.execute(stmt)
+    unmet_count = result.scalar() or 0
+    return unmet_count == 0
 
 
 # ── Board Operations ─────────────────────────────────────
@@ -226,7 +239,6 @@ async def list_boards(
     user_id: str,
 ) -> list[dict[str, Any]]:
     """Return all boards for a user with summary stats."""
-    # Get all goals for user that have boards
     stmt = (
         select(
             Board.id,
@@ -244,43 +256,21 @@ async def list_boards(
 
     boards = []
     for row in rows:
-        # Count columns
-        col_count_stmt = (
-            select(func.count())
-            .select_from(BoardColumn)
-            .where(BoardColumn.board_id == row.id)
-        )
-        col_count_result = await session.execute(col_count_stmt)
-        column_count = col_count_result.scalar() or 0
-
-        # Count tasks
+        # Count total tasks
         task_count_stmt = (
-            select(func.count())
-            .select_from(Task)
-            .join(BoardColumn, Task.column_id == BoardColumn.id)
-            .where(BoardColumn.board_id == row.id)
+            select(func.count()).select_from(Task).where(Task.board_id == row.id)
         )
         task_count_result = await session.execute(task_count_stmt)
         task_count = task_count_result.scalar() or 0
 
-        # Count tasks in the last column (approximation of "completed")
-        last_col_stmt = (
-            select(BoardColumn.id)
-            .where(BoardColumn.board_id == row.id)
-            .order_by(BoardColumn.position.desc())
-            .limit(1)
+        # Count completed tasks (status = 'done')
+        completed_stmt = (
+            select(func.count())
+            .select_from(Task)
+            .where(Task.board_id == row.id, Task.status == "done")
         )
-        last_col_result = await session.execute(last_col_stmt)
-        last_col_id = last_col_result.scalar()
-        completed_count = 0
-        if last_col_id:
-            completed_stmt = (
-                select(func.count())
-                .select_from(Task)
-                .where(Task.column_id == last_col_id)
-            )
-            completed_result = await session.execute(completed_stmt)
-            completed_count = completed_result.scalar() or 0
+        completed_result = await session.execute(completed_stmt)
+        completed_count = completed_result.scalar() or 0
 
         boards.append(
             {
@@ -288,7 +278,6 @@ async def list_boards(
                 "goal_id": row.goal_id,
                 "title": row.title,
                 "goal_title": row.goal_title,
-                "column_count": column_count,
                 "task_count": task_count,
                 "completed_task_count": completed_count,
                 "created_at": row.created_at,
@@ -313,130 +302,12 @@ async def update_board(
     return await get_board(session, board_id, user_id)
 
 
-# ── Column Operations ────────────────────────────────────
-
-
-async def create_column(
-    session: AsyncSession,
-    board_id: str,
-    user_id: str,
-    title: str,
-    description: str = "",
-) -> Board:
-    """Create a new column at the end of the board. Returns refreshed board."""
-    await _validate_board_ownership(session, board_id, user_id)
-
-    # Find the last column's position
-    stmt = (
-        select(BoardColumn.position)
-        .where(BoardColumn.board_id == board_id)
-        .order_by(BoardColumn.position.desc())
-        .limit(1)
-    )
-    result = await session.execute(stmt)
-    last_pos = result.scalar()
-
-    new_pos = generate_position_after(last_pos)
-
-    column = BoardColumn(
-        board_id=board_id,
-        title=title,
-        description=description,
-        position=new_pos,
-    )
-    session.add(column)
-    await session.commit()
-    return await get_board(session, board_id, user_id)
-
-
-async def update_column(
-    session: AsyncSession,
-    column_id: str,
-    user_id: str,
-    title: str | None = None,
-    description: str | None = None,
-    position: str | None = None,
-) -> Board:
-    """Update a column's title, description, or position. Returns refreshed board."""
-    column = await _validate_column_ownership(session, column_id, user_id)
-
-    if title is not None:
-        column.title = title
-    if description is not None:
-        column.description = description
-    if position is not None:
-        column.position = position
-
-    column.updated_at = datetime.now(UTC)
-    session.add(column)
-    await session.commit()
-    return await get_board(session, column.board_id, user_id)
-
-
-async def delete_column(
-    session: AsyncSession,
-    column_id: str,
-    user_id: str,
-    target_column_id: str | None = None,
-) -> Board:
-    """Delete a column. If it has tasks, migrate them to target_column_id."""
-    column = await _validate_column_ownership(session, column_id, user_id)
-    board_id = column.board_id
-
-    # Check if column has tasks
-    task_count_stmt = (
-        select(func.count()).select_from(Task).where(Task.column_id == column_id)
-    )
-    task_count_result = await session.execute(task_count_stmt)
-    task_count = task_count_result.scalar() or 0
-
-    if task_count > 0:
-        if target_column_id is None:
-            raise ColumnNotEmptyError
-        # Validate target column belongs to same board
-        target = await session.get(BoardColumn, target_column_id)
-        if target is None or target.board_id != board_id:
-            raise ColumnNotFoundError
-
-        # Find last position in target column
-        last_pos_stmt = (
-            select(Task.position)
-            .where(Task.column_id == target_column_id)
-            .order_by(Task.position.desc())
-            .limit(1)
-        )
-        last_pos_result = await session.execute(last_pos_stmt)
-        last_pos = last_pos_result.scalar()
-
-        # Get tasks from the column being deleted, ordered by position
-        tasks_stmt = (
-            select(Task).where(Task.column_id == column_id).order_by(Task.position)
-        )
-        tasks_result = await session.execute(tasks_stmt)
-        tasks_to_move = tasks_result.scalars().all()
-
-        # Move each task to the target column with new positions
-        current_pos = last_pos
-        for task in tasks_to_move:
-            new_pos = generate_position_after(current_pos)
-            task.column_id = target_column_id
-            task.position = new_pos
-            task.updated_at = datetime.now(UTC)
-            session.add(task)
-            current_pos = new_pos
-
-    # Delete the column (tasks have been moved or column is empty)
-    await session.delete(column)
-    await session.commit()
-    return await get_board(session, board_id, user_id)
-
-
 # ── Task Operations ──────────────────────────────────────
 
 
 async def create_task(
     session: AsyncSession,
-    column_id: str,
+    board_id: str,
     user_id: str,
     title: str,
     description: str = "",
@@ -444,33 +315,21 @@ async def create_task(
     priority: str | None = None,
     estimated_minutes: int | None = None,
 ) -> Board:
-    """Create a new task at the end of the column. Returns refreshed board."""
-    column = await _validate_column_ownership(session, column_id, user_id)
-
-    # Find last task position
-    stmt = (
-        select(Task.position)
-        .where(Task.column_id == column_id)
-        .order_by(Task.position.desc())
-        .limit(1)
-    )
-    result = await session.execute(stmt)
-    last_pos = result.scalar()
-
-    new_pos = generate_position_after(last_pos)
+    """Create a new task on a board. Returns refreshed board."""
+    await _validate_board_ownership(session, board_id, user_id)
 
     task = Task(
-        column_id=column_id,
+        board_id=board_id,
         title=title,
         description=description,
-        position=new_pos,
+        status="not_started",
         due_date=due_date,
         priority=priority,
         estimated_minutes=estimated_minutes,
     )
     session.add(task)
     await session.commit()
-    return await get_board(session, column.board_id, user_id)
+    return await get_board(session, board_id, user_id)
 
 
 async def update_task(
@@ -479,28 +338,22 @@ async def update_task(
     user_id: str,
     title: str | None = None,
     description: str | None = None,
-    position: str | None = None,
-    column_id: str | None = None,
+    status: str | None = None,
     due_date: date | None = None,
     priority: str | None = None,
     estimated_minutes: int | None = None,
-    _unset_due_date: bool = False,
-    _unset_priority: bool = False,
-    _unset_estimated_minutes: bool = False,
 ) -> Board:
-    """Update task fields. Moves task if column_id given."""
+    """Update task fields. Validates status transitions."""
     task = await _validate_task_ownership(session, task_id, user_id)
+
+    if status is not None and status != task.status:
+        await _validate_status_transition(session, task, status)
+        task.status = status
 
     if title is not None:
         task.title = title
     if description is not None:
         task.description = description
-    if position is not None:
-        task.position = position
-    if column_id is not None:
-        # Validate target column ownership
-        await _validate_column_ownership(session, column_id, user_id)
-        task.column_id = column_id
     if due_date is not None:
         task.due_date = due_date  # pyright: ignore[reportAttributeAccessIssue]
     if priority is not None:
@@ -512,10 +365,38 @@ async def update_task(
     session.add(task)
     await session.commit()
 
-    # Get board_id through column
-    col = await session.get(BoardColumn, task.column_id)
-    assert col is not None
-    return await get_board(session, col.board_id, user_id)
+    return await get_board(session, task.board_id, user_id)
+
+
+async def _validate_status_transition(
+    session: AsyncSession, task: Task, new_status: str
+) -> None:
+    """Validate a task status transition.
+
+    Rules:
+    - not_started -> in_progress: requires all deps done
+    - in_progress -> done: allowed
+    - not_started -> done: rejected
+    - done -> not_started/in_progress: allowed (undo)
+    """
+    valid_statuses = {"not_started", "in_progress", "done"}
+    if new_status not in valid_statuses:
+        raise TaskStatusError(f"Invalid status: {new_status}")
+
+    if task.status == "not_started" and new_status == "in_progress":
+        deps_met = await are_dependencies_met(session, task.id)
+        if not deps_met:
+            raise TaskStatusError(
+                "Cannot start task: not all dependencies are completed"
+            )
+    elif task.status == "not_started" and new_status == "done":
+        raise TaskStatusError(
+            "Cannot complete task directly: must be in progress first"
+        )
+    elif task.status == "in_progress" and new_status == "done":
+        pass  # Always allowed
+    elif task.status == "done" and new_status in ("not_started", "in_progress"):
+        pass  # Allow undo
 
 
 async def delete_task(
@@ -523,14 +404,19 @@ async def delete_task(
     task_id: str,
     user_id: str,
 ) -> Board:
-    """Delete a task and its subtasks. Returns refreshed board."""
+    """Delete a task, its subtasks, and all dependency edges. Returns refreshed board."""  # noqa: E501
     task = await _validate_task_ownership(session, task_id, user_id)
-    column = await session.get(BoardColumn, task.column_id)
-    assert column is not None
-    board_id = column.board_id
+    board_id = task.board_id
 
-    # Delete subtasks first
+    # Delete subtasks
     await session.execute(delete(Subtask).where(Subtask.task_id == task_id))
+    # Delete dependency edges (both as dependent and as dependency)
+    await session.execute(
+        delete(TaskDependency).where(TaskDependency.dependent_task_id == task_id)
+    )
+    await session.execute(
+        delete(TaskDependency).where(TaskDependency.dependency_task_id == task_id)
+    )
     await session.delete(task)
     await session.commit()
     return await get_board(session, board_id, user_id)
@@ -568,9 +454,7 @@ async def create_subtask(
     session.add(subtask)
     await session.commit()
 
-    column = await session.get(BoardColumn, task.column_id)
-    assert column is not None
-    return await get_board(session, column.board_id, user_id)
+    return await get_board(session, task.board_id, user_id)
 
 
 async def update_subtask(
@@ -597,9 +481,7 @@ async def update_subtask(
 
     task = await session.get(Task, subtask.task_id)
     assert task is not None
-    column = await session.get(BoardColumn, task.column_id)
-    assert column is not None
-    return await get_board(session, column.board_id, user_id)
+    return await get_board(session, task.board_id, user_id)
 
 
 async def delete_subtask(
@@ -612,9 +494,7 @@ async def delete_subtask(
 
     task = await session.get(Task, subtask.task_id)
     assert task is not None
-    column = await session.get(BoardColumn, task.column_id)
-    assert column is not None
-    board_id = column.board_id
+    board_id = task.board_id
 
     await session.delete(subtask)
     await session.commit()
@@ -629,10 +509,10 @@ async def create_board_from_ai_output(
     goal_id: str,
     ai_output: BoardGenerationOutput,
 ) -> Board:
-    """Persist AI-generated board output as Board, Column, and Task records.
+    """Persist AI-generated board output as Board, Task, and TaskDependency records.
 
     Creates all records in a single transaction.
-    Uses fractional indexing for positions.
+    Validates DAG structure before committing.
     """
     board = Board(
         goal_id=goal_id,
@@ -641,42 +521,145 @@ async def create_board_from_ai_output(
     session.add(board)
     await session.flush()  # Get board.id without committing
 
-    for col_output in ai_output.columns:
-        column = BoardColumn(
+    # Build mapping from AI task IDs to DB task IDs
+    ai_id_to_db_id: dict[str, str] = {}
+    ai_id_to_goal_flag: dict[str, bool] = {}
+    edges: list[tuple[str, str]] = []
+
+    # Create all tasks
+    for task_output in ai_output.tasks:
+        parsed_due_date: date | None = None
+        if task_output.due_date is not None:
+            try:
+                parsed_due_date = date.fromisoformat(task_output.due_date)
+            except ValueError:
+                logger.warning(
+                    "Invalid due_date '%s' for task '%s', setting to null",
+                    task_output.due_date,
+                    task_output.title,
+                )
+
+        task = Task(
             board_id=board.id,
-            title=col_output.title,
-            description=col_output.description,
-            position=int_to_fractional(col_output.position),
+            title=task_output.title,
+            description=task_output.description,
+            status="not_started",
+            is_goal_node=task_output.is_goal_node,
+            due_date=parsed_due_date,
+            priority=task_output.priority,
+            estimated_minutes=task_output.estimated_minutes,
         )
-        session.add(column)
-        await session.flush()  # Get column.id
+        session.add(task)
+        await session.flush()  # Get task.id
 
-        for task_output in col_output.tasks:
-            parsed_due_date: date | None = None
-            if task_output.due_date is not None:
-                try:
-                    parsed_due_date = date.fromisoformat(task_output.due_date)
-                except ValueError:
-                    logger.warning(
-                        "Invalid due_date '%s' for task '%s', setting to null",
-                        task_output.due_date,
-                        task_output.title,
-                    )
+        ai_id_to_db_id[task_output.id] = task.id
+        ai_id_to_goal_flag[task_output.id] = task_output.is_goal_node
 
-            task = Task(
-                column_id=column.id,
-                title=task_output.title,
-                description=task_output.description,
-                position=int_to_fractional(task_output.position),
-                due_date=parsed_due_date,
-                priority=task_output.priority,
-                estimated_minutes=task_output.estimated_minutes,
-            )
-            session.add(task)
+    # Validate DAG structure
+    all_ai_ids = list(ai_id_to_db_id.keys())
+    for task_output in ai_output.tasks:
+        for dep_id in task_output.depends_on:
+            if dep_id in ai_id_to_db_id:
+                edges.append((dep_id, task_output.id))
+
+    # Run DAG validation
+    validate_dag(all_ai_ids, edges)
+    validate_goal_node(all_ai_ids, ai_id_to_goal_flag, edges)
+
+    # Create dependency edges
+    for dep_ai_id, dependent_ai_id in edges:
+        dep_db_id = ai_id_to_db_id[dep_ai_id]
+        dependent_db_id = ai_id_to_db_id[dependent_ai_id]
+        dependency = TaskDependency(
+            dependent_task_id=dependent_db_id,
+            dependency_task_id=dep_db_id,
+        )
+        session.add(dependency)
 
     await session.commit()
     await session.refresh(board)
     return board
+
+
+def _build_board_response(board: Board) -> BoardResponse:
+    """Build a BoardResponse from a Board with loaded relationships."""
+    tasks = board.tasks
+    edges: list[EdgeResponse] = []
+    task_responses: list[TaskResponse] = []
+
+    # Collect all dependency info
+    for task in tasks:
+        dependency_ids = [d.dependency_task_id for d in task.dependencies]
+        dependent_ids = [d.dependent_task_id for d in task.dependents]
+
+        # Compute is_locked: at least one dependency is not done
+        is_locked = False
+        for dep_edge in task.dependencies:
+            # Find the dependency task in our loaded tasks
+            for t in tasks:
+                if t.id == dep_edge.dependency_task_id and t.status != "done":
+                    is_locked = True
+                    break
+            if is_locked:
+                break
+
+        task_responses.append(
+            TaskResponse(
+                id=task.id,
+                title=task.title,
+                description=task.description,
+                status=task.status,
+                is_goal_node=task.is_goal_node,
+                due_date=task.due_date,
+                priority=task.priority,
+                estimated_minutes=task.estimated_minutes,
+                subtasks=[
+                    {  # type: ignore[misc]
+                        "id": s.id,
+                        "title": s.title,
+                        "completed": s.completed,
+                        "position": s.position,
+                        "created_at": s.created_at,
+                    }
+                    for s in task.subtasks
+                ],
+                dependency_ids=dependency_ids,
+                dependent_ids=dependent_ids,
+                is_locked=is_locked,
+                created_at=task.created_at,
+            )
+        )
+
+        # Add edges
+        for dep_edge in task.dependencies:
+            edges.append(
+                EdgeResponse(
+                    source=dep_edge.dependency_task_id,
+                    target=dep_edge.dependent_task_id,
+                )
+            )
+
+    # Deduplicate edges (they may appear from both sides)
+    seen_edges: set[tuple[str, str]] = set()
+    unique_edges: list[EdgeResponse] = []
+    for edge in edges:
+        key = (edge.source, edge.target)
+        if key not in seen_edges:
+            seen_edges.add(key)
+            unique_edges.append(edge)
+
+    # Compute is_completed: goal node has status done
+    is_completed = any(t.is_goal_node and t.status == "done" for t in tasks)
+
+    return BoardResponse(
+        id=board.id,
+        goal_id=board.goal_id,
+        title=board.title,
+        tasks=task_responses,
+        edges=unique_edges,
+        is_completed=is_completed,
+        created_at=board.created_at,
+    )
 
 
 async def get_board(
@@ -685,12 +668,14 @@ async def get_board(
     user_id: str,
 ) -> Board:
     """Retrieve a board with nested data, validating ownership."""
+    # Expire all cached objects to ensure selectinload re-fetches relationships
+    session.expire_all()
     stmt = (
         select(Board)
         .options(
-            selectinload(Board.columns)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-            .selectinload(BoardColumn.tasks)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-            .selectinload(Task.subtasks),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            selectinload(Board.tasks).selectinload(Task.subtasks),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            selectinload(Board.tasks).selectinload(Task.dependencies),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            selectinload(Board.tasks).selectinload(Task.dependents),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         )
         .where(Board.id == board_id)
     )
@@ -714,7 +699,6 @@ async def get_board_by_goal(
     user_id: str,
 ) -> Board:
     """Retrieve a board by goal_id, validating ownership."""
-    # First verify the goal exists and belongs to the user
     goal = await session.get(Goal, goal_id)
     if goal is None or goal.user_id != user_id:
         raise BoardNotFoundError
@@ -722,9 +706,9 @@ async def get_board_by_goal(
     stmt = (
         select(Board)
         .options(
-            selectinload(Board.columns)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-            .selectinload(BoardColumn.tasks)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-            .selectinload(Task.subtasks),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            selectinload(Board.tasks).selectinload(Task.subtasks),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            selectinload(Board.tasks).selectinload(Task.dependencies),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            selectinload(Board.tasks).selectinload(Task.dependents),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         )
         .where(Board.goal_id == goal_id)
     )
@@ -818,7 +802,15 @@ async def generate_board_for_goal(
         raise
 
     # Persist board
-    board = await create_board_from_ai_output(session, goal_id, ai_output)
+    try:
+        board = await create_board_from_ai_output(session, goal_id, ai_output)
+    except (CyclicDependencyError, GoalNodeValidationError):
+        # Revert status to answered on validation failure
+        goal.status = GoalStatus.ANSWERED.value
+        goal.updated_at = datetime.now(UTC)
+        session.add(goal)
+        await session.commit()
+        raise AIOutputError("AI generated invalid dependency graph") from None
 
     # Transition to active
     goal.status = GoalStatus.ACTIVE.value

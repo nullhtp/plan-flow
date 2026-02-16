@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.domains.auth.router import router as auth_router
-from app.domains.boards.router import columns_router as boards_columns_router
 from app.domains.boards.router import goals_router as boards_goals_router
 from app.domains.boards.router import router as boards_router
 from app.domains.boards.router import subtasks_router as boards_subtasks_router
@@ -14,8 +13,8 @@ from app.domains.goals.router import router as goals_router
 
 app = FastAPI(
     title="PlanFlow API",
-    description="AI-powered kanban board generation",
-    version="0.1.0",
+    description="AI-powered DAG-based task planning",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -29,7 +28,6 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api")
 app.include_router(goals_router, prefix="/api")
 app.include_router(boards_router, prefix="/api")
-app.include_router(boards_columns_router, prefix="/api")
 app.include_router(boards_tasks_router, prefix="/api")
 app.include_router(boards_subtasks_router, prefix="/api")
 app.include_router(boards_goals_router, prefix="/api")

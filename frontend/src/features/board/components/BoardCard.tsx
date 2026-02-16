@@ -28,7 +28,7 @@ export function BoardCard({ board }: BoardCardProps) {
 			</CardHeader>
 			<CardContent>
 				<div className="flex items-center justify-between text-sm text-muted-foreground">
-					<span>{board.column_count} columns</span>
+					<span>{progress}% complete</span>
 					<span>
 						{board.completed_task_count}/{board.task_count} tasks
 					</span>

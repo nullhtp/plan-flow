@@ -20,6 +20,12 @@ from app.domains.ai.schemas import (
     ClassificationOutput,
     QuestionItem,
 )
+from app.domains.boards.dag_utils import (
+    CyclicDependencyError,
+    GoalNodeValidationError,
+    validate_dag,
+    validate_goal_node,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,14 +70,9 @@ async def _retry_async(
 async def classify_and_generate_questions(
     raw_input: str,
 ) -> ClassifyAndGenerateResult:
-    """Run the full classify → generate questions pipeline with retries.
-
-    Returns a result object with classification, questions, or rejection info.
-    """
-    # Step 1: Classify the goal
+    """Run the full classify -> generate questions pipeline with retries."""
     classification: ClassificationOutput = await _retry_async(classify_goal, raw_input)
 
-    # Step 2: Check confidence threshold
     if classification.confidence < settings.ai_confidence_threshold:
         return ClassifyAndGenerateResult(
             classification=classification,
@@ -82,7 +83,6 @@ async def classify_and_generate_questions(
             refinement_suggestions=classification.refinement_suggestions,
         )
 
-    # Step 3: Generate questions
     questions: list[QuestionItem] = await _retry_async(
         _generate_questions, raw_input, classification
     )
@@ -100,10 +100,7 @@ async def generate_follow_up_questions(
     questions: list[QuestionItem],
     answers: dict[str, Any],
 ) -> list[QuestionItem]:
-    """Generate follow-up questions based on initial answers, with retries.
-
-    Returns a list of follow-up questions (may be empty if no follow-ups needed).
-    """
+    """Generate follow-up questions based on initial answers, with retries."""
     try:
         follow_ups: list[QuestionItem] = await _retry_async(
             _generate_follow_ups,
@@ -113,11 +110,27 @@ async def generate_follow_up_questions(
             answers,
         )
     except AIOutputError:
-        # If follow-up generation fails, treat it as no follow-ups needed
         logger.warning("Follow-up generation failed, proceeding without follow-ups")
         return []
 
     return follow_ups
+
+
+def _validate_board_dag(output: BoardGenerationOutput) -> None:
+    """Validate that AI board output forms a valid DAG.
+
+    Raises CyclicDependencyError or GoalNodeValidationError on failure.
+    """
+    task_ids = [t.id for t in output.tasks]
+    goal_flags = {t.id: t.is_goal_node for t in output.tasks}
+    edges: list[tuple[str, str]] = []
+    for t in output.tasks:
+        for dep_id in t.depends_on:
+            if dep_id in set(task_ids):
+                edges.append((dep_id, t.id))
+
+    validate_dag(task_ids, edges)
+    validate_goal_node(task_ids, goal_flags, edges)
 
 
 async def generate_board_from_context(
@@ -129,15 +142,37 @@ async def generate_board_from_context(
 ) -> BoardGenerationOutput:
     """Generate a board from goal context, with retries.
 
-    Returns a BoardGenerationOutput with columns and tasks.
+    Returns a BoardGenerationOutput with tasks and dependency edges.
     Raises AIOutputError if the AI fails after all retries.
+    Retries on cyclic dependency graphs (counts toward retry limit).
     """
-    result: BoardGenerationOutput = await _retry_async(
-        _generate_board,
-        raw_input,
-        domain,
-        complexity,
-        dimensions,
-        qa_pairs,
-    )
-    return result
+    max_retries = settings.ai_max_retries
+    last_error: Exception | None = None
+
+    for attempt in range(max_retries):
+        try:
+            result: BoardGenerationOutput = await _generate_board(
+                raw_input, domain, complexity, dimensions, qa_pairs
+            )
+            # Validate DAG structure
+            _validate_board_dag(result)
+            return result
+        except (ValidationError, TypeError) as e:
+            last_error = e
+            logger.warning(
+                "AI board generation validation failed (attempt %d/%d): %s",
+                attempt + 1,
+                max_retries,
+                str(e),
+            )
+        except (CyclicDependencyError, GoalNodeValidationError) as e:
+            last_error = e
+            logger.warning(
+                "AI generated invalid DAG (attempt %d/%d): %s",
+                attempt + 1,
+                max_retries,
+                str(e),
+            )
+
+    msg = f"AI board generation failed after {max_retries} attempts"
+    raise AIOutputError(msg) from last_error

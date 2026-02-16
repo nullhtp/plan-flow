@@ -1,4 +1,4 @@
-"""Integration tests for task CRUD endpoints."""
+"""Integration tests for task CRUD endpoints (DAG-based)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import pytest
 from httpx import AsyncClient
 
 from app.domains.ai.schemas import (
-    BoardGenerationColumnOutput,
     BoardGenerationOutput,
     BoardGenerationTaskOutput,
 )
@@ -16,47 +15,30 @@ from app.domains.goals.models import Goal
 
 
 def _mock_board_output() -> BoardGenerationOutput:
+    """Simple DAG: t1 -> t3 (goal), t2 -> t3 (goal)."""
     return BoardGenerationOutput(
         board_title="Test Board",
-        columns=[
-            BoardGenerationColumnOutput(
-                title="To Do",
-                description="Tasks to do",
-                position=0,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Task 1", description="Do thing 1", position=0
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Task 2", description="Do thing 2", position=1
-                    ),
-                ],
+        tasks=[
+            BoardGenerationTaskOutput(
+                id="t1",
+                title="Task 1",
+                description="Do thing 1",
+                depends_on=[],
+                is_goal_node=False,
             ),
-            BoardGenerationColumnOutput(
-                title="In Progress",
-                description="Working on",
-                position=1,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Task 3", description="Do thing 3", position=0
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Task 4", description="Do thing 4", position=1
-                    ),
-                ],
+            BoardGenerationTaskOutput(
+                id="t2",
+                title="Task 2",
+                description="Do thing 2",
+                depends_on=[],
+                is_goal_node=False,
             ),
-            BoardGenerationColumnOutput(
-                title="Done",
-                description="Completed",
-                position=2,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Task 5", description="Do thing 5", position=0
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Task 6", description="Do thing 6", position=1
-                    ),
-                ],
+            BoardGenerationTaskOutput(
+                id="t3",
+                title="Goal Task",
+                description="Final goal",
+                depends_on=["t1", "t2"],
+                is_goal_node=True,
             ),
         ],
     )
@@ -70,18 +52,22 @@ async def _create_board(auth_client: AsyncClient, goal_id: str) -> dict:
         return response.json()
 
 
+def _find_task(data: dict, title: str) -> dict:
+    """Find a task by title in a board response."""
+    return next(t for t in data["tasks"] if t["title"] == title)
+
+
 @pytest.mark.asyncio
 async def test_create_task(
     auth_client: AsyncClient,
     answered_goal: Goal,
 ) -> None:
-    """POST /api/columns/:id/tasks creates a new task."""
+    """POST /api/boards/:id/tasks creates a new task on the board."""
     board = await _create_board(auth_client, answered_goal.id)
-    column_id = board["columns"][0]["id"]
-    original_count = len(board["columns"][0]["tasks"])
+    original_count = len(board["tasks"])
 
     response = await auth_client.post(
-        f"/api/columns/{column_id}/tasks",
+        f"/api/boards/{board['id']}/tasks",
         json={
             "title": "New Task",
             "description": "A new task",
@@ -90,10 +76,11 @@ async def test_create_task(
     )
     assert response.status_code == 201
     data = response.json()
-    col = next(c for c in data["columns"] if c["id"] == column_id)
-    assert len(col["tasks"]) == original_count + 1
-    assert col["tasks"][-1]["title"] == "New Task"
-    assert col["tasks"][-1]["priority"] == "high"
+    assert len(data["tasks"]) == original_count + 1
+    new_task = _find_task(data, "New Task")
+    assert new_task["priority"] == "high"
+    assert new_task["status"] == "not_started"
+    assert new_task["is_goal_node"] is False
 
 
 @pytest.mark.asyncio
@@ -103,41 +90,159 @@ async def test_update_task_title(
 ) -> None:
     """PATCH /api/tasks/:id updates task title."""
     board = await _create_board(auth_client, answered_goal.id)
-    task_id = board["columns"][0]["tasks"][0]["id"]
+    task = _find_task(board, "Task 1")
 
     response = await auth_client.patch(
-        f"/api/tasks/{task_id}",
+        f"/api/tasks/{task['id']}",
         json={"title": "Updated Title"},
     )
     assert response.status_code == 200
     data = response.json()
-    task = next(t for c in data["columns"] for t in c["tasks"] if t["id"] == task_id)
-    assert task["title"] == "Updated Title"
+    updated = next(t for t in data["tasks"] if t["id"] == task["id"])
+    assert updated["title"] == "Updated Title"
 
 
 @pytest.mark.asyncio
-async def test_move_task_to_another_column(
+async def test_update_task_status_to_in_progress(
     auth_client: AsyncClient,
     answered_goal: Goal,
 ) -> None:
-    """PATCH /api/tasks/:id with column_id moves task between columns."""
+    """PATCH /api/tasks/:id can transition root task to in_progress."""
     board = await _create_board(auth_client, answered_goal.id)
-    source_col = board["columns"][0]
-    target_col = board["columns"][1]
-    task_id = source_col["tasks"][0]["id"]
-    original_source_count = len(source_col["tasks"])
-    original_target_count = len(target_col["tasks"])
+    # Task 1 has no deps, so it can start
+    task = _find_task(board, "Task 1")
 
     response = await auth_client.patch(
-        f"/api/tasks/{task_id}",
-        json={"column_id": target_col["id"]},
+        f"/api/tasks/{task['id']}",
+        json={"status": "in_progress"},
     )
     assert response.status_code == 200
     data = response.json()
-    source = next(c for c in data["columns"] if c["id"] == source_col["id"])
-    target = next(c for c in data["columns"] if c["id"] == target_col["id"])
-    assert len(source["tasks"]) == original_source_count - 1
-    assert len(target["tasks"]) == original_target_count + 1
+    updated = next(t for t in data["tasks"] if t["id"] == task["id"])
+    assert updated["status"] == "in_progress"
+
+
+@pytest.mark.asyncio
+async def test_update_task_status_blocked_by_deps(
+    auth_client: AsyncClient,
+    answered_goal: Goal,
+) -> None:
+    """Cannot start a task when its dependencies are not done."""
+    board = await _create_board(auth_client, answered_goal.id)
+    goal_task = _find_task(board, "Goal Task")
+
+    response = await auth_client.patch(
+        f"/api/tasks/{goal_task['id']}",
+        json={"status": "in_progress"},
+    )
+    assert response.status_code == 409
+    assert "dependencies" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_update_task_status_skip_to_done_rejected(
+    auth_client: AsyncClient,
+    answered_goal: Goal,
+) -> None:
+    """Cannot go directly from not_started to done."""
+    board = await _create_board(auth_client, answered_goal.id)
+    task = _find_task(board, "Task 1")
+
+    response = await auth_client.patch(
+        f"/api/tasks/{task['id']}",
+        json={"status": "done"},
+    )
+    assert response.status_code == 409
+    assert "in progress" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_update_task_status_full_flow(
+    auth_client: AsyncClient,
+    answered_goal: Goal,
+) -> None:
+    """Full status flow: not_started -> in_progress -> done."""
+    board = await _create_board(auth_client, answered_goal.id)
+    task = _find_task(board, "Task 1")
+
+    # Start
+    response = await auth_client.patch(
+        f"/api/tasks/{task['id']}",
+        json={"status": "in_progress"},
+    )
+    assert response.status_code == 200
+
+    # Complete
+    response = await auth_client.patch(
+        f"/api/tasks/{task['id']}",
+        json={"status": "done"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    updated = next(t for t in data["tasks"] if t["id"] == task["id"])
+    assert updated["status"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_completing_deps_unlocks_dependent(
+    auth_client: AsyncClient,
+    answered_goal: Goal,
+) -> None:
+    """Completing all dependencies makes dependent task unlocked."""
+    board = await _create_board(auth_client, answered_goal.id)
+    task1 = _find_task(board, "Task 1")
+    task2 = _find_task(board, "Task 2")
+    goal_task = _find_task(board, "Goal Task")
+
+    # Goal task should be locked initially
+    assert goal_task["is_locked"] is True
+
+    # Complete task 1
+    await auth_client.patch(f"/api/tasks/{task1['id']}", json={"status": "in_progress"})
+    await auth_client.patch(f"/api/tasks/{task1['id']}", json={"status": "done"})
+
+    # Goal task still locked (task 2 not done)
+    response = await auth_client.get(f"/api/boards/{board['id']}")
+    data = response.json()
+    assert _find_task(data, "Goal Task")["is_locked"] is True
+
+    # Complete task 2
+    await auth_client.patch(f"/api/tasks/{task2['id']}", json={"status": "in_progress"})
+    await auth_client.patch(f"/api/tasks/{task2['id']}", json={"status": "done"})
+
+    # Goal task should now be unlocked
+    response = await auth_client.get(f"/api/boards/{board['id']}")
+    data = response.json()
+    assert _find_task(data, "Goal Task")["is_locked"] is False
+
+
+@pytest.mark.asyncio
+async def test_completing_goal_marks_board_completed(
+    auth_client: AsyncClient,
+    answered_goal: Goal,
+) -> None:
+    """Setting goal node to done makes is_completed true."""
+    board = await _create_board(auth_client, answered_goal.id)
+    task1 = _find_task(board, "Task 1")
+    task2 = _find_task(board, "Task 2")
+    goal_task = _find_task(board, "Goal Task")
+
+    # Complete prerequisites
+    await auth_client.patch(f"/api/tasks/{task1['id']}", json={"status": "in_progress"})
+    await auth_client.patch(f"/api/tasks/{task1['id']}", json={"status": "done"})
+    await auth_client.patch(f"/api/tasks/{task2['id']}", json={"status": "in_progress"})
+    await auth_client.patch(f"/api/tasks/{task2['id']}", json={"status": "done"})
+
+    # Start and complete goal
+    await auth_client.patch(
+        f"/api/tasks/{goal_task['id']}", json={"status": "in_progress"}
+    )
+    response = await auth_client.patch(
+        f"/api/tasks/{goal_task['id']}", json={"status": "done"}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_completed"] is True
 
 
 @pytest.mark.asyncio
@@ -145,16 +250,19 @@ async def test_delete_task(
     auth_client: AsyncClient,
     answered_goal: Goal,
 ) -> None:
-    """DELETE /api/tasks/:id removes task."""
+    """DELETE /api/tasks/:id removes task and its dependency edges."""
     board = await _create_board(auth_client, answered_goal.id)
-    task_id = board["columns"][0]["tasks"][0]["id"]
-    original_count = len(board["columns"][0]["tasks"])
+    task = _find_task(board, "Task 1")
+    original_count = len(board["tasks"])
 
-    response = await auth_client.delete(f"/api/tasks/{task_id}")
+    response = await auth_client.delete(f"/api/tasks/{task['id']}")
     assert response.status_code == 200
     data = response.json()
-    col = next(c for c in data["columns"] if c["id"] == board["columns"][0]["id"])
-    assert len(col["tasks"]) == original_count - 1
+    assert len(data["tasks"]) == original_count - 1
+    # Verify the deleted task's edges are gone
+    for edge in data["edges"]:
+        assert edge["source"] != task["id"]
+        assert edge["target"] != task["id"]
 
 
 @pytest.mark.asyncio

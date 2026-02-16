@@ -19,42 +19,42 @@ class SubtaskResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class EdgeResponse(BaseModel):
+    """A single dependency edge in the DAG."""
+
+    source: str  # dependency_task_id (prerequisite)
+    target: str  # dependent_task_id (blocked task)
+
+
 class TaskResponse(BaseModel):
-    """Response schema for a task within a column."""
+    """Response schema for a task within a board."""
 
     id: str
     title: str
     description: str
-    position: str
+    status: str
+    is_goal_node: bool
     due_date: date | None = None
     priority: str | None = None
     estimated_minutes: int | None = None
     subtasks: list[SubtaskResponse] = []
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class ColumnResponse(BaseModel):
-    """Response schema for a column with nested tasks."""
-
-    id: str
-    title: str
-    description: str
-    position: str
-    tasks: list[TaskResponse]
+    dependency_ids: list[str] = []
+    dependent_ids: list[str] = []
+    is_locked: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
 class BoardResponse(BaseModel):
-    """Response schema for a full board with nested columns and tasks."""
+    """Response schema for a full board with nested tasks and dependency edges."""
 
     id: str
     goal_id: str
     title: str
-    columns: list[ColumnResponse]
+    tasks: list[TaskResponse]
+    edges: list[EdgeResponse]
+    is_completed: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -78,7 +78,6 @@ class BoardListResponse(BaseModel):
     goal_id: str
     title: str
     goal_title: str
-    column_count: int
     task_count: int
     completed_task_count: int
     created_at: datetime
@@ -93,21 +92,6 @@ class BoardUpdate(BaseModel):
     title: str
 
 
-class ColumnCreate(BaseModel):
-    """Schema for creating a new column."""
-
-    title: str
-    description: str = ""
-
-
-class ColumnUpdate(BaseModel):
-    """Schema for updating a column."""
-
-    title: str | None = None
-    description: str | None = None
-    position: str | None = None
-
-
 class TaskCreate(BaseModel):
     """Schema for creating a new task."""
 
@@ -119,12 +103,11 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
-    """Update a task. Includes optional column_id for moves."""
+    """Update a task. Includes optional status for transitions."""
 
     title: str | None = None
     description: str | None = None
-    position: str | None = None
-    column_id: str | None = None
+    status: str | None = None
     due_date: date | None = None
     priority: str | None = None
     estimated_minutes: int | None = None

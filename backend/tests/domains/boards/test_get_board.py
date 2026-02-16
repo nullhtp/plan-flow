@@ -1,3 +1,5 @@
+"""Integration tests for GET board endpoint (DAG-based)."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -6,7 +8,6 @@ import pytest
 from httpx import AsyncClient
 
 from app.domains.ai.schemas import (
-    BoardGenerationColumnOutput,
     BoardGenerationOutput,
     BoardGenerationTaskOutput,
 )
@@ -16,60 +17,44 @@ from app.domains.goals.models import Goal
 def _mock_board_output() -> BoardGenerationOutput:
     return BoardGenerationOutput(
         board_title="Relocate from Berlin to Lisbon",
-        columns=[
-            BoardGenerationColumnOutput(
-                title="Research",
-                description="Gather information",
-                position=0,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Research visa",
-                        description="Check visa options",
-                        position=0,
-                        priority="high",
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Research areas",
-                        description="Find neighborhoods",
-                        position=1,
-                    ),
-                ],
+        tasks=[
+            BoardGenerationTaskOutput(
+                id="t1",
+                title="Research visa",
+                description="Check visa options",
+                depends_on=[],
+                is_goal_node=False,
+                priority="high",
             ),
-            BoardGenerationColumnOutput(
-                title="Prepare",
-                description="Get ready",
-                position=1,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Gather docs",
-                        description="Collect paperwork",
-                        position=0,
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Apply visa",
-                        description="Submit application",
-                        position=1,
-                        due_date="2026-03-15",
-                    ),
-                ],
+            BoardGenerationTaskOutput(
+                id="t2",
+                title="Research areas",
+                description="Find neighborhoods",
+                depends_on=[],
+                is_goal_node=False,
             ),
-            BoardGenerationColumnOutput(
-                title="Move",
-                description="Execute the move",
-                position=2,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Book flight",
-                        description="Book ticket",
-                        position=0,
-                        estimated_minutes=30,
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Pack belongings",
-                        description="Pack everything",
-                        position=1,
-                    ),
-                ],
+            BoardGenerationTaskOutput(
+                id="t3",
+                title="Gather docs",
+                description="Collect paperwork",
+                depends_on=["t1"],
+                is_goal_node=False,
+            ),
+            BoardGenerationTaskOutput(
+                id="t4",
+                title="Apply visa",
+                description="Submit application",
+                depends_on=["t3"],
+                is_goal_node=False,
+                due_date="2026-03-15",
+            ),
+            BoardGenerationTaskOutput(
+                id="t5",
+                title="Book flight",
+                description="Book ticket",
+                depends_on=["t4", "t2"],
+                is_goal_node=True,
+                estimated_minutes=30,
             ),
         ],
     )
@@ -82,7 +67,7 @@ async def test_get_board_success(
     auth_client: AsyncClient,
     answered_goal: Goal,
 ) -> None:
-    """GET board returns nested columns and tasks."""
+    """GET board returns DAG structure with tasks and edges."""
     mock_ai.return_value = _mock_board_output()
 
     # Create board first
@@ -99,13 +84,27 @@ async def test_get_board_success(
     assert data["id"] == board_id
     assert data["goal_id"] == answered_goal.id
     assert data["title"] == "Relocate from Berlin to Lisbon"
-    assert len(data["columns"]) == 3
-    # Verify columns are ordered by position (fractional index strings)
-    positions = [col["position"] for col in data["columns"]]
-    assert positions == sorted(positions)
-    # Verify tasks within columns
-    assert len(data["columns"][0]["tasks"]) == 2
-    assert data["columns"][0]["tasks"][0]["title"] == "Research visa"
+    # DAG structure: flat task list, not columns
+    assert "tasks" in data
+    assert len(data["tasks"]) == 5
+    assert "columns" not in data
+    # Check edges
+    assert "edges" in data
+    assert len(data["edges"]) >= 4
+    # Check task fields
+    task = next(t for t in data["tasks"] if t["title"] == "Research visa")
+    assert task["status"] == "not_started"
+    assert task["is_goal_node"] is False
+    assert task["priority"] == "high"
+    assert task["is_locked"] is False  # no deps
+    assert task["dependency_ids"] == []
+    # Check goal node
+    goal_task = next(t for t in data["tasks"] if t["is_goal_node"])
+    assert goal_task["title"] == "Book flight"
+    assert goal_task["is_locked"] is True  # has unmet deps
+    assert len(goal_task["dependency_ids"]) == 2
+    # is_completed should be false
+    assert data["is_completed"] is False
 
 
 @pytest.mark.asyncio

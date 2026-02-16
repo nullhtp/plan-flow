@@ -1,4 +1,4 @@
-"""Integration tests for subtask CRUD endpoints."""
+"""Integration tests for subtask CRUD endpoints (DAG-based)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import pytest
 from httpx import AsyncClient
 
 from app.domains.ai.schemas import (
-    BoardGenerationColumnOutput,
     BoardGenerationOutput,
     BoardGenerationTaskOutput,
 )
@@ -18,45 +17,20 @@ from app.domains.goals.models import Goal
 def _mock_board_output() -> BoardGenerationOutput:
     return BoardGenerationOutput(
         board_title="Test Board",
-        columns=[
-            BoardGenerationColumnOutput(
-                title="To Do",
-                description="Tasks to do",
-                position=0,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Task 1", description="Do thing 1", position=0
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Task 2", description="Do thing 2", position=1
-                    ),
-                ],
+        tasks=[
+            BoardGenerationTaskOutput(
+                id="t1",
+                title="Task 1",
+                description="Do thing 1",
+                depends_on=[],
+                is_goal_node=False,
             ),
-            BoardGenerationColumnOutput(
-                title="In Progress",
-                description="Working on",
-                position=1,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Task 3", description="Do thing 3", position=0
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Task 4", description="Do thing 4", position=1
-                    ),
-                ],
-            ),
-            BoardGenerationColumnOutput(
-                title="Done",
-                description="Completed",
-                position=2,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Task 5", description="Do thing 5", position=0
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Task 6", description="Do thing 6", position=1
-                    ),
-                ],
+            BoardGenerationTaskOutput(
+                id="t2",
+                title="Task 2",
+                description="Do thing 2",
+                depends_on=["t1"],
+                is_goal_node=True,
             ),
         ],
     )
@@ -70,6 +44,10 @@ async def _create_board(auth_client: AsyncClient, goal_id: str) -> dict:
         return response.json()
 
 
+def _find_task(data: dict, title: str) -> dict:
+    return next(t for t in data["tasks"] if t["title"] == title)
+
+
 @pytest.mark.asyncio
 async def test_create_subtask(
     auth_client: AsyncClient,
@@ -77,18 +55,18 @@ async def test_create_subtask(
 ) -> None:
     """POST /api/tasks/:id/subtasks creates a new subtask."""
     board = await _create_board(auth_client, answered_goal.id)
-    task_id = board["columns"][0]["tasks"][0]["id"]
+    task = _find_task(board, "Task 1")
 
     response = await auth_client.post(
-        f"/api/tasks/{task_id}/subtasks",
+        f"/api/tasks/{task['id']}/subtasks",
         json={"title": "Sub-item 1"},
     )
     assert response.status_code == 201
     data = response.json()
-    task = next(t for c in data["columns"] for t in c["tasks"] if t["id"] == task_id)
-    assert len(task["subtasks"]) == 1
-    assert task["subtasks"][0]["title"] == "Sub-item 1"
-    assert task["subtasks"][0]["completed"] is False
+    updated_task = next(t for t in data["tasks"] if t["id"] == task["id"])
+    assert len(updated_task["subtasks"]) == 1
+    assert updated_task["subtasks"][0]["title"] == "Sub-item 1"
+    assert updated_task["subtasks"][0]["completed"] is False
 
 
 @pytest.mark.asyncio
@@ -98,17 +76,17 @@ async def test_toggle_subtask(
 ) -> None:
     """PATCH /api/subtasks/:id toggles completed status."""
     board = await _create_board(auth_client, answered_goal.id)
-    task_id = board["columns"][0]["tasks"][0]["id"]
+    task = _find_task(board, "Task 1")
 
     # Create subtask
     create_response = await auth_client.post(
-        f"/api/tasks/{task_id}/subtasks",
+        f"/api/tasks/{task['id']}/subtasks",
         json={"title": "Toggle me"},
     )
     assert create_response.status_code == 201
     data = create_response.json()
-    task = next(t for c in data["columns"] for t in c["tasks"] if t["id"] == task_id)
-    subtask_id = task["subtasks"][0]["id"]
+    updated_task = next(t for t in data["tasks"] if t["id"] == task["id"])
+    subtask_id = updated_task["subtasks"][0]["id"]
 
     # Toggle to completed
     response = await auth_client.patch(
@@ -117,8 +95,8 @@ async def test_toggle_subtask(
     )
     assert response.status_code == 200
     data = response.json()
-    task = next(t for c in data["columns"] for t in c["tasks"] if t["id"] == task_id)
-    assert task["subtasks"][0]["completed"] is True
+    updated_task = next(t for t in data["tasks"] if t["id"] == task["id"])
+    assert updated_task["subtasks"][0]["completed"] is True
 
 
 @pytest.mark.asyncio
@@ -128,24 +106,24 @@ async def test_delete_subtask(
 ) -> None:
     """DELETE /api/subtasks/:id removes the subtask."""
     board = await _create_board(auth_client, answered_goal.id)
-    task_id = board["columns"][0]["tasks"][0]["id"]
+    task = _find_task(board, "Task 1")
 
     # Create subtask
     create_response = await auth_client.post(
-        f"/api/tasks/{task_id}/subtasks",
+        f"/api/tasks/{task['id']}/subtasks",
         json={"title": "Delete me"},
     )
     assert create_response.status_code == 201
     data = create_response.json()
-    task = next(t for c in data["columns"] for t in c["tasks"] if t["id"] == task_id)
-    subtask_id = task["subtasks"][0]["id"]
+    updated_task = next(t for t in data["tasks"] if t["id"] == task["id"])
+    subtask_id = updated_task["subtasks"][0]["id"]
 
     # Delete
     response = await auth_client.delete(f"/api/subtasks/{subtask_id}")
     assert response.status_code == 200
     data = response.json()
-    task = next(t for c in data["columns"] for t in c["tasks"] if t["id"] == task_id)
-    assert len(task["subtasks"]) == 0
+    updated_task = next(t for t in data["tasks"] if t["id"] == task["id"])
+    assert len(updated_task["subtasks"]) == 0
 
 
 @pytest.mark.asyncio

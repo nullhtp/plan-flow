@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
@@ -11,8 +11,6 @@ from app.domains.boards.schemas import (
     BoardListResponse,
     BoardResponse,
     BoardUpdate,
-    ColumnCreate,
-    ColumnUpdate,
     SubtaskCreate,
     SubtaskUpdate,
     TaskCreate,
@@ -21,31 +19,25 @@ from app.domains.boards.schemas import (
 from app.domains.boards.service import (
     BoardAlreadyExistsError,
     BoardNotFoundError,
-    ColumnNotEmptyError,
-    ColumnNotFoundError,
     GoalNotReadyError,
     SubtaskNotFoundError,
     TaskNotFoundError,
-    create_column,
+    TaskStatusError,
+    _build_board_response,
     create_subtask,
     create_task,
-    delete_column,
     delete_subtask,
     delete_task,
     generate_board_for_goal,
     get_board,
     list_boards,
     update_board,
-    update_column,
     update_subtask,
     update_task,
 )
 
 # Router for board CRUD endpoints (/api/boards/...)
 router = APIRouter(prefix="/boards", tags=["boards"])
-
-# Router for column endpoints (/api/columns/...)
-columns_router = APIRouter(prefix="/columns", tags=["boards"])
 
 # Router for task endpoints (/api/tasks/...)
 tasks_router = APIRouter(prefix="/tasks", tags=["boards"])
@@ -76,7 +68,7 @@ async def get_board_endpoint(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BoardResponse:
-    """Get a board by ID with nested columns, tasks, and subtasks."""
+    """Get a board by ID with nested tasks, dependencies, and edges."""
     try:
         board = await get_board(session, board_id, current_user.id)
     except BoardNotFoundError:
@@ -85,7 +77,7 @@ async def get_board_endpoint(
             detail="Board not found",
         ) from None
 
-    return BoardResponse.model_validate(board)
+    return _build_board_response(board)
 
 
 @router.patch("/{board_id}", response_model=BoardResponse)
@@ -104,108 +96,28 @@ async def update_board_endpoint(
             detail="Board not found",
         ) from None
 
-    return BoardResponse.model_validate(board)
-
-
-# ── Column Endpoints (nested under boards and standalone) ──
-
-
-@router.post(
-    "/{board_id}/columns",
-    status_code=status.HTTP_201_CREATED,
-    response_model=BoardResponse,
-)
-async def create_column_endpoint(
-    board_id: str,
-    body: ColumnCreate,
-    current_user: CurrentUser,
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> BoardResponse:
-    """Create a new column in a board."""
-    try:
-        board = await create_column(
-            session, board_id, current_user.id, body.title, body.description
-        )
-    except BoardNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Board not found",
-        ) from None
-
-    return BoardResponse.model_validate(board)
-
-
-@columns_router.patch("/{column_id}", response_model=BoardResponse)
-async def update_column_endpoint(
-    column_id: str,
-    body: ColumnUpdate,
-    current_user: CurrentUser,
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> BoardResponse:
-    """Update a column's title, description, or position."""
-    try:
-        board = await update_column(
-            session,
-            column_id,
-            current_user.id,
-            title=body.title,
-            description=body.description,
-            position=body.position,
-        )
-    except ColumnNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Column not found",
-        ) from None
-
-    return BoardResponse.model_validate(board)
-
-
-@columns_router.delete("/{column_id}", response_model=BoardResponse)
-async def delete_column_endpoint(
-    column_id: str,
-    current_user: CurrentUser,
-    session: Annotated[AsyncSession, Depends(get_session)],
-    target_column_id: str | None = Query(default=None),
-) -> BoardResponse:
-    """Delete a column. If it has tasks, provide target_column_id to migrate them."""
-    try:
-        board = await delete_column(
-            session, column_id, current_user.id, target_column_id
-        )
-    except ColumnNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Column not found",
-        ) from None
-    except ColumnNotEmptyError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Column has tasks. Provide target_column_id to migrate them.",
-        ) from None
-
-    return BoardResponse.model_validate(board)
+    return _build_board_response(board)
 
 
 # ── Task Endpoints ───────────────────────────────────────
 
 
-@columns_router.post(
-    "/{column_id}/tasks",
+@router.post(
+    "/{board_id}/tasks",
     status_code=status.HTTP_201_CREATED,
     response_model=BoardResponse,
 )
 async def create_task_endpoint(
-    column_id: str,
+    board_id: str,
     body: TaskCreate,
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BoardResponse:
-    """Create a new task in a column."""
+    """Create a new task on a board."""
     try:
         board = await create_task(
             session,
-            column_id,
+            board_id,
             current_user.id,
             title=body.title,
             description=body.description,
@@ -213,13 +125,13 @@ async def create_task_endpoint(
             priority=body.priority,
             estimated_minutes=body.estimated_minutes,
         )
-    except ColumnNotFoundError:
+    except BoardNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Column not found",
+            detail="Board not found",
         ) from None
 
-    return BoardResponse.model_validate(board)
+    return _build_board_response(board)
 
 
 @tasks_router.patch("/{task_id}", response_model=BoardResponse)
@@ -229,7 +141,7 @@ async def update_task_endpoint(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BoardResponse:
-    """Update a task's fields. Include column_id to move the task to another column."""
+    """Update a task's fields. Handles status transitions with validation."""
     try:
         board = await update_task(
             session,
@@ -237,8 +149,7 @@ async def update_task_endpoint(
             current_user.id,
             title=body.title,
             description=body.description,
-            position=body.position,
-            column_id=body.column_id,
+            status=body.status,
             due_date=body.due_date,
             priority=body.priority,
             estimated_minutes=body.estimated_minutes,
@@ -248,13 +159,13 @@ async def update_task_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found",
         ) from None
-    except ColumnNotFoundError:
+    except TaskStatusError as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Target column not found",
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
         ) from None
 
-    return BoardResponse.model_validate(board)
+    return _build_board_response(board)
 
 
 @tasks_router.delete("/{task_id}", response_model=BoardResponse)
@@ -263,7 +174,7 @@ async def delete_task_endpoint(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BoardResponse:
-    """Delete a task and its subtasks."""
+    """Delete a task, its subtasks, and all dependency edges."""
     try:
         board = await delete_task(session, task_id, current_user.id)
     except TaskNotFoundError:
@@ -272,7 +183,7 @@ async def delete_task_endpoint(
             detail="Task not found",
         ) from None
 
-    return BoardResponse.model_validate(board)
+    return _build_board_response(board)
 
 
 # ── Subtask Endpoints ────────────────────────────────────
@@ -298,7 +209,7 @@ async def create_subtask_endpoint(
             detail="Task not found",
         ) from None
 
-    return BoardResponse.model_validate(board)
+    return _build_board_response(board)
 
 
 @subtasks_router.patch("/{subtask_id}", response_model=BoardResponse)
@@ -324,7 +235,7 @@ async def update_subtask_endpoint(
             detail="Subtask not found",
         ) from None
 
-    return BoardResponse.model_validate(board)
+    return _build_board_response(board)
 
 
 @subtasks_router.delete("/{subtask_id}", response_model=BoardResponse)
@@ -342,7 +253,7 @@ async def delete_subtask_endpoint(
             detail="Subtask not found",
         ) from None
 
-    return BoardResponse.model_validate(board)
+    return _build_board_response(board)
 
 
 # ── Goal-scoped Board Generation ─────────────────────────
@@ -384,4 +295,4 @@ async def generate_board_endpoint(
             detail="AI processing failed. Please try again.",
         ) from None
 
-    return BoardResponse.model_validate(board)
+    return _build_board_response(board)

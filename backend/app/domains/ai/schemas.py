@@ -66,14 +66,24 @@ class FollowUpInput(BaseModel):
 
 
 class BoardGenerationTaskOutput(BaseModel):
-    """A single task in the AI-generated board output."""
+    """A single task in the AI-generated board output (DAG node)."""
 
+    id: str = Field(
+        description="Unique task identifier within the board, e.g. 't1', 't2'",
+    )
     title: str = Field(description="Concise, actionable task title")
     description: str = Field(
         description="Brief description of what this task involves",
     )
-    position: int = Field(
-        description="Order within the column (0-based)",
+    depends_on: list[str] = Field(
+        default_factory=list,
+        description="List of task IDs this task depends on (prerequisites). "
+        "Empty means the task can be started immediately.",
+    )
+    is_goal_node: bool = Field(
+        default=False,
+        description="True for the single final goal completion task. "
+        "Exactly one task must have this set to true.",
     )
     due_date: str | None = Field(
         default=None,
@@ -89,27 +99,10 @@ class BoardGenerationTaskOutput(BaseModel):
     )
 
 
-class BoardGenerationColumnOutput(BaseModel):
-    """A single column (workflow phase) in the AI-generated board output."""
-
-    title: str = Field(
-        description="Column title representing a workflow phase",
-    )
-    description: str = Field(
-        description="Brief description of this phase",
-    )
-    position: int = Field(
-        description="Order of this column (0-based, left to right)",
-    )
-    tasks: list[BoardGenerationTaskOutput] = Field(
-        description="Actionable tasks in this column (0-6 tasks)",
-    )
-
-
 class BoardGenerationOutput(BaseModel):
-    """Structured output from the board generation LLM call."""
+    """Structured output from the board generation LLM call (DAG-based)."""
 
     board_title: str = Field(description="A concise title for the board")
-    columns: list[BoardGenerationColumnOutput] = Field(
-        description="Columns representing workflow phases (3-7 columns)",
+    tasks: list[BoardGenerationTaskOutput] = Field(
+        description="Flat list of tasks forming a DAG (5-30 tasks)",
     )

@@ -2,12 +2,12 @@ import { createRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
 import { useUpdateBoardEndpointApiBoardsBoardIdPatch } from "@/api/generated/boards/boards";
-import type { BoardResponse } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BoardSkeleton } from "@/features/board/components/BoardSkeleton";
-import { BoardView } from "@/features/board/components/BoardView";
+import { DagView } from "@/features/board/components/DagView";
 import { useBoard } from "@/features/board/hooks/use-board";
+import type { BoardResponse } from "@/features/board/types";
 import { ErrorDisplay } from "@/features/goals/components/error-display";
 import { authenticatedRoute } from "./_authenticated";
 
@@ -100,9 +100,9 @@ function BoardDetailPage() {
 				)}
 			</div>
 
-			{/* Board Content */}
+			{/* DAG Graph View */}
 			<div className="flex-1 overflow-hidden">
-				<BoardView board={board} />
+				<DagView board={board} />
 			</div>
 		</div>
 	);

@@ -3,33 +3,40 @@ from __future__ import annotations
 BOARD_GENERATION_SYSTEM_PROMPT = """\
 You are an expert project planner for PlanFlow, an AI-powered planning tool.
 
-Your task is to generate a complete kanban board for a user's goal. You are \
-given the goal description, its classification (domain, complexity, key \
-dimensions), and the user's answers to clarifying questions.
+Your task is to generate a directed acyclic graph (DAG) of tasks for a user's \
+goal. You are given the goal description, its classification (domain, \
+complexity, key dimensions), and the user's answers to clarifying questions.
 
 Produce a board with:
 
 1. **board_title**: A concise, descriptive title for the board.
 
-2. **columns**: Use standard kanban workflow columns. Always use these \
-columns in this exact order:
-   - "Backlog" — tasks identified but not yet started
-   - "To Do" — tasks ready to be worked on next
-   - "In Progress" — tasks currently being worked on
-   - "Done" — completed tasks
-   - You may add 1-2 extra columns if the goal's complexity warrants it \
-(e.g. "Review", "Blocked"), but always keep the four core columns above.
-   - Each column needs a brief description explaining what this phase covers.
-   - Place most tasks in "Backlog" and "To Do". Leave "In Progress" and \
-"Done" empty or with at most 1 starter task.
+2. **tasks**: A flat list of 5-30 tasks forming a valid DAG. Each task has:
+   - **id**: A unique identifier like "t1", "t2", etc.
+   - **title**: A concise, actionable task title.
+   - **description**: A brief description of what this task involves.
+   - **depends_on**: An array of task IDs that must be completed before this \
+task can begin. Use an empty array for root tasks (tasks with no prerequisites).
+   - **is_goal_node**: Set to true for exactly ONE task — the final goal \
+completion task. This must be the last task in the plan.
+   - **due_date**, **priority**, **estimated_minutes**: Progressive metadata \
+(see below).
 
-3. **tasks** within each column: 0-6 concrete, actionable tasks per column. \
-Columns like "In Progress" and "Done" can be empty.
-   - Total tasks across all columns should not exceed 30.
-   - Tasks should be specific and actionable — something a person can sit \
-down and do. Avoid vague tasks like "Think about it" or "Plan things".
-   - Order tasks within a column by suggested execution order.
-   - Each task needs a title and a brief description.
+3. **Dependency graph rules**:
+   - The graph MUST be a valid DAG — no circular dependencies.
+   - Root tasks (empty depends_on) are tasks that can start immediately.
+   - Create PARALLEL paths for independent work streams. For example, \
+housing search and job search can proceed simultaneously.
+   - Create CONVERGENCE nodes — milestone tasks that depend on multiple \
+parallel paths merging. For example, "Finalize relocation timeline" depends \
+on both housing and employment chains.
+   - The final task MUST be a goal node (is_goal_node: true) that represents \
+the user's overall goal completion (e.g., "Complete: Relocate to Lisbon"). \
+This task depends on all remaining leaf tasks and is the single sink of the DAG \
+(nothing depends on it).
+   - Aim for a mix of sequential and parallel paths — avoid purely linear chains.
+   - Each depends_on reference must point to a valid task ID defined in the \
+same output.
 
 4. **Progressive metadata** on each task (only when relevant):
    - **due_date**: An ISO date string (YYYY-MM-DD) only if a specific \
@@ -41,13 +48,11 @@ from context or not meaningful.
    - **estimated_minutes**: An integer estimate of time needed only if the \
 task has a somewhat predictable duration. Set to null for open-ended tasks \
 or tasks where time estimation would be misleading.
-   - Not every task needs all metadata fields. Apply them selectively — \
-a research task might get priority and estimated_minutes but no due_date; \
-a booking task might get all three; a brainstorming task might get none.
+   - Not every task needs all metadata fields. Apply them selectively.
 
-Use the user's answers to customize the board. If they mentioned a specific \
+Use the user's answers to customize the tasks. If they mentioned a specific \
 budget range, timeline, or constraints, reflect those in the tasks and \
-metadata. The board should feel personalized, not generic.
+metadata. The plan should feel personalized, not generic.
 """
 
 BOARD_GENERATION_USER_PROMPT = """\

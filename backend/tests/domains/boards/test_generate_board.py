@@ -1,3 +1,5 @@
+"""Integration tests for board generation endpoint (DAG-based)."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -6,7 +8,6 @@ import pytest
 from httpx import AsyncClient
 
 from app.domains.ai.schemas import (
-    BoardGenerationColumnOutput,
     BoardGenerationOutput,
     BoardGenerationTaskOutput,
 )
@@ -15,70 +16,54 @@ from app.domains.goals.models import Goal
 
 
 def _mock_board_output() -> BoardGenerationOutput:
+    """Create a mock DAG board output with a diamond-shaped dependency graph."""
     return BoardGenerationOutput(
         board_title="Relocate from Berlin to Lisbon",
-        columns=[
-            BoardGenerationColumnOutput(
-                title="Research",
-                description="Gather all necessary information",
-                position=0,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Research visa requirements",
-                        description="Check D7 visa and NHR options",
-                        position=0,
-                        priority="high",
-                        estimated_minutes=60,
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Research neighborhoods",
-                        description="Find suitable areas in Lisbon",
-                        position=1,
-                        estimated_minutes=90,
-                    ),
-                ],
+        tasks=[
+            BoardGenerationTaskOutput(
+                id="t1",
+                title="Research visa requirements",
+                description="Check D7 visa and NHR options",
+                depends_on=[],
+                is_goal_node=False,
+                priority="high",
+                estimated_minutes=60,
             ),
-            BoardGenerationColumnOutput(
-                title="Documentation",
-                description="Prepare all required paperwork",
-                position=1,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Gather documents",
-                        description="Collect passport, bank statements, etc.",
-                        position=0,
-                        priority="high",
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Apply for visa",
-                        description="Submit D7 visa application",
-                        position=1,
-                        due_date="2026-03-15",
-                        priority="high",
-                        estimated_minutes=120,
-                    ),
-                ],
+            BoardGenerationTaskOutput(
+                id="t2",
+                title="Research neighborhoods",
+                description="Find suitable areas in Lisbon",
+                depends_on=[],
+                is_goal_node=False,
+                estimated_minutes=90,
             ),
-            BoardGenerationColumnOutput(
-                title="Logistics",
-                description="Handle moving logistics",
-                position=2,
-                tasks=[
-                    BoardGenerationTaskOutput(
-                        title="Book flight",
-                        description="Book one-way flight to Lisbon",
-                        position=0,
-                        due_date="2026-04-01",
-                        priority="medium",
-                        estimated_minutes=30,
-                    ),
-                    BoardGenerationTaskOutput(
-                        title="Arrange pet transport",
-                        description="Set up cat transport to Portugal",
-                        position=1,
-                        priority="medium",
-                    ),
-                ],
+            BoardGenerationTaskOutput(
+                id="t3",
+                title="Gather documents",
+                description="Collect passport, bank statements, etc.",
+                depends_on=["t1"],
+                is_goal_node=False,
+                priority="high",
+            ),
+            BoardGenerationTaskOutput(
+                id="t4",
+                title="Apply for visa",
+                description="Submit D7 visa application",
+                depends_on=["t3"],
+                is_goal_node=False,
+                due_date="2026-03-15",
+                priority="high",
+                estimated_minutes=120,
+            ),
+            BoardGenerationTaskOutput(
+                id="t5",
+                title="Book flight",
+                description="Book one-way flight to Lisbon",
+                depends_on=["t4", "t2"],
+                is_goal_node=True,
+                due_date="2026-04-01",
+                priority="medium",
+                estimated_minutes=30,
             ),
         ],
     )
@@ -91,7 +76,7 @@ async def test_generate_board_success(
     auth_client: AsyncClient,
     answered_goal: Goal,
 ) -> None:
-    """Successful board generation returns 201 with nested board data."""
+    """Successful board generation returns 201 with DAG board data."""
     mock_ai.return_value = _mock_board_output()
 
     response = await auth_client.post(
@@ -102,15 +87,31 @@ async def test_generate_board_success(
     assert "id" in data
     assert data["goal_id"] == answered_goal.id
     assert data["title"] == "Relocate from Berlin to Lisbon"
-    assert len(data["columns"]) == 3
-    assert data["columns"][0]["title"] == "Research"
-    assert data["columns"][0]["position"] == 0
-    assert len(data["columns"][0]["tasks"]) == 2
-    assert data["columns"][0]["tasks"][0]["title"] == "Research visa requirements"
-    assert data["columns"][0]["tasks"][0]["priority"] == "high"
-    # Check progressive metadata is present/null as expected
-    assert data["columns"][1]["tasks"][1]["due_date"] == "2026-03-15"
-    assert data["columns"][0]["tasks"][1]["due_date"] is None
+    # Flat task list (not columns)
+    assert "tasks" in data
+    assert len(data["tasks"]) == 5
+    assert "columns" not in data
+    # Check edges
+    assert "edges" in data
+    assert len(data["edges"]) > 0
+    # Check first task
+    task_titles = {t["title"] for t in data["tasks"]}
+    assert "Research visa requirements" in task_titles
+    assert "Book flight" in task_titles
+    # Check goal node
+    goal_tasks = [t for t in data["tasks"] if t["is_goal_node"]]
+    assert len(goal_tasks) == 1
+    assert goal_tasks[0]["title"] == "Book flight"
+    # Check is_completed is false initially
+    assert data["is_completed"] is False
+    # Check is_locked: root tasks (no deps) should not be locked
+    root_tasks = [t for t in data["tasks"] if t["dependency_ids"] == []]
+    for t in root_tasks:
+        assert t["is_locked"] is False
+    # Check locked: tasks with unmet deps should be locked
+    dependent_tasks = [t for t in data["tasks"] if len(t["dependency_ids"]) > 0]
+    for t in dependent_tasks:
+        assert t["is_locked"] is True
 
 
 @pytest.mark.asyncio
@@ -208,3 +209,32 @@ async def test_generate_board_status_transitions(
     goal_response = await auth_client.get(f"/api/goals/{answered_goal.id}")
     assert goal_response.status_code == 200
     assert goal_response.json()["status"] == "active"
+
+
+@pytest.mark.asyncio
+@patch("app.domains.boards.service.generate_board_from_context")
+async def test_generate_board_has_edges(
+    mock_ai: AsyncMock,
+    auth_client: AsyncClient,
+    answered_goal: Goal,
+) -> None:
+    """Generated board includes dependency edges in source/target format."""
+    mock_ai.return_value = _mock_board_output()
+
+    response = await auth_client.post(
+        f"/api/goals/{answered_goal.id}/generate-board",
+    )
+    assert response.status_code == 201
+    data = response.json()
+
+    edges = data["edges"]
+    assert len(edges) >= 4  # t1->t3, t3->t4, t4->t5, t2->t5
+    for edge in edges:
+        assert "source" in edge
+        assert "target" in edge
+
+    # Verify edges reference valid task IDs
+    task_ids = {t["id"] for t in data["tasks"]}
+    for edge in edges:
+        assert edge["source"] in task_ids
+        assert edge["target"] in task_ids
