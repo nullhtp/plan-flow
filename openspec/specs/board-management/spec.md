@@ -15,23 +15,20 @@ The system SHALL store boards as database records with the following fields: `id
 - **AND** a second board creation is attempted for the same goal
 - **THEN** the system SHALL reject the creation with a conflict error
 
-### Requirement: Column Data Model
-The system SHALL store columns as database records with the following fields: `id` (UUID primary key), `board_id` (FK to Board), `title` (string), `description` (string), `position` (varchar(50), fractional index string for ordering), `created_at`, and `updated_at`. Columns SHALL be returned ordered by `position` ascending (lexicographic sort). Position values SHALL use fractional indexing — a string-based ordering scheme where new positions can be generated between any two existing positions without modifying other records.
-
-#### Scenario: Columns created with AI-assigned positions
-- **WHEN** a board is generated with 5 columns
-- **THEN** each column record has a unique fractional index `position` value and columns are retrievable in lexicographic position order
-
-#### Scenario: Column belongs to a board
-- **WHEN** a column is created
-- **THEN** it MUST reference a valid board via `board_id`
-
-#### Scenario: Column inserted between existing columns
-- **WHEN** a column is inserted between two columns with positions "a0" and "a1"
-- **THEN** the new column receives a position between "a0" and "a1" (e.g., "a0V") without modifying the positions of any other columns
-
 ### Requirement: Task Data Model
-The system SHALL store tasks as database records with the following fields: `id` (UUID primary key), `column_id` (FK to Column), `title` (string), `description` (string), `position` (varchar(50), fractional index string for ordering), `due_date` (date, nullable), `priority` (string enum: "low"/"medium"/"high", nullable), `estimated_minutes` (integer, nullable), `created_at`, and `updated_at`. Tasks SHALL be returned ordered by `position` ascending (lexicographic sort) within their column. The progressive metadata fields (`due_date`, `priority`, `estimated_minutes`) SHALL be nullable — the AI populates them per-task only when relevant to the goal type and specific task.
+The system SHALL store tasks as database records with the following fields: `id` (UUID primary key), `board_id` (FK to Board), `title` (string), `description` (string), `status` (string enum: `not_started` / `in_progress` / `done`, default `not_started`), `is_goal_node` (boolean, default false), `due_date` (date, nullable), `priority` (string enum: `low` / `medium` / `high`, nullable), `estimated_minutes` (integer, nullable), `created_at`, and `updated_at`. Tasks SHALL be returned ordered by `created_at` ascending within their board. The progressive metadata fields (`due_date`, `priority`, `estimated_minutes`) SHALL be nullable — the AI populates them per-task only when relevant to the goal type and specific task. Exactly one task per board MUST have `is_goal_node: true` — this is the final goal completion task that serves as the single sink of the DAG.
+
+#### Scenario: Task created with status not_started
+- **WHEN** the AI generates a task during board generation
+- **THEN** the task record has `status` set to `not_started` and `board_id` set to the board's ID
+
+#### Scenario: Goal node task created
+- **WHEN** the AI generates the final goal node task
+- **THEN** the task record has `is_goal_node` set to `true` and depends on all leaf tasks in the board
+
+#### Scenario: Exactly one goal node per board
+- **WHEN** a board is generated
+- **THEN** exactly one task in the board has `is_goal_node: true`
 
 #### Scenario: Task created with full progressive metadata
 - **WHEN** the AI generates a "Book flight to Lisbon" task for a relocation goal
@@ -41,31 +38,27 @@ The system SHALL store tasks as database records with the following fields: `id`
 - **WHEN** the AI generates a "Brainstorm potential neighborhoods" task
 - **THEN** the task record MAY have `due_date`, `priority`, and `estimated_minutes` all set to null
 
-#### Scenario: Tasks ordered within column
-- **WHEN** a column contains 4 tasks with fractional index positions
-- **THEN** tasks are returned in lexicographic position order
-
-#### Scenario: Task inserted between existing tasks
-- **WHEN** a task is inserted between two tasks in the same column
-- **THEN** the new task receives a fractional index position between the two neighbors without modifying any other task positions
-
 ### Requirement: Board Persistence Service
-The system SHALL implement a board persistence service that takes AI-generated board output and creates Board, Column, and Task records in a single database transaction. If any part of the persistence fails, the entire transaction SHALL be rolled back. The service SHALL be located in `app/domains/boards/service.py`.
+The system SHALL implement a board persistence service that takes AI-generated board output and creates Board, Task, TaskDependency, and Subtask records in a single database transaction. If any part of the persistence fails, the entire transaction SHALL be rolled back. The service SHALL validate that the dependency graph forms a valid DAG (no cycles) before persisting. The service SHALL be located in `app/domains/boards/service.py`.
 
 #### Scenario: Successful board persistence
-- **WHEN** the AI generates a board with 4 columns and 20 tasks
-- **THEN** 1 Board record, 4 Column records, and 20 Task records are created in a single transaction
+- **WHEN** the AI generates a board with 15 tasks and 20 dependency edges
+- **THEN** 1 Board record, 15 Task records, and 20 TaskDependency records are created in a single transaction
 
 #### Scenario: Persistence rollback on failure
-- **WHEN** a database error occurs while creating the 15th task
-- **THEN** no Board, Column, or Task records are persisted (full rollback)
+- **WHEN** a database error occurs while creating the 10th task
+- **THEN** no Board, Task, or TaskDependency records are persisted (full rollback)
+
+#### Scenario: Cycle detection rejects invalid graph
+- **WHEN** the AI output contains a dependency cycle (A depends on B, B depends on A)
+- **THEN** the system SHALL reject the board and raise an error
 
 ### Requirement: Generate Board Endpoint
-The system SHALL expose `POST /api/goals/:id/generate-board` as an authenticated endpoint. The endpoint SHALL validate that the goal exists, belongs to the authenticated user, is in `answered` status, and does not already have a board. It SHALL then trigger the AI board generation pipeline, persist the result, transition the goal status to `active`, and return the full board with nested columns and tasks. The response SHALL use HTTP 201 on success.
+The system SHALL expose `POST /api/goals/:id/generate-board` as an authenticated endpoint. The endpoint SHALL validate that the goal exists, belongs to the authenticated user, is in `answered` status, and does not already have a board. It SHALL then trigger the AI board generation pipeline, persist the result (tasks and dependencies), transition the goal status to `active`, and return the full board with nested tasks and dependency edges. The response SHALL use HTTP 201 on success.
 
 #### Scenario: Successful board generation
 - **WHEN** an authenticated user sends `POST /api/goals/:id/generate-board` for their goal in `answered` status
-- **THEN** the response status is 201 and the body contains the board with `id`, `title`, `goal_id`, and nested `columns` (each with `id`, `title`, `description`, `position`, and nested `tasks`)
+- **THEN** the response status is 201 and the body contains the board with `id`, `title`, `goal_id`, nested `tasks` (each with `id`, `title`, `description`, `status`, `dependencies`, and `dependents`), and `edges` (list of dependency pairs)
 
 #### Scenario: Goal not in answered status
 - **WHEN** a user sends `POST /api/goals/:id/generate-board` for a goal in `questioning` status
@@ -84,11 +77,11 @@ The system SHALL expose `POST /api/goals/:id/generate-board` as an authenticated
 - **THEN** the response status is 401
 
 ### Requirement: Get Board Endpoint
-The system SHALL expose `GET /api/boards/:id` as an authenticated endpoint that returns the board with its nested columns, tasks, and subtasks. Each column SHALL include its tasks ordered by position. Each task SHALL include its subtasks ordered by position. Columns SHALL be ordered by position. Users SHALL only be able to retrieve boards for their own goals.
+The system SHALL expose `GET /api/boards/:id` as an authenticated endpoint that returns the board with its nested tasks, subtasks, and dependency edges. Each task SHALL include its subtasks ordered by position, a list of `dependency_ids` (tasks it depends on), and a list of `dependent_ids` (tasks that depend on it). A computed `is_locked` boolean SHALL indicate whether all dependencies have status `done`. Users SHALL only be able to retrieve boards for their own goals.
 
-#### Scenario: Retrieve board with nested data
+#### Scenario: Retrieve board with nested data and dependencies
 - **WHEN** an authenticated user requests `GET /api/boards/:id` for a board belonging to their goal
-- **THEN** the response includes the board fields, an array of columns (each with title, description, position), each column includes an array of tasks (each with title, description, position, progressive metadata, and nested subtasks)
+- **THEN** the response includes the board fields, an array of tasks (each with title, description, status, `is_goal_node`, progressive metadata, nested subtasks, `dependency_ids`, `dependent_ids`, and `is_locked`), and an `edges` array of `{source, target}` pairs
 
 #### Scenario: Retrieve another user's board
 - **WHEN** user A requests `GET /api/boards/:id` for a board belonging to user B's goal
@@ -99,20 +92,14 @@ The system SHALL expose `GET /api/boards/:id` as an authenticated endpoint that 
 - **THEN** the response status is 404
 
 ### Requirement: Board Alembic Migration
-The system SHALL include Alembic migrations that create and maintain the `board`, `column`, `task`, and `subtask` tables with all required columns, foreign keys, indexes, and constraints. A migration SHALL convert existing integer `position` columns on `column` and `task` tables to varchar(50) fractional index strings. The migration SHALL add the `subtask` table. Indexes SHALL exist on `board.goal_id`, `column.board_id`, `task.column_id`, and `subtask.task_id`.
+The system SHALL include an Alembic migration that drops the existing `subtask`, `task`, `board_column`, and `board` tables (with all data) and recreates: `board` table (same schema), `task` table with `board_id` FK (replacing `column_id`), `status` field (varchar, default `not_started`), and no `position` field; `task_dependency` junction table with `dependent_task_id` and `dependency_task_id` FKs; and `subtask` table with `task_id` FK. Indexes SHALL exist on `board.goal_id`, `task.board_id`, `task_dependency.dependent_task_id`, `task_dependency.dependency_task_id`, and `subtask.task_id`.
 
-#### Scenario: Migration creates board tables and subtask table
+#### Scenario: Migration drops old tables and creates new schema
 - **WHEN** `alembic upgrade head` is run
-- **THEN** the `board` table exists with columns: `id` (UUID PK), `goal_id` (UUID FK to goal, unique), `title` (varchar), `created_at` (timestamptz), `updated_at` (timestamptz)
-- **AND** the `column` table exists with columns: `id` (UUID PK), `board_id` (UUID FK to board), `title` (varchar), `description` (text), `position` (varchar(50)), `created_at` (timestamptz), `updated_at` (timestamptz)
-- **AND** the `task` table exists with columns: `id` (UUID PK), `column_id` (UUID FK to column), `title` (varchar), `description` (text), `position` (varchar(50)), `due_date` (date, nullable), `priority` (varchar, nullable), `estimated_minutes` (integer, nullable), `created_at` (timestamptz), `updated_at` (timestamptz)
-- **AND** the `subtask` table exists with columns: `id` (UUID PK), `task_id` (UUID FK to task), `title` (varchar), `completed` (boolean, default false), `position` (varchar(50)), `created_at` (timestamptz), `updated_at` (timestamptz)
-- **AND** indexes exist on `board.goal_id`, `column.board_id`, `task.column_id`, and `subtask.task_id`
-
-#### Scenario: Migration converts integer positions to fractional index strings
-- **WHEN** the migration runs on a database with existing boards
-- **THEN** all existing column `position` values are converted from integers to fractional index strings that preserve the original ordering
-- **AND** all existing task `position` values are converted from integers to fractional index strings that preserve the original ordering
+- **THEN** the `board_column` table no longer exists
+- **AND** the `task` table has `board_id` (UUID FK to board), `status` (varchar, default `not_started`), `is_goal_node` (boolean, default false), and no `column_id` or `position` columns
+- **AND** the `task_dependency` table exists with `id` (UUID PK), `dependent_task_id` (UUID FK to task), `dependency_task_id` (UUID FK to task), and a unique constraint on the pair
+- **AND** indexes exist on `board.goal_id`, `task.board_id`, `task_dependency.dependent_task_id`, `task_dependency.dependency_task_id`, and `subtask.task_id`
 
 ### Requirement: Subtask Data Model
 The system SHALL store subtasks as database records with the following fields: `id` (UUID primary key), `task_id` (FK to Task), `title` (string), `completed` (boolean, default false), `position` (varchar(50), fractional index string for ordering), `created_at`, and `updated_at`. Subtasks SHALL be returned ordered by `position` ascending (lexicographic sort) within their parent task. Subtasks are single-level only — no nested subtasks.
@@ -126,7 +113,7 @@ The system SHALL store subtasks as database records with the following fields: `
 - **THEN** subtasks are returned in lexicographic position order
 
 ### Requirement: List Boards Endpoint
-The system SHALL expose `GET /api/boards` as an authenticated endpoint that returns all boards belonging to the authenticated user. Each board in the response SHALL include summary data: `id`, `goal_id`, `title`, `goal_title`, `column_count`, `task_count`, `completed_task_count` (tasks in the last column by position), and `created_at`. Boards SHALL be ordered by `created_at` descending (newest first).
+The system SHALL expose `GET /api/boards` as an authenticated endpoint that returns all boards belonging to the authenticated user. Each board in the response SHALL include summary data: `id`, `goal_id`, `title`, `goal_title`, `task_count`, `completed_task_count` (tasks with status `done`), and `created_at`. Boards SHALL be ordered by `created_at` descending (newest first).
 
 #### Scenario: User retrieves their boards
 - **WHEN** an authenticated user with 3 boards sends `GET /api/boards`
@@ -137,7 +124,7 @@ The system SHALL expose `GET /api/boards` as an authenticated endpoint that retu
 - **THEN** the response contains an empty array
 
 #### Scenario: Board list includes progress data
-- **WHEN** a board has 4 columns and 12 tasks total, with 3 tasks in the last column
+- **WHEN** a board has 12 tasks total, with 3 tasks having status `done`
 - **THEN** the board summary shows `task_count: 12` and `completed_task_count: 3`
 
 #### Scenario: Unauthenticated request rejected
@@ -155,104 +142,61 @@ The system SHALL expose `PATCH /api/boards/:id` as an authenticated endpoint tha
 - **WHEN** user A sends `PATCH /api/boards/:id` for user B's board
 - **THEN** the response status is 404
 
-### Requirement: Create Column Endpoint
-The system SHALL expose `POST /api/boards/:id/columns` as an authenticated endpoint that creates a new column on the board. The request body SHALL include `title` and optionally `description`. The new column SHALL be assigned a fractional index position after the last existing column. The endpoint SHALL validate board ownership.
-
-#### Scenario: Create column at end of board
-- **WHEN** an authenticated user sends `POST /api/boards/:id/columns` with `{"title": "Review"}`
-- **THEN** a new column is created with the given title, an empty description, and a position after all existing columns
-- **AND** the response status is 201 with the created column data
-
-#### Scenario: Create column on empty board
-- **WHEN** a board has no columns and a user creates a column
-- **THEN** the column is created with an initial fractional index position
-
-### Requirement: Update Column Endpoint
-The system SHALL expose `PATCH /api/columns/:id` as an authenticated endpoint that updates a column's title, description, and/or position. The endpoint SHALL validate ownership by tracing column → board → goal → user. When position is updated, only the target column's position field changes (no sibling renumbering).
-
-#### Scenario: Rename column
-- **WHEN** an authenticated user sends `PATCH /api/columns/:id` with `{"title": "In Review"}`
-- **THEN** the column title is updated and the response contains the updated column
-
-#### Scenario: Reorder column
-- **WHEN** an authenticated user sends `PATCH /api/columns/:id` with `{"position": "a0V"}`
-- **THEN** the column position is updated without modifying other columns' positions
-
-#### Scenario: Update column on another user's board rejected
-- **WHEN** user A sends `PATCH /api/columns/:id` for a column on user B's board
-- **THEN** the response status is 404
-
-### Requirement: Delete Column Endpoint
-The system SHALL expose `DELETE /api/columns/:id` as an authenticated endpoint. When the column contains tasks, the request MUST include a `target_column_id` query parameter specifying another column on the same board to receive the tasks. Tasks SHALL be moved to the target column with new fractional index positions appended after the target column's existing tasks. When the column is empty, `target_column_id` is optional. The endpoint SHALL validate ownership and that both columns belong to the same board.
-
-#### Scenario: Delete empty column
-- **WHEN** an authenticated user sends `DELETE /api/columns/:id` for a column with no tasks
-- **THEN** the column is deleted and the response status is 204
-
-#### Scenario: Delete column with tasks, moving to target
-- **WHEN** a column has 5 tasks and the user sends `DELETE /api/columns/:id?target_column_id=<other>`
-- **THEN** all 5 tasks are moved to the target column with positions appended after existing tasks
-- **AND** the original column is deleted
-
-#### Scenario: Delete column with tasks without target rejected
-- **WHEN** a column has tasks and the user sends `DELETE /api/columns/:id` without `target_column_id`
-- **THEN** the response status is 400 with an error indicating a target column is required
-
-#### Scenario: Target column on different board rejected
-- **WHEN** the user sends `DELETE /api/columns/:id?target_column_id=<column-on-other-board>`
-- **THEN** the response status is 400
-
-#### Scenario: Delete last column rejected
-- **WHEN** the board has only one column and the user attempts to delete it
-- **THEN** the response status is 400 with an error indicating the last column cannot be deleted
-
 ### Requirement: Create Task Endpoint
-The system SHALL expose `POST /api/columns/:id/tasks` as an authenticated endpoint that creates a new task in the specified column. The request body SHALL include `title` and optionally `description`, `due_date`, `priority`, and `estimated_minutes`. The new task SHALL be assigned a fractional index position after the last existing task in the column. The endpoint SHALL validate ownership by tracing column → board → goal → user.
+The system SHALL expose `POST /api/boards/:id/tasks` as an authenticated endpoint that creates a new task on the specified board. The request body SHALL include `title` and optionally `description`, `due_date`, `priority`, and `estimated_minutes`. The new task SHALL have `status` set to `not_started`. The endpoint SHALL validate ownership by tracing board to goal to user.
 
-#### Scenario: Create task in column
-- **WHEN** an authenticated user sends `POST /api/columns/:id/tasks` with `{"title": "Research flights"}`
-- **THEN** a new task is created with the given title, position after existing tasks, and the response status is 201
+#### Scenario: Create task on board
+- **WHEN** an authenticated user sends `POST /api/boards/:id/tasks` with `{"title": "Research flights"}`
+- **THEN** a new task is created with the given title, status `not_started`, and the response status is 201
 
 #### Scenario: Create task with metadata
 - **WHEN** a user creates a task with `{"title": "Book hotel", "priority": "high", "due_date": "2026-03-15"}`
 - **THEN** the task is created with the specified metadata fields populated
 
 ### Requirement: Update Task Endpoint
-The system SHALL expose `PATCH /api/tasks/:id` as an authenticated endpoint that updates any combination of task fields: `title`, `description`, `due_date`, `priority`, `estimated_minutes`, `column_id` (to move between columns), and `position` (to reorder). The endpoint SHALL validate ownership by tracing task → column → board → goal → user. When `column_id` is changed, the task is moved to the new column. When both `column_id` and `position` are provided, the task moves to the new column at the specified position.
+The system SHALL expose `PATCH /api/tasks/:id` as an authenticated endpoint that updates any combination of task fields: `title`, `description`, `due_date`, `priority`, `estimated_minutes`, and `status`. The endpoint SHALL validate ownership by tracing task to board to goal to user. Status transitions SHALL be validated: a task can only move to `in_progress` if all its dependencies have status `done`; a task can only move to `done` if it is currently `in_progress`.
 
 #### Scenario: Update task title
 - **WHEN** an authenticated user sends `PATCH /api/tasks/:id` with `{"title": "Updated title"}`
 - **THEN** the task title is updated
 
-#### Scenario: Move task to another column
-- **WHEN** a user sends `PATCH /api/tasks/:id` with `{"column_id": "<other-column-id>", "position": "a1V"}`
-- **THEN** the task is moved to the target column at the specified position
+#### Scenario: Start task with met dependencies
+- **WHEN** a task has 2 dependencies both with status `done` and a user sends `PATCH /api/tasks/:id` with `{"status": "in_progress"}`
+- **THEN** the task status is updated to `in_progress`
 
-#### Scenario: Reorder task within column
-- **WHEN** a user sends `PATCH /api/tasks/:id` with `{"position": "a0V"}`
-- **THEN** the task position is updated without modifying other tasks
+#### Scenario: Start task with unmet dependencies rejected
+- **WHEN** a task has a dependency with status `not_started` and a user sends `PATCH /api/tasks/:id` with `{"status": "in_progress"}`
+- **THEN** the response status is 409 (Conflict) with an error indicating unmet dependencies
+
+#### Scenario: Complete task that is in progress
+- **WHEN** a task has status `in_progress` and a user sends `PATCH /api/tasks/:id` with `{"status": "done"}`
+- **THEN** the task status is updated to `done`
+
+#### Scenario: Complete task that is not started rejected
+- **WHEN** a task has status `not_started` and a user sends `PATCH /api/tasks/:id` with `{"status": "done"}`
+- **THEN** the response status is 409 (Conflict) with an error indicating the task must be in progress first
 
 #### Scenario: Update task on another user's board rejected
 - **WHEN** user A sends `PATCH /api/tasks/:id` for a task on user B's board
 - **THEN** the response status is 404
 
-#### Scenario: Move task to column on different board rejected
-- **WHEN** a user sends `PATCH /api/tasks/:id` with a `column_id` belonging to a different board
-- **THEN** the response status is 400
-
 ### Requirement: Delete Task Endpoint
-The system SHALL expose `DELETE /api/tasks/:id` as an authenticated endpoint that deletes a task and all its subtasks. The endpoint SHALL validate ownership by tracing task → column → board → goal → user.
+The system SHALL expose `DELETE /api/tasks/:id` as an authenticated endpoint that deletes a task, all its subtasks, and all dependency edges involving the task (both as dependent and as dependency). The endpoint SHALL validate ownership by tracing task to board to goal to user.
 
 #### Scenario: Delete task
 - **WHEN** an authenticated user sends `DELETE /api/tasks/:id`
-- **THEN** the task and all its subtasks are deleted and the response status is 204
+- **THEN** the task, all its subtasks, and all associated dependency edges are deleted and the response status is 204
+
+#### Scenario: Delete task unlocks dependents
+- **WHEN** task B depends only on task A and task A is deleted
+- **THEN** task B has no remaining dependencies and is no longer locked
 
 #### Scenario: Delete task on another user's board rejected
 - **WHEN** user A sends `DELETE /api/tasks/:id` for a task on user B's board
 - **THEN** the response status is 404
 
 ### Requirement: Create Subtask Endpoint
-The system SHALL expose `POST /api/tasks/:id/subtasks` as an authenticated endpoint that creates a new subtask for the specified task. The request body SHALL include `title`. The new subtask SHALL be assigned a fractional index position after the last existing subtask. The endpoint SHALL validate ownership by tracing task → column → board → goal → user.
+The system SHALL expose `POST /api/tasks/:id/subtasks` as an authenticated endpoint that creates a new subtask for the specified task. The request body SHALL include `title`. The new subtask SHALL be assigned a fractional index position after the last existing subtask. The endpoint SHALL validate ownership by tracing task to board to goal to user.
 
 #### Scenario: Create subtask
 - **WHEN** an authenticated user sends `POST /api/tasks/:id/subtasks` with `{"title": "Check visa requirements"}`
@@ -260,7 +204,7 @@ The system SHALL expose `POST /api/tasks/:id/subtasks` as an authenticated endpo
 - **AND** the response status is 201
 
 ### Requirement: Update Subtask Endpoint
-The system SHALL expose `PATCH /api/subtasks/:id` as an authenticated endpoint that updates a subtask's `title`, `completed`, and/or `position` fields. The endpoint SHALL validate ownership by tracing subtask → task → column → board → goal → user.
+The system SHALL expose `PATCH /api/subtasks/:id` as an authenticated endpoint that updates a subtask's `title`, `completed`, and/or `position` fields. The endpoint SHALL validate ownership by tracing subtask to task to board to goal to user.
 
 #### Scenario: Toggle subtask completed
 - **WHEN** a user sends `PATCH /api/subtasks/:id` with `{"completed": true}`
@@ -271,9 +215,39 @@ The system SHALL expose `PATCH /api/subtasks/:id` as an authenticated endpoint t
 - **THEN** the subtask title is updated
 
 ### Requirement: Delete Subtask Endpoint
-The system SHALL expose `DELETE /api/subtasks/:id` as an authenticated endpoint that deletes a subtask. The endpoint SHALL validate ownership by tracing subtask → task → column → board → goal → user.
+The system SHALL expose `DELETE /api/subtasks/:id` as an authenticated endpoint that deletes a subtask. The endpoint SHALL validate ownership by tracing subtask to task to board to goal to user.
 
 #### Scenario: Delete subtask
 - **WHEN** an authenticated user sends `DELETE /api/subtasks/:id`
 - **THEN** the subtask is deleted and the response status is 204
+
+### Requirement: Task Dependency Data Model
+The system SHALL store task dependencies as records in a `task_dependency` junction table with the following fields: `id` (UUID primary key), `dependent_task_id` (FK to Task — the task that is blocked), `dependency_task_id` (FK to Task — the prerequisite task), `created_at`. A unique constraint SHALL exist on the pair (`dependent_task_id`, `dependency_task_id`) to prevent duplicate edges. Both tasks in a dependency MUST belong to the same board. The dependency graph MUST form a valid DAG (no cycles).
+
+#### Scenario: Dependency created between two tasks
+- **WHEN** the AI generates task A and task B where B depends on A
+- **THEN** a TaskDependency record is created with `dependency_task_id` = A and `dependent_task_id` = B
+
+#### Scenario: Duplicate dependency rejected
+- **WHEN** a dependency edge from A to B already exists and a second identical edge is attempted
+- **THEN** the system SHALL reject the creation with a conflict error
+
+#### Scenario: Cross-board dependency rejected
+- **WHEN** a dependency is attempted between tasks on different boards
+- **THEN** the system SHALL reject the creation with a validation error
+
+### Requirement: Task Lock Status Computation
+The system SHALL compute a `is_locked` boolean for each task based on its dependencies. A task is locked (`is_locked: true`) when at least one of its dependency tasks does NOT have status `done`. A task with no dependencies is never locked. The lock status SHALL be computed at query time and included in the API response, not stored in the database.
+
+#### Scenario: Task with all dependencies done is unlocked
+- **WHEN** task C depends on tasks A and B, and both A and B have status `done`
+- **THEN** `is_locked` for task C is `false`
+
+#### Scenario: Task with incomplete dependency is locked
+- **WHEN** task C depends on tasks A and B, A has status `done` but B has status `in_progress`
+- **THEN** `is_locked` for task C is `true`
+
+#### Scenario: Task with no dependencies is unlocked
+- **WHEN** task A has no dependencies
+- **THEN** `is_locked` for task A is `false`
 
