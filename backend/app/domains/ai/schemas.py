@@ -67,3 +67,50 @@ class FollowUpInput(BaseModel):
     classification: ClassificationOutput
     questions: list[QuestionItem]
     answers: dict[str, Any]
+
+
+class BoardGenerationTaskOutput(BaseModel):
+    """A single task in the AI-generated board output."""
+
+    title: str = Field(description="Concise, actionable task title")
+    description: str = Field(description="Brief description of what this task involves")
+    position: int = Field(ge=0, description="Order within the column (0-based)")
+    due_date: str | None = Field(
+        default=None,
+        description="ISO date string (YYYY-MM-DD) if a deadline is relevant, null otherwise",  # noqa: E501
+    )
+    priority: str | None = Field(
+        default=None,
+        description="Priority level: 'low', 'medium', or 'high' if relevant, null otherwise",  # noqa: E501
+    )
+    estimated_minutes: int | None = Field(
+        default=None,
+        ge=1,
+        description="Estimated time in minutes if relevant, null otherwise",
+    )
+
+
+class BoardGenerationColumnOutput(BaseModel):
+    """A single column (workflow phase) in the AI-generated board output."""
+
+    title: str = Field(description="Column title representing a workflow phase")
+    description: str = Field(description="Brief description of this phase")
+    position: int = Field(
+        ge=0, description="Order of this column (0-based, left to right)"
+    )
+    tasks: list[BoardGenerationTaskOutput] = Field(
+        min_length=2,
+        max_length=6,
+        description="2-6 actionable tasks in this column",
+    )
+
+
+class BoardGenerationOutput(BaseModel):
+    """Structured output from the board generation LLM call."""
+
+    board_title: str = Field(description="A concise title for the board")
+    columns: list[BoardGenerationColumnOutput] = Field(
+        min_length=3,
+        max_length=7,
+        description="3-7 columns representing workflow phases",
+    )

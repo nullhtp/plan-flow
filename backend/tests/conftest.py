@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.db import get_session
 from app.core.security import create_access_token, hash_password
 from app.domains.auth.models import User
+from app.domains.boards.models import Board, BoardColumn, Task  # noqa: F401
 from app.domains.goals.models import Goal, GoalStatus
 from app.main import app
 
@@ -129,6 +130,63 @@ async def test_goal(session: AsyncSession, test_user: User) -> Goal:
                     "required": False,
                 },
             ],
+        },
+    )
+    session.add(goal)
+    await session.commit()
+    await session.refresh(goal)
+    return goal
+
+
+@pytest.fixture
+async def answered_goal(session: AsyncSession, test_user: User) -> Goal:
+    """Create a test goal in 'answered' status with full AI context."""
+    goal = Goal(
+        user_id=test_user.id,
+        title="Relocate to Lisbon",
+        original_input="Move from Berlin to Lisbon within 3 months",
+        status=GoalStatus.ANSWERED,
+        ai_context={
+            "classification": {
+                "domain": "relocation",
+                "complexity": 4,
+                "confidence": 0.9,
+                "dimensions": ["timeline", "budget", "housing", "logistics"],
+                "suggested_title": "Relocate to Lisbon",
+                "rejection_reason": None,
+                "refinement_suggestions": [],
+            },
+            "questions": [
+                {
+                    "id": "q1",
+                    "text": "What is your budget?",
+                    "type": "select",
+                    "options": ["< 5000", "5000-10000", "> 10000"],
+                    "rationale": "Budget determines housing options",
+                    "required": True,
+                },
+                {
+                    "id": "q2",
+                    "text": "Do you have a job lined up?",
+                    "type": "select",
+                    "options": ["Yes", "No", "Remote work"],
+                    "rationale": "Employment affects visa and timeline",
+                    "required": True,
+                },
+                {
+                    "id": "q3",
+                    "text": "Any specific concerns?",
+                    "type": "text",
+                    "options": None,
+                    "rationale": "Helps identify potential blockers",
+                    "required": False,
+                },
+            ],
+            "answers": {
+                "q1": "5000-10000",
+                "q2": "Remote work",
+                "q3": "Need to bring my cat",
+            },
         },
     )
     session.add(goal)

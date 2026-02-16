@@ -1,6 +1,8 @@
-import type { QuestionSchema } from "@/api/generated/model";
+import { useNavigate } from "@tanstack/react-router";
+import type { BoardResponse, QuestionSchema } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useGenerateBoard } from "@/features/goals/hooks/use-goals";
 
 interface QAPair {
 	question: QuestionSchema;
@@ -8,15 +10,33 @@ interface QAPair {
 }
 
 interface GoalSummaryProps {
+	goalId: string;
 	title: string;
 	originalInput: string;
 	qaPairs: QAPair[];
 }
 
-export function GoalSummary({ title, originalInput, qaPairs }: GoalSummaryProps) {
+export function GoalSummary({ goalId, title, originalInput, qaPairs }: GoalSummaryProps) {
+	const generateBoard = useGenerateBoard();
+	const navigate = useNavigate();
+
 	function formatAnswer(answer: string | string[] | number): string {
 		if (Array.isArray(answer)) return answer.join(", ");
 		return String(answer);
+	}
+
+	function handleGenerateBoard() {
+		generateBoard.mutate(
+			{ goalId },
+			{
+				onSuccess: (response) => {
+					if (response.status === 201) {
+						const board = response.data as BoardResponse;
+						navigate({ to: "/boards/$boardId", params: { boardId: board.id } });
+					}
+				},
+			},
+		);
 	}
 
 	return (
@@ -36,12 +56,27 @@ export function GoalSummary({ title, originalInput, qaPairs }: GoalSummaryProps)
 					))}
 				</div>
 				<div className="relative">
-					<Button className="w-full" disabled>
-						Generate Board
+					{generateBoard.isError && (
+						<p className="mb-2 text-center text-sm text-destructive">
+							Board generation failed. Please try again.
+						</p>
+					)}
+					<Button
+						className="w-full"
+						onClick={handleGenerateBoard}
+						disabled={generateBoard.isPending}
+					>
+						{generateBoard.isPending ? (
+							<span className="flex items-center gap-2">
+								<span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+								Generating your board...
+							</span>
+						) : generateBoard.isError ? (
+							"Try Again"
+						) : (
+							"Generate Board"
+						)}
 					</Button>
-					<p className="mt-2 text-center text-xs text-muted-foreground">
-						Board generation coming soon
-					</p>
 				</div>
 			</CardContent>
 		</Card>

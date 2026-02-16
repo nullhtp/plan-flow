@@ -8,13 +8,18 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.domains.ai.nodes.classify import classify_goal
+from app.domains.ai.nodes.generate_board import generate_board as _generate_board
 from app.domains.ai.nodes.questions import (
     generate_follow_up_questions as _generate_follow_ups,
 )
 from app.domains.ai.nodes.questions import (
     generate_questions as _generate_questions,
 )
-from app.domains.ai.schemas import ClassificationOutput, QuestionItem
+from app.domains.ai.schemas import (
+    BoardGenerationOutput,
+    ClassificationOutput,
+    QuestionItem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -113,3 +118,26 @@ async def generate_follow_up_questions(
         return []
 
     return follow_ups
+
+
+async def generate_board_from_context(
+    raw_input: str,
+    domain: str,
+    complexity: int,
+    dimensions: list[str],
+    qa_pairs: str,
+) -> BoardGenerationOutput:
+    """Generate a board from goal context, with retries.
+
+    Returns a BoardGenerationOutput with columns and tasks.
+    Raises AIOutputError if the AI fails after all retries.
+    """
+    result: BoardGenerationOutput = await _retry_async(
+        _generate_board,
+        raw_input,
+        domain,
+        complexity,
+        dimensions,
+        qa_pairs,
+    )
+    return result

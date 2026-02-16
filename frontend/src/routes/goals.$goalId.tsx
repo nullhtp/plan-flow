@@ -58,7 +58,12 @@ function GoalDetailPage() {
 
 		return (
 			<div className="flex min-h-screen items-center justify-center p-4">
-				<GoalSummary title={goal.title} originalInput={goal.original_input} qaPairs={qaPairs} />
+				<GoalSummary
+					goalId={goal.id}
+					title={goal.title}
+					originalInput={goal.original_input}
+					qaPairs={qaPairs}
+				/>
 			</div>
 		);
 	}

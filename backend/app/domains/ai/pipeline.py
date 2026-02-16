@@ -15,7 +15,11 @@ from langgraph.graph import END, StateGraph  # pyright: ignore[reportMissingType
 from app.core.config import settings
 from app.domains.ai.nodes.classify import classify_goal
 from app.domains.ai.nodes.questions import generate_questions
-from app.domains.ai.schemas import ClassificationOutput, QuestionItem
+from app.domains.ai.schemas import (
+    BoardGenerationOutput,
+    ClassificationOutput,
+    QuestionItem,
+)
 
 
 class GoalPipelineState(TypedDict, total=False):
@@ -27,6 +31,7 @@ class GoalPipelineState(TypedDict, total=False):
     is_rejected: bool
     rejection_reason: str | None
     refinement_suggestions: list[str] | None
+    board_generation: BoardGenerationOutput | None
 
 
 async def _classify_node(state: GoalPipelineState) -> dict[str, Any]:

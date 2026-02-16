@@ -249,14 +249,19 @@ function GoalsNewPage() {
 	}
 
 	if (pageState.step === "summary") {
-		const { title, originalInput, allQuestions, allAnswers } = pageState;
+		const { goalId, title, originalInput, allQuestions, allAnswers } = pageState;
 		const qaPairs = allQuestions.map((q) => ({
 			question: q,
 			answer: allAnswers[q.id] ?? "",
 		}));
 		return (
 			<div className="flex min-h-screen items-center justify-center p-4">
-				<GoalSummary title={title} originalInput={originalInput} qaPairs={qaPairs} />
+				<GoalSummary
+					goalId={goalId}
+					title={title}
+					originalInput={originalInput}
+					qaPairs={qaPairs}
+				/>
 			</div>
 		);
 	}
