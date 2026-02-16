@@ -16,15 +16,20 @@
 		"codegen": "orval"
 	},
 	"dependencies": {
+		"@dnd-kit/core": "^6.3.1",
+		"@dnd-kit/sortable": "^10.0.0",
+		"@dnd-kit/utilities": "^3.2.2",
 		"@tailwindcss/vite": "^4.1.18",
 		"@tanstack/react-query": "^5.90.21",
 		"@tanstack/react-router": "^1.160.0",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
+		"fractional-indexing": "^3.2.0",
 		"lucide-react": "^0.564.0",
 		"radix-ui": "^1.4.3",
 		"react": "^19.2.0",
 		"react-dom": "^19.2.0",
+		"sonner": "^2.0.7",
 		"tailwind-merge": "^3.4.1",
 		"tailwindcss": "^4.1.18"
 	},

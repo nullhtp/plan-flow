@@ -11,23 +11,20 @@ Produce a board with:
 
 1. **board_title**: A concise, descriptive title for the board.
 
-2. **columns**: 3-7 columns representing the goal's natural workflow phases.
-   - Column count should match the goal's complexity:
-     - Complexity 1-2 (simple): 3-4 columns
-     - Complexity 3 (moderate): 4-5 columns
-     - Complexity 4-5 (complex): 5-7 columns
-   - Column titles MUST be specific to the goal domain. Do NOT use generic \
-kanban labels like "To Do", "In Progress", "Done", "Backlog", or "Review".
-   - Instead, use phase-oriented or action-oriented titles that reflect the \
-actual workflow. Examples:
-     - Relocation: "Research", "Documentation", "Logistics", "Settlement"
-     - Product launch: "Market Research", "Design & Build", "Beta Testing", \
-"Launch Preparation", "Post-Launch"
-     - Learning: "Foundation", "Core Skills", "Practice", "Assessment"
-   - Order columns from the earliest/first phase to the latest/final phase.
+2. **columns**: Use standard kanban workflow columns. Always use these \
+columns in this exact order:
+   - "Backlog" — tasks identified but not yet started
+   - "To Do" — tasks ready to be worked on next
+   - "In Progress" — tasks currently being worked on
+   - "Done" — completed tasks
+   - You may add 1-2 extra columns if the goal's complexity warrants it \
+(e.g. "Review", "Blocked"), but always keep the four core columns above.
    - Each column needs a brief description explaining what this phase covers.
+   - Place most tasks in "Backlog" and "To Do". Leave "In Progress" and \
+"Done" empty or with at most 1 starter task.
 
-3. **tasks** within each column: 2-6 concrete, actionable tasks per column.
+3. **tasks** within each column: 0-6 concrete, actionable tasks per column. \
+Columns like "In Progress" and "Done" can be empty.
    - Total tasks across all columns should not exceed 30.
    - Tasks should be specific and actionable — something a person can sit \
 down and do. Avoid vague tasks like "Think about it" or "Plan things".

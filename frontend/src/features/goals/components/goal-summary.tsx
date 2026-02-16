@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { BoardResponse, QuestionSchema } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useBoardListData } from "@/features/board/hooks/use-board-list";
 import { useGenerateBoard } from "@/features/goals/hooks/use-goals";
 
 interface QAPair {
@@ -19,6 +20,7 @@ interface GoalSummaryProps {
 export function GoalSummary({ goalId, title, originalInput, qaPairs }: GoalSummaryProps) {
 	const generateBoard = useGenerateBoard();
 	const navigate = useNavigate();
+	const boards = useBoardListData();
 
 	function formatAnswer(answer: string | string[] | number): string {
 		if (Array.isArray(answer)) return answer.join(", ");
@@ -26,6 +28,13 @@ export function GoalSummary({ goalId, title, originalInput, qaPairs }: GoalSumma
 	}
 
 	function handleGenerateBoard() {
+		// Check if a board already exists for this goal
+		const existingBoard = boards.find((b) => b.goal_id === goalId);
+		if (existingBoard) {
+			navigate({ to: "/boards/$boardId", params: { boardId: existingBoard.id } });
+			return;
+		}
+
 		generateBoard.mutate(
 			{ goalId },
 			{

@@ -100,9 +100,9 @@ async def test_get_board_success(
     assert data["goal_id"] == answered_goal.id
     assert data["title"] == "Relocate from Berlin to Lisbon"
     assert len(data["columns"]) == 3
-    # Verify columns are ordered by position
+    # Verify columns are ordered by position (fractional index strings)
     positions = [col["position"] for col in data["columns"]]
-    assert positions == [0, 1, 2]
+    assert positions == sorted(positions)
     # Verify tasks within columns
     assert len(data["columns"][0]["tasks"]) == 2
     assert data["columns"][0]["tasks"][0]["title"] == "Research visa"

@@ -1,7 +1,4 @@
-import {
-	useGenerateBoardEndpointApiGoalsGoalIdGenerateBoardPost,
-	useGetBoardEndpointApiBoardsBoardIdGet,
-} from "@/api/generated/boards/boards";
+import { useGenerateBoardEndpointApiGoalsGoalIdGenerateBoardPost } from "@/api/generated/boards/boards";
 import {
 	useCreateGoalEndpointApiGoalsPost,
 	useGetGoalEndpointApiGoalsGoalIdGet,
@@ -29,10 +26,5 @@ export function useGenerateBoard() {
 	return useGenerateBoardEndpointApiGoalsGoalIdGenerateBoardPost();
 }
 
-export function useBoard(boardId: string) {
-	return useGetBoardEndpointApiBoardsBoardIdGet(boardId, {
-		query: {
-			enabled: !!boardId,
-		},
-	});
-}
+// Re-export useBoard from its new location for backward compatibility
+export { useBoard } from "@/features/board/hooks/use-board";

@@ -1,25 +1,42 @@
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
+import { type KeyboardEvent, useState } from "react";
+import { useUpdateBoardEndpointApiBoardsBoardIdPatch } from "@/api/generated/boards/boards";
 import type { BoardResponse } from "@/api/generated/model";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { BoardSkeleton } from "@/features/board/components/BoardSkeleton";
+import { BoardView } from "@/features/board/components/BoardView";
+import { useBoard } from "@/features/board/hooks/use-board";
 import { ErrorDisplay } from "@/features/goals/components/error-display";
-import { LoadingState } from "@/features/goals/components/loading-state";
-import { useBoard } from "@/features/goals/hooks/use-goals";
 import { authenticatedRoute } from "./_authenticated";
+
+type BoardSearchParams = {
+	task?: string;
+};
 
 export const boardDetailRoute = createRoute({
 	getParentRoute: () => authenticatedRoute,
 	path: "/boards/$boardId",
 	component: BoardDetailPage,
+	validateSearch: (search: Record<string, unknown>): BoardSearchParams => ({
+		task: typeof search.task === "string" ? search.task : undefined,
+	}),
 });
 
 function BoardDetailPage() {
 	const { boardId } = boardDetailRoute.useParams();
 	const boardQuery = useBoard(boardId);
+	const navigate = useNavigate();
+	const updateBoard = useUpdateBoardEndpointApiBoardsBoardIdPatch();
+
+	const [isEditingTitle, setIsEditingTitle] = useState(false);
+	const [editTitle, setEditTitle] = useState("");
 
 	if (boardQuery.isLoading) {
 		return (
-			<div className="flex min-h-screen items-center justify-center p-4">
-				<LoadingState message="Loading board..." />
+			<div className="flex h-screen">
+				<BoardSkeleton />
 			</div>
 		);
 	}
@@ -38,22 +55,55 @@ function BoardDetailPage() {
 
 	const board = boardQuery.data.data as BoardResponse;
 
+	const handleTitleSubmit = () => {
+		const trimmed = editTitle.trim();
+		if (trimmed && trimmed !== board.title) {
+			updateBoard.mutate({ boardId, data: { title: trimmed } });
+		}
+		setIsEditingTitle(false);
+	};
+
+	const handleTitleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+		if (e.key === "Enter") handleTitleSubmit();
+		if (e.key === "Escape") {
+			setEditTitle(board.title);
+			setIsEditingTitle(false);
+		}
+	};
+
 	return (
-		<div className="flex min-h-screen items-center justify-center p-4">
-			<Card className="w-full max-w-2xl">
-				<CardHeader>
-					<CardTitle className="text-2xl">{board.title}</CardTitle>
-					<p className="text-sm text-muted-foreground">
-						{board.columns.length} columns,{" "}
-						{board.columns.reduce((sum, col) => sum + col.tasks.length, 0)} tasks
-					</p>
-				</CardHeader>
-				<CardContent>
-					<p className="text-center text-sm text-muted-foreground">
-						Board view coming soon. Your board has been generated successfully.
-					</p>
-				</CardContent>
-			</Card>
+		<div className="flex h-screen flex-col">
+			{/* Board Header */}
+			<div className="flex items-center gap-3 border-b px-4 py-3">
+				<Button variant="ghost" size="sm" onClick={() => navigate({ to: "/" })}>
+					<ArrowLeft className="h-4 w-4" />
+				</Button>
+				{isEditingTitle ? (
+					<Input
+						autoFocus
+						value={editTitle}
+						onChange={(e) => setEditTitle(e.target.value)}
+						onKeyDown={handleTitleKeyDown}
+						onBlur={handleTitleSubmit}
+						className="h-8 max-w-md text-lg font-semibold"
+					/>
+				) : (
+					<h1
+						className="cursor-pointer text-lg font-semibold"
+						onDoubleClick={() => {
+							setEditTitle(board.title);
+							setIsEditingTitle(true);
+						}}
+					>
+						{board.title}
+					</h1>
+				)}
+			</div>
+
+			{/* Board Content */}
+			<div className="flex-1 overflow-hidden">
+				<BoardView board={board} />
+			</div>
 		</div>
 	);
 }

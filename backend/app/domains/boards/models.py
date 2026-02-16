@@ -1,7 +1,16 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Column, Date, DateTime, Integer, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -49,7 +58,7 @@ class BoardColumn(SQLModel, table=True):
     description: str = Field(
         default="", sa_column=Column(Text, nullable=False, server_default="")
     )
-    position: int = Field(default=0, sa_column=Column(Integer, nullable=False))
+    position: str = Field(default="a0", sa_column=Column(String(50), nullable=False))
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),
@@ -78,7 +87,7 @@ class Task(SQLModel, table=True):
     description: str = Field(
         default="", sa_column=Column(Text, nullable=False, server_default="")
     )
-    position: int = Field(default=0, sa_column=Column(Integer, nullable=False))
+    position: str = Field(default="a0", sa_column=Column(String(50), nullable=False))
     due_date: datetime | None = Field(
         default=None,
         sa_column=Column(Date, nullable=True),
@@ -98,3 +107,32 @@ class Task(SQLModel, table=True):
     )
 
     column: "BoardColumn" = Relationship(back_populates="tasks")
+    subtasks: list["Subtask"] = Relationship(
+        back_populates="task",
+        sa_relationship_kwargs={"order_by": "Subtask.position", "lazy": "selectin"},
+    )
+
+
+class Subtask(SQLModel, table=True):
+    """A checklist item within a task."""
+
+    id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        primary_key=True,
+    )
+    task_id: str = Field(foreign_key="task.id", index=True)
+    title: str = Field(default="")
+    completed: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default="false")
+    )
+    position: str = Field(default="a0", sa_column=Column(String(50), nullable=False))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+    task: "Task" = Relationship(back_populates="subtasks")
