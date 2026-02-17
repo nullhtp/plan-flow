@@ -53,5 +53,10 @@ class Settings(BaseSettings):
     ai_memory_retrieval_limit: int = 15
     ai_memory_similarity_threshold: float = 0.95
 
+    # AI Chat & Tools
+    ai_chat_model: str = ""  # defaults to ai_default_model when empty
+    tavily_api_key: str = ""  # Tavily Search API key; empty = web search disabled
+    ai_web_search_max_results: int = 5
+
 
 settings = Settings()

@@ -8,6 +8,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.domains.ai.router import (
+    actions_router as ai_actions_router,
+)
+from app.domains.ai.router import (
+    boards_chat_router as ai_boards_chat_router,
+)
 from app.domains.ai.router import router as ai_router
 from app.domains.auth.router import router as auth_router
 from app.domains.boards.router import goals_router as boards_goals_router
@@ -65,6 +71,8 @@ app.include_router(boards_tasks_router, prefix="/api")
 app.include_router(boards_subtasks_router, prefix="/api")
 app.include_router(boards_goals_router, prefix="/api")
 app.include_router(ai_router, prefix="/api")
+app.include_router(ai_actions_router, prefix="/api")
+app.include_router(ai_boards_chat_router, prefix="/api")
 
 
 @app.get("/health")

@@ -27,6 +27,10 @@ services:
       SECRET_KEY: dev-secret-key-not-for-production
       FRONTEND_ORIGIN: http://localhost:5173
       COOKIE_SECURE: "false"
+      # Optional: AI chat model (defaults to AI_DEFAULT_MODEL)
+      # AI_CHAT_MODEL: openai/gpt-4o
+      # Optional: Tavily API key for web search tool in AI chat
+      # TAVILY_API_KEY: tvly-xxxxx
     volumes:
       - ./backend:/app
       - /app/.venv

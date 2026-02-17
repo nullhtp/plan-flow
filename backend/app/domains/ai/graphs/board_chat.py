@@ -1,7 +1,7 @@
-"""Task chat graph: ReAct agent loop with tool binding.
+"""Board chat graph: ReAct agent loop with tool binding for board-level chat.
 
 Uses the PostgreSQL checkpointer for persistent conversation threads.
-Thread ID convention: task-chat-{task_id}
+Thread ID convention: board-chat-{board_id}
 
 Graph structure:
   respond -> should_continue? -> execute_tools -> respond (loop)
@@ -29,27 +29,27 @@ from langgraph.graph.message import (
 )
 
 from app.core.config import settings
-from app.domains.ai.prompts.chat import TASK_CHAT_SYSTEM_PROMPT
+from app.domains.ai.prompts.board_chat import BOARD_CHAT_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_ITERATIONS = 10
 
 
-class TaskChatState(dict):  # pyright: ignore[reportMissingTypeArgument]
-    """State for the task chat graph."""
+class BoardChatState(dict):  # pyright: ignore[reportMissingTypeArgument]
+    """State for the board chat graph."""
 
     messages: Annotated[list[AnyMessage], add_messages]
-    task_id: str
-    task_context: str
-    memory_context: str
+    board_id: str
+    board_title: str
     goal_context: str
+    memory_context: str
     tool_actions: list[dict[str, Any]]
     iteration_count: int
 
 
 def _get_llm() -> ChatOpenAI:
-    """Create a LangChain chat model for task chat."""
+    """Create a LangChain chat model for board chat."""
     model = settings.ai_chat_model or settings.ai_default_model
     return ChatOpenAI(
         model=model,
@@ -59,27 +59,29 @@ def _get_llm() -> ChatOpenAI:
     )
 
 
-async def respond(state: dict[str, Any]) -> dict[str, Any]:
-    """Respond to the user's message with task context.
+def _extract_field(context: str, field: str) -> str:
+    """Extract a specific field from a context string."""
+    for line in context.split("\n"):
+        if line.lower().startswith(f"{field}: "):
+            return line.split(": ", 1)[1].strip()
+    return ""
 
-    On the first call, prepends the system prompt. The LLM is bound to tools
-    so it can decide whether to call them.
-    """
+
+async def respond(state: dict[str, Any]) -> dict[str, Any]:
+    """Respond to the user's message with board context."""
     messages: list[AnyMessage] = state.get("messages", [])
-    task_context: str = state.get("task_context", "")
-    memory_context: str = state.get("memory_context", "")
+    board_title: str = state.get("board_title", "")
     goal_context: str = state.get("goal_context", "")
+    memory_context: str = state.get("memory_context", "")
     tools = state.get("_tools", [])
 
-    # Build system prompt from the template and context
-    system_content = TASK_CHAT_SYSTEM_PROMPT.format(
-        **_parse_task_context(task_context),
-        memory_context=memory_context,
+    system_content = BOARD_CHAT_SYSTEM_PROMPT.format(
+        board_title=board_title,
         goal_title=_extract_field(goal_context, "goal_title"),
         goal_input=_extract_field(goal_context, "goal_input"),
+        memory_context=memory_context,
     )
 
-    # Construct message list: system + conversation history
     full_messages: list[AnyMessage] = [SystemMessage(content=system_content)]
     full_messages.extend(messages)
 
@@ -95,11 +97,7 @@ async def respond(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def should_continue(state: dict[str, Any]) -> str:
-    """Decide whether to execute tools or finish.
-
-    Returns 'execute_tools' if the last message has tool calls,
-    otherwise returns 'end'.
-    """
+    """Decide whether to execute tools or finish."""
     messages: list[AnyMessage] = state.get("messages", [])
     iteration_count: int = state.get("iteration_count", 0)
 
@@ -120,17 +118,12 @@ def should_continue(state: dict[str, Any]) -> str:
 
 
 async def execute_tools(state: dict[str, Any]) -> dict[str, Any]:
-    """Execute tool calls from the last AI message.
-
-    Runs each tool, collects results as ToolMessages, and tracks
-    actions in tool_actions for the response schema.
-    """
+    """Execute tool calls from the last AI message."""
     messages: list[AnyMessage] = state.get("messages", [])
     tools = state.get("_tools", [])
     tool_actions: list[dict[str, Any]] = list(state.get("tool_actions", []))
     iteration_count: int = state.get("iteration_count", 0)
 
-    # Build tool lookup
     tool_map: dict[str, Any] = {t.name: t for t in tools}
 
     last_message = messages[-1]
@@ -161,7 +154,6 @@ async def execute_tools(state: dict[str, Any]) -> dict[str, Any]:
 
         try:
             result = await tool_fn.ainvoke(tool_args)
-            # Tool returns a string or dict; parse accordingly
             if isinstance(result, str):
                 try:
                     result_dict = json.loads(result)
@@ -218,49 +210,20 @@ async def execute_tools(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _parse_task_context(task_context: str) -> dict[str, str]:
-    """Parse task context string into template variables."""
-    # Task context is formatted as key: value lines
-    result: dict[str, str] = {
-        "task_title": "",
-        "task_description": "",
-        "task_status": "",
-        "dependency_titles": "None",
-        "dependent_titles": "None",
-    }
-    for line in task_context.split("\n"):
-        if ": " in line:
-            key, _, value = line.partition(": ")
-            key_clean = key.strip().lower().replace(" ", "_")
-            if key_clean in result:
-                result[key_clean] = value.strip()
-    return result
-
-
-def _extract_field(context: str, field: str) -> str:
-    """Extract a specific field from a context string."""
-    for line in context.split("\n"):
-        if line.lower().startswith(f"{field}: "):
-            return line.split(": ", 1)[1].strip()
-    return ""
-
-
-def build_task_chat_graph(
+def build_board_chat_graph(
     tools: list[Any] | None = None,
 ) -> StateGraph:  # pyright: ignore[reportMissingTypeArgument]
-    """Build the task chat state graph with ReAct agent loop.
+    """Build the board chat state graph with ReAct agent loop.
 
     Args:
-        tools: LangChain tools to bind to the LLM. Passed through state
-               so respond/execute_tools nodes can access them.
+        tools: LangChain tools to bind to the LLM.
 
     The checkpointer is attached at invocation time via the config.
     """
     tools = tools or []
 
-    graph: StateGraph = StateGraph(TaskChatState)  # pyright: ignore[reportMissingTypeArgument]
+    graph: StateGraph = StateGraph(BoardChatState)  # pyright: ignore[reportMissingTypeArgument]
 
-    # Inject tools into state via a wrapper
     _tools_list = tools
 
     async def respond_with_tools(state: dict[str, Any]) -> dict[str, Any]:
@@ -276,7 +239,6 @@ def build_task_chat_graph(
 
     graph.set_entry_point("respond")  # pyright: ignore[reportUnknownMemberType]
 
-    # Conditional edge: check for tool calls
     graph.add_conditional_edges(  # pyright: ignore[reportUnknownMemberType]
         "respond",
         should_continue,
@@ -286,12 +248,11 @@ def build_task_chat_graph(
         },
     )
 
-    # After tool execution, loop back to respond
     graph.add_edge("execute_tools", "respond")  # pyright: ignore[reportUnknownMemberType]
 
     return graph
 
 
-def get_thread_id(task_id: str) -> str:
-    """Generate a consistent thread ID for a task chat session."""
-    return f"task-chat-{task_id}"
+def get_board_thread_id(board_id: str) -> str:
+    """Generate a consistent thread ID for a board chat session."""
+    return f"board-chat-{board_id}"

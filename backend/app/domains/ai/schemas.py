@@ -176,3 +176,39 @@ class TaskEnrichmentOutput(BaseModel):
         default_factory=list,
         description="2-5 concrete, ordered subtasks that break down the task",
     )
+
+
+# ── Chat Response Schemas (AI tool use) ──────────────────
+
+
+class ToolAction(BaseModel):
+    """A single tool action executed (or proposed) during a chat turn."""
+
+    tool_name: str = Field(description="Name of the tool that was called")
+    description: str = Field(description="Human-readable description of the action")
+    status: str = Field(
+        description="Outcome: 'executed', 'pending_confirmation', or 'failed'"
+    )
+    result: dict[str, Any] | None = Field(
+        default=None,
+        description="Tool-specific result data (null for pending/failed)",
+    )
+
+
+class ChatResponse(BaseModel):
+    """Unified response from task or board chat endpoints.
+
+    Backward-compatible with the original TaskChatResponse: the new fields
+    default to empty/None so old clients continue to work.
+    """
+
+    response: str = Field(description="The AI assistant's natural-language response")
+    thread_id: str = Field(description="The conversation thread ID")
+    actions: list[ToolAction] = Field(
+        default_factory=list,
+        description="Tools used during this chat turn",
+    )
+    pending_action_id: str | None = Field(
+        default=None,
+        description="If a destructive action awaits confirmation, its ID",
+    )

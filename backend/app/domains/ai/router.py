@@ -1,4 +1,4 @@
-"""AI router: task chat endpoint with persistent conversation state."""
+"""AI router: task/board chat endpoints and action confirmation endpoints."""
 
 from __future__ import annotations
 
@@ -12,11 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.db import get_session
+from app.domains.ai.schemas import ChatResponse, ToolAction
 from app.domains.auth.deps import CurrentUser
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["ai"])
+actions_router = APIRouter(prefix="/actions", tags=["ai-actions"])
+boards_chat_router = APIRouter(prefix="/boards", tags=["ai"])
 
 
 # ── Schemas ──────────────────────────────────────────────
@@ -32,29 +35,98 @@ class TaskChatRequest(BaseModel):
     )
 
 
+class BoardChatRequest(BaseModel):
+    """Request body for the board chat endpoint."""
+
+    message: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="The user's chat message",
+    )
+
+
 class TaskChatResponse(BaseModel):
-    """Response from the task chat endpoint."""
+    """Response from the task chat endpoint (legacy, kept for backward compat)."""
 
     response: str = Field(description="The AI assistant's response")
     thread_id: str = Field(description="The conversation thread ID")
 
 
-# ── Endpoint ─────────────────────────────────────────────
+class ActionConfirmResponse(BaseModel):
+    """Response from confirm/reject action endpoints."""
+
+    status: str = Field(
+        description="Outcome: executed, rejected, failed, expired, etc."
+    )
+    description: str | None = Field(default=None)
+    error: str | None = Field(default=None)
+    result: dict | None = Field(default=None)  # pyright: ignore[reportMissingTypeArgument]
 
 
-@router.post("/{task_id}/chat", response_model=TaskChatResponse)
+# ── Helpers ──────────────────────────────────────────────
+
+
+async def _validate_board_ownership(
+    session: AsyncSession, board_id: str, user_id: str
+) -> tuple:  # pyright: ignore[reportMissingTypeArgument]
+    """Load board + goal and verify ownership. Returns (board, goal)."""
+    from app.domains.boards.models import Board
+    from app.domains.goals.models import Goal
+
+    board = await session.get(Board, board_id)
+    if board is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Board not found",
+        )
+
+    goal = await session.get(Goal, board.goal_id)
+    if goal is None or goal.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
+    return board, goal
+
+
+def _extract_tool_actions(result: dict) -> tuple[list[ToolAction], str | None]:  # pyright: ignore[reportMissingTypeArgument]
+    """Extract ToolAction list and pending_action_id from graph result."""
+    tool_actions: list[ToolAction] = []
+    pending_action_id: str | None = None
+
+    raw_actions = result.get("tool_actions", [])  # pyright: ignore[reportUnknownMemberType]
+    for a in raw_actions:  # pyright: ignore[reportUnknownVariableType]
+        action = ToolAction(
+            tool_name=a.get("tool_name", "unknown"),  # pyright: ignore[reportUnknownMemberType]
+            description=a.get("description", ""),  # pyright: ignore[reportUnknownMemberType]
+            status=a.get("status", "unknown"),  # pyright: ignore[reportUnknownMemberType]
+            result=a.get("result"),  # pyright: ignore[reportUnknownMemberType]
+        )
+        tool_actions.append(action)
+        if action.status == "pending_confirmation":
+            pending_action_id = a.get("pending_action_id")  # pyright: ignore[reportUnknownMemberType]
+
+    return tool_actions, pending_action_id
+
+
+# ── Task Chat Endpoint ──────────────────────────────────
+
+
+@router.post("/{task_id}/chat", response_model=ChatResponse)
 async def task_chat(
     task_id: str,
     body: TaskChatRequest,
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> TaskChatResponse:
+) -> ChatResponse:
     """Chat with AI about a specific task.
 
-    Maintains persistent conversation history per task using
-    LangGraph's PostgreSQL checkpointer.
+    The AI can use tools to read board state, mutate tasks (with confirmation
+    for destructive actions), and search the web. Returns tool action results
+    alongside the natural-language response.
     """
-    from app.domains.boards.models import Board, Task
+    from app.domains.boards.models import Task
 
     # Load task and verify ownership
     task = await session.get(Task, task_id)
@@ -64,22 +136,9 @@ async def task_chat(
             detail="Task not found",
         )
 
-    board = await session.get(Board, task.board_id)
-    if board is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Board not found",
-        )
-
-    # Verify the board's goal belongs to the current user
-    from app.domains.goals.models import Goal
-
-    goal = await session.get(Goal, board.goal_id)
-    if goal is None or goal.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied",
-        )
+    _board, goal = await _validate_board_ownership(
+        session, task.board_id, current_user.id
+    )
 
     # Build task context
     dep_titles = [
@@ -123,12 +182,21 @@ async def task_chat(
         build_task_chat_graph,
         get_thread_id,
     )
-
-    checkpointer = get_checkpointer()
-    graph = build_task_chat_graph()
-    compiled = graph.compile(checkpointer=checkpointer)  # pyright: ignore[reportUnknownMemberType]
+    from app.domains.ai.tools.registry import get_task_chat_tools
 
     thread_id = get_thread_id(task_id)
+    tools = get_task_chat_tools(
+        db=session,
+        board_id=task.board_id,
+        task_id=task_id,
+        user_id=current_user.id,
+        thread_id=thread_id,
+    )
+
+    checkpointer = get_checkpointer()
+    graph = build_task_chat_graph(tools=tools)
+    compiled = graph.compile(checkpointer=checkpointer)  # pyright: ignore[reportUnknownMemberType]
+
     config = {"configurable": {"thread_id": thread_id}}
 
     result = await compiled.ainvoke(  # pyright: ignore[reportUnknownMemberType]
@@ -155,7 +223,152 @@ async def task_chat(
         str(ai_message.content) if hasattr(ai_message, "content") else str(ai_message)
     )  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
 
-    return TaskChatResponse(
+    tool_actions, pending_action_id = _extract_tool_actions(result)
+
+    return ChatResponse(
         response=response_text,
         thread_id=thread_id,
+        actions=tool_actions,
+        pending_action_id=pending_action_id,
+    )
+
+
+# ── Board Chat Endpoint ─────────────────────────────────
+
+
+@boards_chat_router.post("/{board_id}/chat", response_model=ChatResponse)
+async def board_chat(
+    board_id: str,
+    body: BoardChatRequest,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ChatResponse:
+    """Chat with AI about a board.
+
+    The AI has access to board-wide tools including structural operations
+    (add/remove tasks, manage dependencies, split tasks).
+    """
+    board, goal = await _validate_board_ownership(session, board_id, current_user.id)
+
+    goal_context = (
+        f"goal_title: {goal.title or 'Untitled'}\ngoal_input: {goal.original_input}"
+    )
+
+    # Retrieve memory context
+    memory_context = ""
+    if settings.ai_memory_enabled:
+        try:
+            from app.domains.ai.memory import retrieve_relevant_memories
+            from app.domains.ai.prompts.memory import format_memory_block
+
+            query = f"{board.title} {goal.original_input}"
+            memories = await retrieve_relevant_memories(session, current_user.id, query)
+            memory_context = format_memory_block(memories)
+        except Exception:
+            logger.exception("Memory retrieval for board chat failed")
+
+    # Build and invoke the board chat graph
+    from app.domains.ai.checkpointer import get_checkpointer
+    from app.domains.ai.graphs.board_chat import (
+        build_board_chat_graph,
+        get_board_thread_id,
+    )
+    from app.domains.ai.tools.registry import get_board_chat_tools
+
+    thread_id = get_board_thread_id(board_id)
+    tools = get_board_chat_tools(
+        db=session,
+        board_id=board_id,
+        user_id=current_user.id,
+        thread_id=thread_id,
+    )
+
+    checkpointer = get_checkpointer()
+    graph = build_board_chat_graph(tools=tools)
+    compiled = graph.compile(checkpointer=checkpointer)  # pyright: ignore[reportUnknownMemberType]
+
+    config = {"configurable": {"thread_id": thread_id}}
+
+    result = await compiled.ainvoke(  # pyright: ignore[reportUnknownMemberType]
+        {
+            "messages": [HumanMessage(content=body.message)],
+            "board_id": board_id,
+            "board_title": board.title,
+            "goal_context": goal_context,
+            "memory_context": memory_context,
+        },
+        config,
+    )
+
+    messages = result.get("messages", [])  # pyright: ignore[reportUnknownMemberType]
+    if not messages:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No response from AI",
+        )
+
+    ai_message = messages[-1]
+    response_text = (
+        str(ai_message.content) if hasattr(ai_message, "content") else str(ai_message)
+    )  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+
+    tool_actions, pending_action_id = _extract_tool_actions(result)
+
+    return ChatResponse(
+        response=response_text,
+        thread_id=thread_id,
+        actions=tool_actions,
+        pending_action_id=pending_action_id,
+    )
+
+
+# ── Action Confirm/Reject Endpoints ─────────────────────
+
+
+@actions_router.post("/{action_id}/confirm", response_model=ActionConfirmResponse)
+async def confirm_pending_action(
+    action_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ActionConfirmResponse:
+    """Confirm a pending AI tool action and execute it."""
+    from app.domains.ai.pending_actions import confirm_action
+
+    result = await confirm_action(session, action_id, current_user.id)
+
+    if result["status"] == "not_found":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Action not found",
+        )
+
+    return ActionConfirmResponse(
+        status=result["status"],
+        description=result.get("description"),
+        error=result.get("error"),
+        result=result.get("result"),
+    )
+
+
+@actions_router.post("/{action_id}/reject", response_model=ActionConfirmResponse)
+async def reject_pending_action(
+    action_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ActionConfirmResponse:
+    """Reject a pending AI tool action."""
+    from app.domains.ai.pending_actions import reject_action
+
+    result = await reject_action(session, action_id, current_user.id)
+
+    if result["status"] == "not_found":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Action not found",
+        )
+
+    return ActionConfirmResponse(
+        status=result["status"],
+        description=result.get("description"),
+        error=result.get("error"),
     )
