@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any
 
@@ -8,7 +11,10 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.domains.ai.nodes.classify import classify_goal
-from app.domains.ai.nodes.generate_board import generate_board as _generate_board
+from app.domains.ai.nodes.enrich_task import enrich_task as _enrich_task
+from app.domains.ai.nodes.generate_board import (
+    generate_board_skeleton as _generate_skeleton,
+)
 from app.domains.ai.nodes.questions import (
     generate_follow_up_questions as _generate_follow_ups,
 )
@@ -16,9 +22,10 @@ from app.domains.ai.nodes.questions import (
     generate_questions as _generate_questions,
 )
 from app.domains.ai.schemas import (
-    BoardGenerationOutput,
+    BoardSkeletonOutput,
     ClassificationOutput,
     QuestionItem,
+    TaskEnrichmentOutput,
 )
 from app.domains.boards.dag_utils import (
     CyclicDependencyError,
@@ -116,51 +123,64 @@ async def generate_follow_up_questions(
     return follow_ups
 
 
-def _validate_board_dag(output: BoardGenerationOutput) -> None:
-    """Validate that AI board output forms a valid DAG.
+# ── Two-Step Board Generation (Streaming) ────────────────
+
+
+def _validate_skeleton_dag(skeleton: BoardSkeletonOutput) -> None:
+    """Validate that the skeleton output forms a valid DAG.
 
     Raises CyclicDependencyError or GoalNodeValidationError on failure.
     """
-    task_ids = [t.id for t in output.tasks]
-    goal_flags = {t.id: t.is_goal_node for t in output.tasks}
+    task_ids = [t.id for t in skeleton.tasks]
+    goal_flags = {t.id: t.is_goal_node for t in skeleton.tasks}
+    task_id_set = set(task_ids)
     edges: list[tuple[str, str]] = []
-    for t in output.tasks:
+    for t in skeleton.tasks:
         for dep_id in t.depends_on:
-            if dep_id in set(task_ids):
+            if dep_id in task_id_set:
                 edges.append((dep_id, t.id))
 
     validate_dag(task_ids, edges)
     validate_goal_node(task_ids, goal_flags, edges)
 
 
-async def generate_board_from_context(
+def _format_sse_event(event_type: str, data: dict[str, Any]) -> str:
+    """Format a Server-Sent Event string."""
+    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+
+async def generate_board_stream(
     raw_input: str,
     domain: str,
     complexity: int,
     dimensions: list[str],
     qa_pairs: str,
-) -> BoardGenerationOutput:
-    """Generate a board from goal context, with retries.
+    language: str = "en",
+) -> AsyncGenerator[str, None]:
+    """Async generator that yields SSE-formatted events for board generation.
 
-    Returns a BoardGenerationOutput with tasks and dependency edges.
-    Raises AIOutputError if the AI fails after all retries.
-    Retries on cyclic dependency graphs (counts toward retry limit).
+    Events yielded:
+    - skeleton_ready: Board skeleton with task IDs, titles, edges
+    - task_enriched: Per-task enrichment (description, metadata, subtasks)
+    - generation_complete: All done, with list of any failed task IDs
+    - generation_error: Unrecoverable error
     """
+    # ── Step 1: Generate skeleton with retries ──
     max_retries = settings.ai_max_retries
+    skeleton: BoardSkeletonOutput | None = None
     last_error: Exception | None = None
 
     for attempt in range(max_retries):
         try:
-            result: BoardGenerationOutput = await _generate_board(
-                raw_input, domain, complexity, dimensions, qa_pairs
+            skeleton = await _generate_skeleton(
+                raw_input, domain, complexity, dimensions, qa_pairs, language
             )
-            # Validate DAG structure
-            _validate_board_dag(result)
-            return result
+            _validate_skeleton_dag(skeleton)
+            break
         except (ValidationError, TypeError) as e:
             last_error = e
             logger.warning(
-                "AI board generation validation failed (attempt %d/%d): %s",
+                "Skeleton generation validation failed (attempt %d/%d): %s",
                 attempt + 1,
                 max_retries,
                 str(e),
@@ -168,11 +188,124 @@ async def generate_board_from_context(
         except (CyclicDependencyError, GoalNodeValidationError) as e:
             last_error = e
             logger.warning(
-                "AI generated invalid DAG (attempt %d/%d): %s",
+                "Skeleton generated invalid DAG (attempt %d/%d): %s",
                 attempt + 1,
                 max_retries,
                 str(e),
             )
 
-    msg = f"AI board generation failed after {max_retries} attempts"
-    raise AIOutputError(msg) from last_error
+    if skeleton is None:
+        yield _format_sse_event(
+            "generation_error",
+            {
+                "error": "skeleton_generation_failed",
+                "message": f"Board skeleton generation failed after {max_retries} attempts",  # noqa: E501
+                "detail": str(last_error) if last_error else None,
+            },
+        )
+        return
+
+    # Build task ID -> title map and dependency info for enrichment context
+    task_map = {t.id: t for t in skeleton.tasks}
+    task_id_set = set(task_map.keys())
+
+    # Build dependency and dependent title maps
+    dependency_titles_map: dict[str, list[str]] = {t.id: [] for t in skeleton.tasks}
+    dependent_titles_map: dict[str, list[str]] = {t.id: [] for t in skeleton.tasks}
+    for t in skeleton.tasks:
+        for dep_id in t.depends_on:
+            if dep_id in task_id_set:
+                dependency_titles_map[t.id].append(task_map[dep_id].title)
+                dependent_titles_map[dep_id].append(t.title)
+
+    # Yield skeleton_ready event
+    skeleton_data = {
+        "board_title": skeleton.board_title,
+        "tasks": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "depends_on": t.depends_on,
+                "is_goal_node": t.is_goal_node,
+            }
+            for t in skeleton.tasks
+        ],
+        "edges": [
+            {"source": dep_id, "target": t.id}
+            for t in skeleton.tasks
+            for dep_id in t.depends_on
+            if dep_id in task_id_set
+        ],
+    }
+    yield _format_sse_event("skeleton_ready", skeleton_data)
+
+    # ── Step 2: Parallel enrichment with concurrency limit ──
+    semaphore = asyncio.Semaphore(settings.ai_enrichment_concurrency)
+    failed_tasks: list[str] = []
+
+    async def _enrich_single_task(
+        ai_task_id: str,
+    ) -> tuple[str, TaskEnrichmentOutput | None]:
+        """Enrich a single task with retries, bounded by semaphore."""
+        async with semaphore:
+            last_err: Exception | None = None
+            for attempt in range(max_retries):
+                try:
+                    result = await _enrich_task(
+                        task_title=task_map[ai_task_id].title,
+                        dependency_titles=dependency_titles_map[ai_task_id],
+                        dependent_titles=dependent_titles_map[ai_task_id],
+                        raw_input=raw_input,
+                        domain=domain,
+                        complexity=complexity,
+                        language=language,
+                    )
+                    return ai_task_id, result
+                except (ValidationError, TypeError) as e:
+                    last_err = e
+                    logger.warning(
+                        "Task enrichment failed for '%s' (attempt %d/%d): %s",
+                        ai_task_id,
+                        attempt + 1,
+                        max_retries,
+                        str(e),
+                    )
+
+            logger.error(
+                "Task enrichment failed for '%s' after %d attempts: %s",
+                ai_task_id,
+                max_retries,
+                str(last_err),
+            )
+            return ai_task_id, None
+
+    # Create all enrichment tasks
+    tasks = [asyncio.create_task(_enrich_single_task(t.id)) for t in skeleton.tasks]
+
+    # Yield task_enriched events as they complete
+    for coro in asyncio.as_completed(tasks):
+        ai_task_id, enrichment = await coro
+        if enrichment is None:
+            failed_tasks.append(ai_task_id)
+            continue
+
+        yield _format_sse_event(
+            "task_enriched",
+            {
+                "task_id": ai_task_id,
+                "description": enrichment.description,
+                "due_date": enrichment.due_date,
+                "priority": enrichment.priority,
+                "estimated_minutes": enrichment.estimated_minutes,
+                "subtasks": [{"title": s.title} for s in enrichment.subtasks],
+            },
+        )
+
+    # ── Step 3: Generation complete ──
+    yield _format_sse_event(
+        "generation_complete",
+        {
+            "board_title": skeleton.board_title,
+            "failed_tasks": failed_tasks,
+        },
+    )

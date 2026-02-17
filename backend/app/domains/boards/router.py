@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from typing import Annotated
+import json
+import logging
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
+from app.domains.ai.schemas import BoardSkeletonOutput, ClassificationOutput
+from app.domains.ai.service import generate_board_stream
 from app.domains.auth.deps import CurrentUser
 from app.domains.boards.schemas import (
     BoardListResponse,
@@ -24,17 +28,25 @@ from app.domains.boards.service import (
     TaskNotFoundError,
     TaskStatusError,
     _build_board_response,
+    _format_qa_pairs,
+    create_board_from_skeleton,
     create_subtask,
     create_task,
     delete_subtask,
     delete_task,
-    generate_board_for_goal,
     get_board,
     list_boards,
+    revert_goal_to_answered,
+    transition_goal_to_active,
+    transition_goal_to_generating,
     update_board,
     update_subtask,
     update_task,
+    update_task_with_enrichment,
+    validate_goal_for_generation,
 )
+
+logger = logging.getLogger(__name__)
 
 # Router for board CRUD endpoints (/api/boards/...)
 router = APIRouter(prefix="/boards", tags=["boards"])
@@ -269,11 +281,20 @@ async def generate_board_endpoint(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BoardResponse:
-    """Generate a board for a goal using AI. The goal must be in 'answered' status."""
-    from app.domains.ai.service import AIOutputError
+    """Generate a board for a goal using AI (two-step: skeleton + enrichment).
 
+    Internally uses the streaming skeleton→enrichment pipeline but returns
+    a standard JSON response with the fully-built board.
+    """
+    from app.domains.ai.schemas import TaskEnrichmentOutput
+    from app.domains.boards.dag_utils import (
+        CyclicDependencyError,
+        GoalNodeValidationError,
+    )
+
+    # Pre-flight validation (returns regular HTTP errors)
     try:
-        board = await generate_board_for_goal(session, goal_id, current_user.id)
+        goal = await validate_goal_for_generation(session, goal_id, current_user.id)
     except BoardNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -289,10 +310,99 @@ async def generate_board_endpoint(
             status_code=status.HTTP_409_CONFLICT,
             detail="A board already exists for this goal",
         ) from None
-    except AIOutputError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI processing failed. Please try again.",
-        ) from None
 
+    # Transition goal to generating
+    await transition_goal_to_generating(session, goal)
+
+    # Extract context from ai_context
+    ai_context: dict[str, Any] = dict(goal.ai_context)
+    classification_data = ai_context.get("classification", {})
+    classification = ClassificationOutput.model_validate(classification_data)
+    qa_pairs = _format_qa_pairs(ai_context)
+    language = classification.language
+
+    # Consume the AI streaming pipeline, persisting to DB as events arrive
+    board = None
+    ai_id_to_db_id: dict[str, str] = {}
+
+    async for sse_event in generate_board_stream(
+        raw_input=goal.original_input,
+        domain=classification.domain,
+        complexity=classification.complexity,
+        dimensions=classification.dimensions,
+        qa_pairs=qa_pairs,
+        language=language,
+    ):
+        # Parse the SSE event
+        lines = sse_event.strip().split("\n")
+        event_type = ""
+        event_data: dict[str, Any] = {}
+        for line in lines:
+            if line.startswith("event: "):
+                event_type = line[7:]
+            elif line.startswith("data: "):
+                event_data = json.loads(line[6:])
+
+        if event_type == "skeleton_ready":
+            # Persist skeleton to database
+            try:
+                skeleton = BoardSkeletonOutput.model_validate(event_data)
+                board, ai_id_to_db_id = await create_board_from_skeleton(
+                    session, goal_id, skeleton
+                )
+            except (CyclicDependencyError, GoalNodeValidationError) as e:
+                logger.error("Skeleton persistence failed: %s", str(e))
+                await revert_goal_to_answered(session, goal)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Board skeleton generation produced invalid graph: {e}",
+                ) from None
+            except Exception as e:
+                logger.error("Skeleton persistence failed: %s", str(e))
+                await revert_goal_to_answered(session, goal)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to persist board skeleton",
+                ) from None
+
+        elif event_type == "task_enriched":
+            # Persist enrichment to database
+            ai_task_id = event_data.get("task_id", "")
+            db_task_id = ai_id_to_db_id.get(ai_task_id, "")
+
+            if db_task_id:
+                try:
+                    enrichment = TaskEnrichmentOutput.model_validate(event_data)
+                    await update_task_with_enrichment(session, db_task_id, enrichment)
+                except Exception as e:
+                    logger.error(
+                        "Enrichment persistence failed for task '%s': %s",
+                        ai_task_id,
+                        str(e),
+                    )
+
+        elif event_type == "generation_complete":
+            # Transition goal to active
+            if board is not None:
+                await transition_goal_to_active(session, goal)
+
+        elif event_type == "generation_error":
+            # Revert goal status and raise HTTP error
+            await revert_goal_to_answered(session, goal)
+            error_msg = event_data.get("message", "Board generation failed")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=error_msg,
+            )
+
+    # If we never got a board (shouldn't happen if stream yields correctly)
+    if board is None:
+        await revert_goal_to_answered(session, goal)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Board generation produced no output",
+        )
+
+    # Reload the board with all relationships for the response
+    board = await get_board(session, board.id, current_user.id)
     return _build_board_response(board)

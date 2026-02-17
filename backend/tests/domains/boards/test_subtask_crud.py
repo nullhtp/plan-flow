@@ -2,46 +2,22 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domains.ai.schemas import (
-    BoardGenerationOutput,
-    BoardGenerationTaskOutput,
-)
 from app.domains.goals.models import Goal
+from tests.conftest import create_test_board
 
 
-def _mock_board_output() -> BoardGenerationOutput:
-    return BoardGenerationOutput(
-        board_title="Test Board",
-        tasks=[
-            BoardGenerationTaskOutput(
-                id="t1",
-                title="Task 1",
-                description="Do thing 1",
-                depends_on=[],
-                is_goal_node=False,
-            ),
-            BoardGenerationTaskOutput(
-                id="t2",
-                title="Task 2",
-                description="Do thing 2",
-                depends_on=["t1"],
-                is_goal_node=True,
-            ),
-        ],
-    )
-
-
-async def _create_board(auth_client: AsyncClient, goal_id: str) -> dict:
-    with patch("app.domains.boards.service.generate_board_from_context") as mock_ai:
-        mock_ai.return_value = _mock_board_output()
-        response = await auth_client.post(f"/api/goals/{goal_id}/generate-board")
-        assert response.status_code == 201
-        return response.json()
+async def _create_board_and_get(
+    auth_client: AsyncClient, session: AsyncSession, goal: Goal
+) -> dict:
+    """Create a board via helper and return its JSON representation."""
+    board, _ = await create_test_board(session, goal)
+    response = await auth_client.get(f"/api/boards/{board.id}")
+    assert response.status_code == 200
+    return response.json()
 
 
 def _find_task(data: dict, title: str) -> dict:
@@ -52,9 +28,10 @@ def _find_task(data: dict, title: str) -> dict:
 async def test_create_subtask(
     auth_client: AsyncClient,
     answered_goal: Goal,
+    session: AsyncSession,
 ) -> None:
     """POST /api/tasks/:id/subtasks creates a new subtask."""
-    board = await _create_board(auth_client, answered_goal.id)
+    board = await _create_board_and_get(auth_client, session, answered_goal)
     task = _find_task(board, "Task 1")
 
     response = await auth_client.post(
@@ -73,9 +50,10 @@ async def test_create_subtask(
 async def test_toggle_subtask(
     auth_client: AsyncClient,
     answered_goal: Goal,
+    session: AsyncSession,
 ) -> None:
     """PATCH /api/subtasks/:id toggles completed status."""
-    board = await _create_board(auth_client, answered_goal.id)
+    board = await _create_board_and_get(auth_client, session, answered_goal)
     task = _find_task(board, "Task 1")
 
     # Create subtask
@@ -103,9 +81,10 @@ async def test_toggle_subtask(
 async def test_delete_subtask(
     auth_client: AsyncClient,
     answered_goal: Goal,
+    session: AsyncSession,
 ) -> None:
     """DELETE /api/subtasks/:id removes the subtask."""
-    board = await _create_board(auth_client, answered_goal.id)
+    board = await _create_board_and_get(auth_client, session, answered_goal)
     task = _find_task(board, "Task 1")
 
     # Create subtask

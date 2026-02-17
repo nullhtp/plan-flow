@@ -5,6 +5,7 @@ from typing import Any
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
+from app.domains.ai.lang_utils import get_language_name
 from app.domains.ai.prompts.questions import (
     FOLLOW_UP_SYSTEM_PROMPT,
     FOLLOW_UP_USER_PROMPT,
@@ -32,15 +33,24 @@ async def generate_questions(
     llm = _get_llm()
     structured_llm = llm.with_structured_output(QuestionsOutput)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
+    language = classification.language
+    language_name = get_language_name(language)
+
     user_content = QUESTIONS_USER_PROMPT.format(
         raw_input=raw_input,
         domain=classification.domain,
         complexity=classification.complexity,
         dimensions=", ".join(classification.dimensions),
+        language=language,
+    )
+
+    system_content = QUESTIONS_SYSTEM_PROMPT.format(
+        language=language,
+        language_name=language_name,
     )
 
     messages = [
-        {"role": "system", "content": QUESTIONS_SYSTEM_PROMPT},
+        {"role": "system", "content": system_content},
         {"role": "user", "content": user_content},
     ]
 
@@ -70,15 +80,24 @@ async def generate_follow_up_questions(
         qa_lines.append(f"Q ({q.id}): {q.text}\nA: {answer}")
     qa_pairs = "\n\n".join(qa_lines)
 
+    language = classification.language
+    language_name = get_language_name(language)
+
     user_content = FOLLOW_UP_USER_PROMPT.format(
         raw_input=raw_input,
         domain=classification.domain,
         complexity=classification.complexity,
+        language=language,
         qa_pairs=qa_pairs,
     )
 
+    system_content = FOLLOW_UP_SYSTEM_PROMPT.format(
+        language=language,
+        language_name=language_name,
+    )
+
     messages = [
-        {"role": "system", "content": FOLLOW_UP_SYSTEM_PROMPT},
+        {"role": "system", "content": system_content},
         {"role": "user", "content": user_content},
     ]
 

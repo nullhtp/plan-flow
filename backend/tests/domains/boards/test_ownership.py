@@ -2,66 +2,30 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, hash_password
-from app.domains.ai.schemas import (
-    BoardGenerationOutput,
-    BoardGenerationTaskOutput,
-)
 from app.domains.auth.models import User
 from app.domains.goals.models import Goal
-
-
-def _mock_board_output() -> BoardGenerationOutput:
-    return BoardGenerationOutput(
-        board_title="Test Board",
-        tasks=[
-            BoardGenerationTaskOutput(
-                id="t1",
-                title="Task 1",
-                description="Do thing 1",
-                depends_on=[],
-                is_goal_node=False,
-            ),
-            BoardGenerationTaskOutput(
-                id="t2",
-                title="Task 2",
-                description="Do thing 2",
-                depends_on=[],
-                is_goal_node=False,
-            ),
-            BoardGenerationTaskOutput(
-                id="t3",
-                title="Goal Task",
-                description="Final goal",
-                depends_on=["t1", "t2"],
-                is_goal_node=True,
-            ),
-        ],
-    )
+from tests.conftest import create_test_board
 
 
 @pytest.mark.asyncio
-@patch("app.domains.boards.service.generate_board_from_context")
 async def test_other_user_cannot_access_board(
-    mock_ai,
     auth_client: AsyncClient,
     answered_goal: Goal,
     session: AsyncSession,
 ) -> None:
     """A different user cannot view or modify another user's board."""
-    mock_ai.return_value = _mock_board_output()
+    board, _ = await create_test_board(session, answered_goal)
+    task_id = None
 
-    # Create board as the test user
-    response = await auth_client.post(f"/api/goals/{answered_goal.id}/generate-board")
-    assert response.status_code == 201
-    board_id = response.json()["id"]
-    task_id = response.json()["tasks"][0]["id"]
+    # Get task IDs from the board
+    board_response = await auth_client.get(f"/api/boards/{board.id}")
+    assert board_response.status_code == 200
+    task_id = board_response.json()["tasks"][0]["id"]
 
     # Create a second user
     other_user = User(
@@ -77,14 +41,14 @@ async def test_other_user_cannot_access_board(
     auth_client.cookies.set("access_token", other_token)
 
     # All endpoints should return 404 for the other user
-    assert (await auth_client.get(f"/api/boards/{board_id}")).status_code == 404
+    assert (await auth_client.get(f"/api/boards/{board.id}")).status_code == 404
     assert (
-        await auth_client.patch(f"/api/boards/{board_id}", json={"title": "Hacked"})
+        await auth_client.patch(f"/api/boards/{board.id}", json={"title": "Hacked"})
     ).status_code == 404
     # Task creation is now board-scoped (not column-scoped)
     assert (
         await auth_client.post(
-            f"/api/boards/{board_id}/tasks", json={"title": "Evil", "description": "x"}
+            f"/api/boards/{board.id}/tasks", json={"title": "Evil", "description": "x"}
         )
     ).status_code == 404
     assert (

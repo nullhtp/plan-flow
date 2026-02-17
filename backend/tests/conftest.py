@@ -15,8 +15,10 @@ from sqlmodel import SQLModel
 from app.core.config import settings
 from app.core.db import get_session
 from app.core.security import create_access_token, hash_password
+from app.domains.ai.schemas import BoardSkeletonOutput, BoardSkeletonTaskOutput
 from app.domains.auth.models import User
 from app.domains.boards.models import Board, Subtask, Task, TaskDependency  # noqa: F401
+from app.domains.boards.service import create_board_from_skeleton
 from app.domains.goals.models import Goal, GoalStatus
 from app.main import app
 
@@ -101,6 +103,7 @@ async def test_goal(session: AsyncSession, test_user: User) -> Goal:
                 "confidence": 0.9,
                 "dimensions": ["timeline", "budget", "housing"],
                 "suggested_title": "Relocate to Lisbon",
+                "language": "en",
                 "rejection_reason": None,
                 "refinement_suggestions": [],
             },
@@ -153,6 +156,7 @@ async def answered_goal(session: AsyncSession, test_user: User) -> Goal:
                 "confidence": 0.9,
                 "dimensions": ["timeline", "budget", "housing", "logistics"],
                 "suggested_title": "Relocate to Lisbon",
+                "language": "en",
                 "rejection_reason": None,
                 "refinement_suggestions": [],
             },
@@ -193,3 +197,49 @@ async def answered_goal(session: AsyncSession, test_user: User) -> Goal:
     await session.commit()
     await session.refresh(goal)
     return goal
+
+
+def make_skeleton(
+    board_title: str = "Test Board",
+    tasks: list[dict] | None = None,
+) -> BoardSkeletonOutput:
+    """Helper to create a BoardSkeletonOutput for testing."""
+    if tasks is None:
+        tasks = [
+            {"id": "t1", "title": "Task 1", "depends_on": [], "is_goal_node": False},
+            {"id": "t2", "title": "Task 2", "depends_on": [], "is_goal_node": False},
+            {
+                "id": "t3",
+                "title": "Goal Task",
+                "depends_on": ["t1", "t2"],
+                "is_goal_node": True,
+            },
+        ]
+    return BoardSkeletonOutput(
+        board_title=board_title,
+        tasks=[BoardSkeletonTaskOutput(**t) for t in tasks],
+    )
+
+
+async def create_test_board(
+    session: AsyncSession,
+    goal: Goal,
+    skeleton: BoardSkeletonOutput | None = None,
+) -> tuple[Board, dict[str, str]]:
+    """Create a board directly in the DB from a skeleton (bypasses API/AI).
+
+    Returns (board, ai_id_to_db_id_mapping).
+    Also transitions the goal to 'active' status.
+    """
+    if skeleton is None:
+        skeleton = make_skeleton()
+
+    board, ai_id_to_db_id = await create_board_from_skeleton(session, goal.id, skeleton)
+
+    # Transition goal to active
+    goal.status = GoalStatus.ACTIVE.value
+    session.add(goal)
+    await session.commit()
+    await session.refresh(goal)
+
+    return board, ai_id_to_db_id

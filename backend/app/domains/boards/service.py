@@ -8,11 +8,11 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.domains.ai.schemas import BoardGenerationOutput, ClassificationOutput
-from app.domains.ai.service import AIOutputError, generate_board_from_context
+from app.domains.ai.schemas import (
+    BoardSkeletonOutput,
+    TaskEnrichmentOutput,
+)
 from app.domains.boards.dag_utils import (
-    CyclicDependencyError,
-    GoalNodeValidationError,
     validate_dag,
     validate_goal_node,
 )
@@ -504,19 +504,19 @@ async def delete_subtask(
 # ── Board Retrieval & AI Generation ─────────────────────
 
 
-async def create_board_from_ai_output(
+async def create_board_from_skeleton(
     session: AsyncSession,
     goal_id: str,
-    ai_output: BoardGenerationOutput,
-) -> Board:
-    """Persist AI-generated board output as Board, Task, and TaskDependency records.
+    skeleton: BoardSkeletonOutput,
+) -> tuple[Board, dict[str, str]]:
+    """Persist skeleton as Board + Task (empty descriptions) + TaskDependency records.
 
-    Creates all records in a single transaction.
-    Validates DAG structure before committing.
+    Phase 1 of two-phase persistence. Creates all records in a single transaction.
+    Returns (board, ai_id_to_db_id mapping).
     """
     board = Board(
         goal_id=goal_id,
-        title=ai_output.board_title,
+        title=skeleton.board_title,
     )
     session.add(board)
     await session.flush()  # Get board.id without committing
@@ -526,28 +526,14 @@ async def create_board_from_ai_output(
     ai_id_to_goal_flag: dict[str, bool] = {}
     edges: list[tuple[str, str]] = []
 
-    # Create all tasks
-    for task_output in ai_output.tasks:
-        parsed_due_date: date | None = None
-        if task_output.due_date is not None:
-            try:
-                parsed_due_date = date.fromisoformat(task_output.due_date)
-            except ValueError:
-                logger.warning(
-                    "Invalid due_date '%s' for task '%s', setting to null",
-                    task_output.due_date,
-                    task_output.title,
-                )
-
+    # Create all tasks (with titles only, empty descriptions)
+    for task_output in skeleton.tasks:
         task = Task(
             board_id=board.id,
             title=task_output.title,
-            description=task_output.description,
+            description="",
             status="not_started",
             is_goal_node=task_output.is_goal_node,
-            due_date=parsed_due_date,
-            priority=task_output.priority,
-            estimated_minutes=task_output.estimated_minutes,
         )
         session.add(task)
         await session.flush()  # Get task.id
@@ -557,7 +543,7 @@ async def create_board_from_ai_output(
 
     # Validate DAG structure
     all_ai_ids = list(ai_id_to_db_id.keys())
-    for task_output in ai_output.tasks:
+    for task_output in skeleton.tasks:
         for dep_id in task_output.depends_on:
             if dep_id in ai_id_to_db_id:
                 edges.append((dep_id, task_output.id))
@@ -578,7 +564,60 @@ async def create_board_from_ai_output(
 
     await session.commit()
     await session.refresh(board)
-    return board
+    return board, ai_id_to_db_id
+
+
+async def update_task_with_enrichment(
+    session: AsyncSession,
+    task_id: str,
+    enrichment: TaskEnrichmentOutput,
+) -> list[str]:
+    """Update a single Task record with enrichment data and create Subtask records.
+
+    Phase 2 of two-phase persistence. Each call is its own transaction.
+    Returns list of created subtask IDs.
+    """
+    task = await session.get(Task, task_id)
+    if task is None:
+        raise TaskNotFoundError
+
+    # Update task fields
+    task.description = enrichment.description
+    task.updated_at = datetime.now(UTC)
+
+    if enrichment.due_date is not None:
+        try:
+            task.due_date = date.fromisoformat(enrichment.due_date)  # pyright: ignore[reportAttributeAccessIssue]
+        except ValueError:
+            logger.warning(
+                "Invalid due_date '%s' for task '%s', setting to null",
+                enrichment.due_date,
+                task.title,
+            )
+    if enrichment.priority is not None:
+        task.priority = enrichment.priority
+    if enrichment.estimated_minutes is not None:
+        task.estimated_minutes = enrichment.estimated_minutes
+
+    session.add(task)
+
+    # Create subtask records with fractional index positions
+    subtask_ids: list[str] = []
+    last_position: str | None = None
+    for subtask_output in enrichment.subtasks:
+        new_pos = generate_position_after(last_position)
+        subtask = Subtask(
+            task_id=task_id,
+            title=subtask_output.title,
+            position=new_pos,
+        )
+        session.add(subtask)
+        await session.flush()
+        subtask_ids.append(subtask.id)
+        last_position = new_pos
+
+    await session.commit()
+    return subtask_ids
 
 
 def _build_board_response(board: Board) -> BoardResponse:
@@ -744,19 +783,20 @@ def _format_qa_pairs(ai_context: dict[str, Any]) -> str:
     return "\n\n".join(lines)
 
 
-async def generate_board_for_goal(
+async def validate_goal_for_generation(
     session: AsyncSession,
     goal_id: str,
     user_id: str,
-) -> Board:
-    """Full orchestration: validate goal, call AI, persist board, update status.
+) -> Goal:
+    """Validate that a goal is ready for board generation.
+
+    Pre-flight checks that run before the SSE stream starts,
+    so errors can be returned as regular HTTP responses.
 
     Raises GoalNotReadyError if goal is not in 'answered' status.
     Raises BoardAlreadyExistsError if a board already exists.
     Raises BoardNotFoundError if goal not found or not owned by user.
-    Raises AIOutputError if the AI pipeline fails.
     """
-    # Validate goal
     goal = await session.get(Goal, goal_id)
     if goal is None or goal.user_id != user_id:
         raise BoardNotFoundError
@@ -771,53 +811,39 @@ async def generate_board_for_goal(
     if existing_result.scalar_one_or_none() is not None:
         raise BoardAlreadyExistsError
 
-    # Transition to generating
+    return goal
+
+
+async def transition_goal_to_generating(
+    session: AsyncSession,
+    goal: Goal,
+) -> None:
+    """Transition goal status to 'generating'."""
     goal.status = GoalStatus.GENERATING.value
     goal.updated_at = datetime.now(UTC)
     session.add(goal)
     await session.commit()
     await session.refresh(goal)
 
-    # Extract context from ai_context
-    ai_context: dict[str, Any] = dict(goal.ai_context)
-    classification_data = ai_context.get("classification", {})
-    classification = ClassificationOutput.model_validate(classification_data)
-    qa_pairs = _format_qa_pairs(ai_context)
 
-    # Call AI service
-    try:
-        ai_output = await generate_board_from_context(
-            raw_input=goal.original_input,
-            domain=classification.domain,
-            complexity=classification.complexity,
-            dimensions=classification.dimensions,
-            qa_pairs=qa_pairs,
-        )
-    except AIOutputError:
-        # Revert status to answered on failure
-        goal.status = GoalStatus.ANSWERED.value
-        goal.updated_at = datetime.now(UTC)
-        session.add(goal)
-        await session.commit()
-        raise
-
-    # Persist board
-    try:
-        board = await create_board_from_ai_output(session, goal_id, ai_output)
-    except (CyclicDependencyError, GoalNodeValidationError):
-        # Revert status to answered on validation failure
-        goal.status = GoalStatus.ANSWERED.value
-        goal.updated_at = datetime.now(UTC)
-        session.add(goal)
-        await session.commit()
-        raise AIOutputError("AI generated invalid dependency graph") from None
-
-    # Transition to active
+async def transition_goal_to_active(
+    session: AsyncSession,
+    goal: Goal,
+) -> None:
+    """Transition goal status to 'active'."""
     goal.status = GoalStatus.ACTIVE.value
     goal.updated_at = datetime.now(UTC)
     session.add(goal)
     await session.commit()
     await session.refresh(goal)
 
-    # Re-fetch board with relationships loaded
-    return await get_board(session, board.id, user_id)
+
+async def revert_goal_to_answered(
+    session: AsyncSession,
+    goal: Goal,
+) -> None:
+    """Revert goal status back to 'answered' on generation failure."""
+    goal.status = GoalStatus.ANSWERED.value
+    goal.updated_at = datetime.now(UTC)
+    session.add(goal)
+    await session.commit()

@@ -2,86 +2,62 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
-
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domains.ai.schemas import (
-    BoardGenerationOutput,
-    BoardGenerationTaskOutput,
-)
 from app.domains.goals.models import Goal
-
-
-def _mock_board_output() -> BoardGenerationOutput:
-    return BoardGenerationOutput(
-        board_title="Relocate from Berlin to Lisbon",
-        tasks=[
-            BoardGenerationTaskOutput(
-                id="t1",
-                title="Research visa",
-                description="Check visa options",
-                depends_on=[],
-                is_goal_node=False,
-                priority="high",
-            ),
-            BoardGenerationTaskOutput(
-                id="t2",
-                title="Research areas",
-                description="Find neighborhoods",
-                depends_on=[],
-                is_goal_node=False,
-            ),
-            BoardGenerationTaskOutput(
-                id="t3",
-                title="Gather docs",
-                description="Collect paperwork",
-                depends_on=["t1"],
-                is_goal_node=False,
-            ),
-            BoardGenerationTaskOutput(
-                id="t4",
-                title="Apply visa",
-                description="Submit application",
-                depends_on=["t3"],
-                is_goal_node=False,
-                due_date="2026-03-15",
-            ),
-            BoardGenerationTaskOutput(
-                id="t5",
-                title="Book flight",
-                description="Book ticket",
-                depends_on=["t4", "t2"],
-                is_goal_node=True,
-                estimated_minutes=30,
-            ),
-        ],
-    )
+from tests.conftest import create_test_board, make_skeleton
 
 
 @pytest.mark.asyncio
-@patch("app.domains.boards.service.generate_board_from_context")
 async def test_get_board_success(
-    mock_ai: AsyncMock,
     auth_client: AsyncClient,
     answered_goal: Goal,
+    session: AsyncSession,
 ) -> None:
     """GET board returns DAG structure with tasks and edges."""
-    mock_ai.return_value = _mock_board_output()
-
-    # Create board first
-    create_response = await auth_client.post(
-        f"/api/goals/{answered_goal.id}/generate-board",
+    skeleton = make_skeleton(
+        board_title="Relocate from Berlin to Lisbon",
+        tasks=[
+            {
+                "id": "t1",
+                "title": "Research visa",
+                "depends_on": [],
+                "is_goal_node": False,
+            },
+            {
+                "id": "t2",
+                "title": "Research areas",
+                "depends_on": [],
+                "is_goal_node": False,
+            },
+            {
+                "id": "t3",
+                "title": "Gather docs",
+                "depends_on": ["t1"],
+                "is_goal_node": False,
+            },
+            {
+                "id": "t4",
+                "title": "Apply visa",
+                "depends_on": ["t3"],
+                "is_goal_node": False,
+            },
+            {
+                "id": "t5",
+                "title": "Book flight",
+                "depends_on": ["t4", "t2"],
+                "is_goal_node": True,
+            },
+        ],
     )
-    assert create_response.status_code == 201
-    board_id = create_response.json()["id"]
+    board, _ = await create_test_board(session, answered_goal, skeleton)
 
-    # Retrieve board
-    response = await auth_client.get(f"/api/boards/{board_id}")
+    response = await auth_client.get(f"/api/boards/{board.id}")
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] == board_id
+    assert data["id"] == board.id
     assert data["goal_id"] == answered_goal.id
     assert data["title"] == "Relocate from Berlin to Lisbon"
     # DAG structure: flat task list, not columns
@@ -95,7 +71,6 @@ async def test_get_board_success(
     task = next(t for t in data["tasks"] if t["title"] == "Research visa")
     assert task["status"] == "not_started"
     assert task["is_goal_node"] is False
-    assert task["priority"] == "high"
     assert task["is_locked"] is False  # no deps
     assert task["dependency_ids"] == []
     # Check goal node

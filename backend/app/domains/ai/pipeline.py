@@ -2,8 +2,10 @@
 
 This module defines the state graph for the classify → generate_questions
 flow. Currently the service layer calls nodes directly for simplicity,
-but this graph is available for future extension (e.g., adding board
-generation as a downstream node).
+but this graph is available for future extension.
+
+Board generation uses a separate two-step streaming flow (skeleton + enrichment)
+orchestrated by ai/service.py:generate_board_stream() rather than a LangGraph graph.
 """
 
 from __future__ import annotations
@@ -16,7 +18,6 @@ from app.core.config import settings
 from app.domains.ai.nodes.classify import classify_goal
 from app.domains.ai.nodes.questions import generate_questions
 from app.domains.ai.schemas import (
-    BoardGenerationOutput,
     ClassificationOutput,
     QuestionItem,
 )
@@ -31,7 +32,6 @@ class GoalPipelineState(TypedDict, total=False):
     is_rejected: bool
     rejection_reason: str | None
     refinement_suggestions: list[str] | None
-    board_generation: BoardGenerationOutput | None
 
 
 async def _classify_node(state: GoalPipelineState) -> dict[str, Any]:

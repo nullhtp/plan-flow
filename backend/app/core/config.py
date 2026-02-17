@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     ai_confidence_threshold: float = 0.3
     ai_llm_timeout: int = 20  # seconds
     ai_max_retries: int = 3
+    ai_enrichment_concurrency: int = 5  # max concurrent enrichment LLM calls
 
 
 settings = Settings()

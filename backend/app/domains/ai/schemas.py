@@ -23,6 +23,10 @@ class ClassificationOutput(BaseModel):
     suggested_title: str = Field(
         description="A clean, concise title derived from the raw input"
     )
+    language: str = Field(
+        default="en",
+        description="ISO 639-1 language code detected from the input, e.g. 'en', 'ru', 'es'",  # noqa: E501
+    )
     rejection_reason: str | None = Field(
         default=None,
         description="If confidence is low, explain why the goal is too vague",
@@ -100,9 +104,75 @@ class BoardGenerationTaskOutput(BaseModel):
 
 
 class BoardGenerationOutput(BaseModel):
-    """Structured output from the board generation LLM call (DAG-based)."""
+    """Structured output from the board generation LLM call (DAG-based).
+
+    NOTE: Legacy schema kept temporarily for backward compatibility during migration.
+    New code should use BoardSkeletonOutput + TaskEnrichmentOutput.
+    """
 
     board_title: str = Field(description="A concise title for the board")
     tasks: list[BoardGenerationTaskOutput] = Field(
         description="Flat list of tasks forming a DAG (5-30 tasks)",
+    )
+
+
+# ── Two-Step Generation Schemas ──────────────────────────
+
+
+class BoardSkeletonTaskOutput(BaseModel):
+    """A single task in the skeleton output (structure only, no content)."""
+
+    id: str = Field(
+        description="Unique task identifier within the board, e.g. 't1', 't2'",
+    )
+    title: str = Field(description="Concise, actionable task title")
+    depends_on: list[str] = Field(
+        default_factory=list,
+        description="List of task IDs this task depends on (prerequisites). "
+        "Empty means the task can be started immediately.",
+    )
+    is_goal_node: bool = Field(
+        default=False,
+        description="True for the single final goal completion task. "
+        "Exactly one task must have this set to true.",
+    )
+
+
+class BoardSkeletonOutput(BaseModel):
+    """Structured output from the skeleton generation step."""
+
+    board_title: str = Field(description="A concise title for the board")
+    tasks: list[BoardSkeletonTaskOutput] = Field(
+        description="Flat list of tasks forming a DAG (5-30 tasks). "
+        "Only structure — no descriptions or metadata.",
+    )
+
+
+class SubtaskOutput(BaseModel):
+    """A single subtask generated during task enrichment."""
+
+    title: str = Field(description="Concise, actionable subtask title")
+
+
+class TaskEnrichmentOutput(BaseModel):
+    """Structured output from the per-task enrichment step."""
+
+    description: str = Field(
+        description="Clear description of what this task involves",
+    )
+    due_date: str | None = Field(
+        default=None,
+        description="ISO date (YYYY-MM-DD) if a specific deadline is relevant",
+    )
+    priority: str | None = Field(
+        default=None,
+        description="'low', 'medium', or 'high' if prioritization adds value",
+    )
+    estimated_minutes: int | None = Field(
+        default=None,
+        description="Estimated time in minutes if the task has predictable duration",
+    )
+    subtasks: list[SubtaskOutput] = Field(
+        default_factory=list,
+        description="2-5 concrete, ordered subtasks that break down the task",
     )

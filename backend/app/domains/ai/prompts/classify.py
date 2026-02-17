@@ -22,11 +22,16 @@ and specific the goal is.
 via follow-up questions (e.g., ["timeline", "budget", \
 "current_experience", "location_preferences"]).
 5. **suggested_title**: A clean, concise title derived from the raw \
-input (e.g., raw: "i wanna move to portugal" -> "Relocate to Portugal").
-6. **rejection_reason**: If confidence < 0.3, provide a brief, \
+input (e.g., raw: "i wanna move to portugal" -> "Relocate to Portugal"). \
+The suggested title MUST be in the same language as the user's input.
+6. **language**: The ISO 639-1 language code of the user's input \
+(e.g., "en" for English, "ru" for Russian, "es" for Spanish, "de" \
+for German). Detect the dominant language of the input. If the input \
+contains mixed languages, detect the dominant one.
+7. **rejection_reason**: If confidence < 0.3, provide a brief, \
 friendly explanation of why the goal is too vague to plan. \
 Set to null if confidence >= 0.3.
-7. **refinement_suggestions**: If confidence < 0.3, provide exactly \
+8. **refinement_suggestions**: If confidence < 0.3, provide exactly \
 2-3 concrete, specific alternative goal descriptions the user could \
 try instead. Each suggestion should be a complete, actionable goal \
 statement. Set to an empty list if confidence >= 0.3.
