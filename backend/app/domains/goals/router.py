@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
@@ -37,14 +37,28 @@ router = APIRouter(prefix="/goals", tags=["goals"])
 )
 async def create_goal_endpoint(
     body: GoalCreate,
+    request: Request,
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> GoalQuestionsResponse | GoalRejectionResponse:
     """Create a new goal from raw text. Runs AI classification + question generation."""
     from app.domains.ai.service import AIOutputError
 
+    # Extract client IP for geolocation fallback
+    client_ip = request.headers.get("x-forwarded-for")
+    if client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+    elif request.client:
+        client_ip = request.client.host
+
     try:
-        goal, result = await create_goal(session, current_user.id, body.original_input)
+        goal, result = await create_goal(
+            session,
+            current_user.id,
+            body.original_input,
+            user_meta=body.user_meta,
+            client_ip=client_ip,
+        )
     except AIOutputError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

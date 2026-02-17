@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -55,6 +56,7 @@ class BoardResponse(BaseModel):
     tasks: list[TaskResponse]
     edges: list[EdgeResponse]
     is_completed: bool = False
+    user_meta: dict[str, Any] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

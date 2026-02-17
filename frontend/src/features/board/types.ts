@@ -30,6 +30,19 @@ export interface TaskResponse {
 	created_at: string;
 }
 
+export interface UserLocationMeta {
+	city: string | null;
+	country: string | null;
+}
+
+export interface UserMetaResponse {
+	timezone: string;
+	locale: string;
+	current_datetime: string;
+	location: UserLocationMeta | null;
+	device_type: string;
+}
+
 export interface BoardResponse {
 	id: string;
 	goal_id: string;
@@ -37,6 +50,7 @@ export interface BoardResponse {
 	tasks: TaskResponse[];
 	edges: EdgeResponse[];
 	is_completed: boolean;
+	user_meta: UserMetaResponse | null;
 	created_at: string;
 }
 

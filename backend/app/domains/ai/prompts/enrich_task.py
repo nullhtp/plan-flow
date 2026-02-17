@@ -42,4 +42,4 @@ Task to enrich:
 - Title: {task_title}
 - Dependencies (tasks that must complete first): {dependency_titles}
 - Dependents (tasks that depend on this): {dependent_titles}
-"""
+{user_context}"""

@@ -620,7 +620,9 @@ async def update_task_with_enrichment(
     return subtask_ids
 
 
-def _build_board_response(board: Board) -> BoardResponse:
+def _build_board_response(
+    board: Board, user_meta: dict[str, Any] | None = None
+) -> BoardResponse:
     """Build a BoardResponse from a Board with loaded relationships."""
     tasks = board.tasks
     edges: list[EdgeResponse] = []
@@ -697,6 +699,7 @@ def _build_board_response(board: Board) -> BoardResponse:
         tasks=task_responses,
         edges=unique_edges,
         is_completed=is_completed,
+        user_meta=user_meta,
         created_at=board.created_at,
     )
 
@@ -758,6 +761,18 @@ async def get_board_by_goal(
         raise BoardNotFoundError
 
     return board
+
+
+async def get_user_meta_for_board(
+    session: AsyncSession,
+    board: Board,
+) -> dict[str, Any] | None:
+    """Read user_meta from the board's related goal's ai_context."""
+    goal = await session.get(Goal, board.goal_id)
+    if goal is None:
+        return None
+    ai_context: dict[str, Any] = dict(goal.ai_context) if goal.ai_context else {}
+    return ai_context.get("user_meta")
 
 
 def _format_qa_pairs(ai_context: dict[str, Any]) -> str:

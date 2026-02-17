@@ -35,6 +35,7 @@ from app.domains.boards.service import (
     delete_subtask,
     delete_task,
     get_board,
+    get_user_meta_for_board,
     list_boards,
     revert_goal_to_answered,
     transition_goal_to_active,
@@ -89,7 +90,8 @@ async def get_board_endpoint(
             detail="Board not found",
         ) from None
 
-    return _build_board_response(board)
+    user_meta = await get_user_meta_for_board(session, board)
+    return _build_board_response(board, user_meta=user_meta)
 
 
 @router.patch("/{board_id}", response_model=BoardResponse)
@@ -321,6 +323,11 @@ async def generate_board_endpoint(
     qa_pairs = _format_qa_pairs(ai_context)
     language = classification.language
 
+    # Format user meta for AI prompt injection
+    from app.domains.ai.prompts.meta import format_user_meta_block
+
+    user_context = format_user_meta_block(ai_context.get("user_meta"))
+
     # Consume the AI streaming pipeline, persisting to DB as events arrive
     board = None
     ai_id_to_db_id: dict[str, str] = {}
@@ -332,6 +339,7 @@ async def generate_board_endpoint(
         dimensions=classification.dimensions,
         qa_pairs=qa_pairs,
         language=language,
+        user_context=user_context,
     ):
         # Parse the SSE event
         lines = sse_event.strip().split("\n")
@@ -405,4 +413,5 @@ async def generate_board_endpoint(
 
     # Reload the board with all relationships for the response
     board = await get_board(session, board.id, current_user.id)
-    return _build_board_response(board)
+    board_user_meta = await get_user_meta_for_board(session, board)
+    return _build_board_response(board, user_meta=board_user_meta)

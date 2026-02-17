@@ -28,6 +28,7 @@ def _get_llm() -> ChatOpenAI:
 async def generate_questions(
     raw_input: str,
     classification: ClassificationOutput,
+    user_context: str = "",
 ) -> list[QuestionItem]:
     """Generate initial questions based on goal classification."""
     llm = _get_llm()
@@ -42,6 +43,7 @@ async def generate_questions(
         complexity=classification.complexity,
         dimensions=", ".join(classification.dimensions),
         language=language,
+        user_context=user_context,
     )
 
     system_content = QUESTIONS_SYSTEM_PROMPT.format(
@@ -68,6 +70,7 @@ async def generate_follow_up_questions(
     classification: ClassificationOutput,
     questions: list[QuestionItem],
     answers: dict[str, Any],
+    user_context: str = "",
 ) -> list[QuestionItem]:
     """Generate follow-up questions based on initial answers."""
     llm = _get_llm()
@@ -89,6 +92,7 @@ async def generate_follow_up_questions(
         complexity=classification.complexity,
         language=language,
         qa_pairs=qa_pairs,
+        user_context=user_context,
     )
 
     system_content = FOLLOW_UP_SYSTEM_PROMPT.format(

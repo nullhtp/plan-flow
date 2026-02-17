@@ -52,4 +52,4 @@ Classification:
 
 Questions and answers:
 {qa_pairs}
-"""
+{user_context}"""

@@ -43,7 +43,7 @@ Classification:
 - Complexity: {complexity}/5
 - Key dimensions: {dimensions}
 - Language: {language}
-"""
+{user_context}"""
 
 FOLLOW_UP_SYSTEM_PROMPT = """\
 You are an expert planning assistant for PlanFlow.
@@ -76,4 +76,4 @@ Classification:
 
 Initial questions and answers:
 {qa_pairs}
-"""
+{user_context}"""

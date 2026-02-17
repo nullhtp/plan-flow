@@ -76,6 +76,7 @@ async def _retry_async(
 
 async def classify_and_generate_questions(
     raw_input: str,
+    user_context: str = "",
 ) -> ClassifyAndGenerateResult:
     """Run the full classify -> generate questions pipeline with retries."""
     classification: ClassificationOutput = await _retry_async(classify_goal, raw_input)
@@ -91,7 +92,7 @@ async def classify_and_generate_questions(
         )
 
     questions: list[QuestionItem] = await _retry_async(
-        _generate_questions, raw_input, classification
+        _generate_questions, raw_input, classification, user_context
     )
 
     return ClassifyAndGenerateResult(
@@ -106,6 +107,7 @@ async def generate_follow_up_questions(
     classification: ClassificationOutput,
     questions: list[QuestionItem],
     answers: dict[str, Any],
+    user_context: str = "",
 ) -> list[QuestionItem]:
     """Generate follow-up questions based on initial answers, with retries."""
     try:
@@ -115,6 +117,7 @@ async def generate_follow_up_questions(
             classification,
             questions,
             answers,
+            user_context,
         )
     except AIOutputError:
         logger.warning("Follow-up generation failed, proceeding without follow-ups")
@@ -156,6 +159,7 @@ async def generate_board_stream(
     dimensions: list[str],
     qa_pairs: str,
     language: str = "en",
+    user_context: str = "",
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields SSE-formatted events for board generation.
 
@@ -173,7 +177,13 @@ async def generate_board_stream(
     for attempt in range(max_retries):
         try:
             skeleton = await _generate_skeleton(
-                raw_input, domain, complexity, dimensions, qa_pairs, language
+                raw_input,
+                domain,
+                complexity,
+                dimensions,
+                qa_pairs,
+                language,
+                user_context,
             )
             _validate_skeleton_dag(skeleton)
             break
@@ -259,6 +269,7 @@ async def generate_board_stream(
                         domain=domain,
                         complexity=complexity,
                         language=language,
+                        user_context=user_context,
                     )
                     return ai_task_id, result
                 except (ValidationError, TypeError) as e:

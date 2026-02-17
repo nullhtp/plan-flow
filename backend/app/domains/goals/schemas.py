@@ -15,10 +15,28 @@ class QuestionSchema(BaseModel):
     required: bool = True
 
 
+class UserLocationMeta(BaseModel):
+    """Location metadata from browser geolocation or IP fallback."""
+
+    city: str | None = None
+    country: str | None = None
+
+
+class UserMeta(BaseModel):
+    """User environment context collected at goal creation time."""
+
+    timezone: str  # IANA timezone (e.g., "Europe/Berlin")
+    locale: str  # BCP 47 locale (e.g., "en-US", "de-DE")
+    current_datetime: str = ""  # ISO 8601 UTC — overridden server-side
+    location: UserLocationMeta | None = None
+    device_type: str  # "mobile" | "desktop" | "tablet"
+
+
 class GoalCreate(BaseModel):
     """Request body for creating a new goal."""
 
     original_input: str = Field(min_length=1, max_length=2000)
+    user_meta: UserMeta | None = None
 
 
 class GoalQuestionsResponse(BaseModel):

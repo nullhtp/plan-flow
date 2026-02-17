@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.ai.prompts.meta import format_user_meta_block
 from app.domains.ai.schemas import ClassificationOutput, QuestionItem
 from app.domains.ai.service import (
     AIOutputError,
@@ -13,6 +14,7 @@ from app.domains.ai.service import (
     generate_follow_up_questions,
 )
 from app.domains.goals.models import Goal, GoalStatus
+from app.domains.goals.schemas import UserMeta
 
 
 class GoalNotFoundError(Exception):
@@ -27,25 +29,42 @@ async def create_goal(
     session: AsyncSession,
     user_id: str,
     original_input: str,
+    user_meta: UserMeta | None = None,
+    client_ip: str | None = None,
 ) -> tuple[Goal, ClassifyAndGenerateResult]:
     """Create a goal, run AI classification + question generation.
 
     Returns the Goal record and the AI pipeline result.
     Raises AIOutputError if the AI pipeline fails after retries.
     """
+    # Build initial ai_context with user_meta if provided
+    ai_context: dict[str, Any] = {}
+    if user_meta is not None:
+        meta_dict = user_meta.model_dump()
+        # Override current_datetime with server UTC time
+        meta_dict["current_datetime"] = datetime.now(UTC).isoformat()
+        # Store client IP for potential geolocation fallback
+        if client_ip:
+            meta_dict["client_ip"] = client_ip
+        ai_context["user_meta"] = meta_dict
+
     # Create goal record
     goal = Goal(
         user_id=user_id,
         original_input=original_input,
         status=GoalStatus.CLASSIFYING.value,
+        ai_context=ai_context if ai_context else {},
     )
     session.add(goal)
     await session.commit()
     await session.refresh(goal)
 
+    # Format user meta for AI prompt injection
+    user_context = format_user_meta_block(ai_context.get("user_meta"))
+
     # Run AI pipeline
     try:
-        result = await classify_and_generate_questions(original_input)
+        result = await classify_and_generate_questions(original_input, user_context)
     except AIOutputError:
         # Reset goal status on failure
         goal.status = GoalStatus.INPUT.value
@@ -64,10 +83,13 @@ async def create_goal(
 
     goal.title = result.classification.suggested_title
     goal.status = GoalStatus.QUESTIONING.value
-    goal.ai_context = {
-        "classification": result.classification.model_dump(),
-        "questions": [q.model_dump() for q in result.questions],
-    }
+    # Merge user_meta into ai_context alongside classification and questions
+    updated_ai_context: dict[str, Any] = (
+        dict(goal.ai_context) if goal.ai_context else {}
+    )
+    updated_ai_context["classification"] = result.classification.model_dump()
+    updated_ai_context["questions"] = [q.model_dump() for q in result.questions]
+    goal.ai_context = updated_ai_context
     goal.updated_at = datetime.now(UTC)
     session.add(goal)
     await session.commit()
@@ -105,11 +127,15 @@ async def submit_answers(
         questions_data = ai_context.get("questions", [])
         questions = [QuestionItem.model_validate(q) for q in questions_data]
 
+        # Format user meta for follow-up prompt injection
+        user_context_for_follow_up = format_user_meta_block(ai_context.get("user_meta"))
+
         follow_ups = await generate_follow_up_questions(
             goal.original_input,
             classification,
             questions,
             answers,
+            user_context_for_follow_up,
         )
 
         if follow_ups:

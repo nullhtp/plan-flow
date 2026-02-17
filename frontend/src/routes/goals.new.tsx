@@ -1,6 +1,7 @@
 import { createRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import type {
+	GoalCreate,
 	GoalQuestionsResponse,
 	GoalRejectionResponse,
 	QuestionSchema,
@@ -12,6 +13,7 @@ import { GoalSummary } from "@/features/goals/components/goal-summary";
 import { LoadingState } from "@/features/goals/components/loading-state";
 import { VagueGoalRejection } from "@/features/goals/components/vague-goal-rejection";
 import { useCreateGoal, useSubmitAnswers } from "@/features/goals/hooks/use-goals";
+import { useUserMeta } from "@/shared/hooks/use-user-meta";
 import { authenticatedRoute } from "./_authenticated";
 
 type AnswerValues = Record<string, string | string[] | number>;
@@ -48,6 +50,7 @@ export const goalsNewRoute = createRoute({
 function GoalsNewPage() {
 	const createGoal = useCreateGoal();
 	const submitAnswers = useSubmitAnswers();
+	const { resolveLocation } = useUserMeta();
 
 	const [pageState, setPageState] = useState<PageState>({ step: "input" });
 	const [lastInput, setLastInput] = useState("");
@@ -59,12 +62,16 @@ function GoalsNewPage() {
 		return "Something went wrong while processing your goal. Please try again.";
 	}
 
-	function handleCreateGoal(input: string) {
+	async function handleCreateGoal(input: string) {
 		setLastInput(input);
 		setPageState({ step: "loading" });
 
+		// Resolve location from user gesture context (triggers permission prompt)
+		const userMeta = await resolveLocation();
+
 		createGoal.mutate(
-			{ data: { original_input: input } },
+			// user_meta included for AI context; typed after Orval regeneration
+			{ data: { original_input: input, user_meta: userMeta } as GoalCreate },
 			{
 				onSuccess: (response) => {
 					if (response.status === 201) {
