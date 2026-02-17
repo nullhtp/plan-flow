@@ -32,6 +32,7 @@ class GoalPipelineState(TypedDict, total=False):
     is_rejected: bool
     rejection_reason: str | None
     refinement_suggestions: list[str] | None
+    memory_context: str
 
 
 async def _classify_node(state: GoalPipelineState) -> dict[str, Any]:

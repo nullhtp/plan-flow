@@ -46,5 +46,12 @@ class Settings(BaseSettings):
     ai_max_retries: int = 3
     ai_enrichment_concurrency: int = 5  # max concurrent enrichment LLM calls
 
+    # AI Memory
+    ai_memory_enabled: bool = True
+    ai_embedding_model: str = "openai/text-embedding-3-small"
+    ai_embedding_dimensions: int = 1536
+    ai_memory_retrieval_limit: int = 15
+    ai_memory_similarity_threshold: float = 0.95
+
 
 settings = Settings()

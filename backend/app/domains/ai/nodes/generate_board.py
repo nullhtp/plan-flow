@@ -31,6 +31,7 @@ async def generate_board_skeleton(
     qa_pairs: str,
     language: str = "en",
     user_context: str = "",
+    memory_context: str = "",
 ) -> BoardSkeletonOutput:
     """Generate a board skeleton (structure only) using the LLM."""
     llm = _get_llm()
@@ -51,6 +52,7 @@ async def generate_board_skeleton(
         language=language,
         qa_pairs=qa_pairs,
         user_context=user_context,
+        memory_context=memory_context,
     )
 
     messages: list[dict[str, Any]] = [

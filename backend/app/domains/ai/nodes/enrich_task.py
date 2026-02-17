@@ -32,6 +32,7 @@ async def enrich_task(
     complexity: int,
     language: str = "en",
     user_context: str = "",
+    memory_context: str = "",
 ) -> TaskEnrichmentOutput:
     """Enrich a single task with description, metadata, and subtasks."""
     llm = _get_llm()
@@ -57,6 +58,7 @@ async def enrich_task(
         if dependent_titles
         else "None (leaf task)",
         user_context=user_context,
+        memory_context=memory_context,
     )
 
     messages: list[dict[str, Any]] = [

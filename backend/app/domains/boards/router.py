@@ -328,8 +328,22 @@ async def generate_board_endpoint(
 
     user_context = format_user_meta_block(ai_context.get("user_meta"))
 
+    # Retrieve memory context for board generation
+    from app.core.config import settings as app_settings
+
+    memory_context = ""
+    if app_settings.ai_memory_enabled:
+        from app.domains.ai.memory import retrieve_relevant_memories
+        from app.domains.ai.prompts.memory import format_memory_block
+
+        memories = await retrieve_relevant_memories(
+            session, current_user.id, goal.original_input
+        )
+        memory_context = format_memory_block(memories)
+
     # Consume the AI streaming pipeline, persisting to DB as events arrive
     board = None
+    skeleton: BoardSkeletonOutput | None = None
     ai_id_to_db_id: dict[str, str] = {}
 
     async for sse_event in generate_board_stream(
@@ -340,6 +354,7 @@ async def generate_board_endpoint(
         qa_pairs=qa_pairs,
         language=language,
         user_context=user_context,
+        memory_context=memory_context,
     ):
         # Parse the SSE event
         lines = sse_event.strip().split("\n")
@@ -393,6 +408,35 @@ async def generate_board_endpoint(
             # Transition goal to active
             if board is not None:
                 await transition_goal_to_active(session, goal)
+
+                # Extract memories from board generation (best-effort)
+                if app_settings.ai_memory_enabled:
+                    try:
+                        from app.domains.ai.memory import (
+                            extract_memories_from_board,
+                            store_memories_batch,
+                        )
+
+                        board_title = event_data.get("board_title", board.title)
+                        task_count = len(skeleton.tasks) if skeleton else 0
+                        mem_inputs = extract_memories_from_board(
+                            board_title,
+                            task_count,
+                            classification.domain,
+                            goal_id,
+                        )
+                        if mem_inputs:
+                            await store_memories_batch(
+                                session,
+                                current_user.id,
+                                mem_inputs,
+                                source_goal_id=goal_id,
+                            )
+                            await session.commit()
+                    except Exception:
+                        logger.exception(
+                            "Memory extraction after board generation failed"
+                        )
 
         elif event_type == "generation_error":
             # Revert goal status and raise HTTP error

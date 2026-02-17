@@ -77,6 +77,7 @@ async def _retry_async(
 async def classify_and_generate_questions(
     raw_input: str,
     user_context: str = "",
+    memory_context: str = "",
 ) -> ClassifyAndGenerateResult:
     """Run the full classify -> generate questions pipeline with retries."""
     classification: ClassificationOutput = await _retry_async(classify_goal, raw_input)
@@ -92,7 +93,7 @@ async def classify_and_generate_questions(
         )
 
     questions: list[QuestionItem] = await _retry_async(
-        _generate_questions, raw_input, classification, user_context
+        _generate_questions, raw_input, classification, user_context, memory_context
     )
 
     return ClassifyAndGenerateResult(
@@ -108,6 +109,7 @@ async def generate_follow_up_questions(
     questions: list[QuestionItem],
     answers: dict[str, Any],
     user_context: str = "",
+    memory_context: str = "",
 ) -> list[QuestionItem]:
     """Generate follow-up questions based on initial answers, with retries."""
     try:
@@ -118,6 +120,7 @@ async def generate_follow_up_questions(
             questions,
             answers,
             user_context,
+            memory_context,
         )
     except AIOutputError:
         logger.warning("Follow-up generation failed, proceeding without follow-ups")
@@ -160,6 +163,7 @@ async def generate_board_stream(
     qa_pairs: str,
     language: str = "en",
     user_context: str = "",
+    memory_context: str = "",
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields SSE-formatted events for board generation.
 
@@ -184,6 +188,7 @@ async def generate_board_stream(
                 qa_pairs,
                 language,
                 user_context,
+                memory_context,
             )
             _validate_skeleton_dag(skeleton)
             break
@@ -270,6 +275,7 @@ async def generate_board_stream(
                         complexity=complexity,
                         language=language,
                         user_context=user_context,
+                        memory_context=memory_context,
                     )
                     return ai_task_id, result
                 except (ValidationError, TypeError) as e:
