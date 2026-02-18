@@ -7,8 +7,11 @@ import pytest
 from app.domains.boards.dag_utils import (
     CyclicDependencyError,
     GoalNodeValidationError,
+    NestingDepthError,
+    is_root_board,
     validate_dag,
     validate_goal_node,
+    validate_nesting_depth,
 )
 
 # ── validate_dag ─────────────────────────────────────────
@@ -121,3 +124,46 @@ def test_validate_goal_node_goal_has_dependencies() -> None:
     # t3 is goal and depends on t1 and t2 -- this is valid
     edges = [("t1", "t3"), ("t2", "t3")]
     validate_goal_node(task_ids, goal_flags, edges)  # Should not raise
+
+
+# ── is_root_board ────────────────────────────────────────
+
+
+class _FakeBoard:
+    """Minimal duck-typed board for testing."""
+
+    def __init__(self, parent_task_id: str | None = None) -> None:
+        self.parent_task_id = parent_task_id
+
+
+def test_is_root_board_returns_true_for_root() -> None:
+    """A board with no parent_task_id is a root board."""
+    board = _FakeBoard(parent_task_id=None)
+    assert is_root_board(board) is True
+
+
+def test_is_root_board_returns_false_for_sub_board() -> None:
+    """A board with a parent_task_id is a sub-board."""
+    board = _FakeBoard(parent_task_id="task-abc")
+    assert is_root_board(board) is False
+
+
+def test_is_root_board_missing_attribute() -> None:
+    """An object without parent_task_id is treated as a root board."""
+    assert is_root_board(object()) is True
+
+
+# ── validate_nesting_depth ───────────────────────────────
+
+
+def test_validate_nesting_depth_allows_root_board() -> None:
+    """Tasks on root boards can have sub-boards."""
+    board = _FakeBoard(parent_task_id=None)
+    validate_nesting_depth(board)  # Should not raise
+
+
+def test_validate_nesting_depth_blocks_sub_board() -> None:
+    """Tasks on sub-boards cannot have sub-boards (1-level limit)."""
+    board = _FakeBoard(parent_task_id="task-xyz")
+    with pytest.raises(NestingDepthError, match="1 level"):
+        validate_nesting_depth(board)

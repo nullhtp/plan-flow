@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { generateSubtaskActionPost } from "@/api/generated/ai/ai";
+import { generateSubtaskActionApiTasksTaskIdSubtasksSubtaskIdActionsGeneratePost } from "@/api/generated/ai/ai";
 import {
 	getGetBoardEndpointApiBoardsBoardIdGetQueryKey,
 	useCreateSubtaskEndpointApiTasksTaskIdSubtasksPost,
@@ -34,7 +34,10 @@ export function useSubtaskMutations(boardId: string) {
 							(a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
 						)[0];
 						if (newest && newest.action_prompt == null) {
-							generateSubtaskActionPost(taskId, newest.id)
+							generateSubtaskActionApiTasksTaskIdSubtasksSubtaskIdActionsGeneratePost(
+								taskId,
+								newest.id,
+							)
 								.then(() => invalidateBoard())
 								.catch(() => {
 									// Graceful degradation — subtask exists without action

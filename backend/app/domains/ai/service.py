@@ -16,6 +16,9 @@ from app.domains.ai.nodes.enrich_task import enrich_task as _enrich_task
 from app.domains.ai.nodes.generate_board import (
     generate_board_skeleton as _generate_skeleton,
 )
+from app.domains.ai.nodes.generate_board import (
+    generate_sub_board_skeleton as _generate_sub_board_skeleton,
+)
 from app.domains.ai.nodes.questions import (
     generate_follow_up_questions as _generate_follow_ups,
 )
@@ -25,6 +28,7 @@ from app.domains.ai.nodes.questions import (
 from app.domains.ai.schemas import (
     ClassificationOutput,
     QuestionItem,
+    QuestionsOutput,
     SubtaskActionOutput,
     SubtaskActionsResponse,
 )
@@ -128,6 +132,71 @@ async def generate_follow_up_questions(
         return []
 
     return follow_ups
+
+
+# ── Sub-Board Question Generation ────────────────────────
+
+
+async def generate_sub_board_questions(
+    task_title: str,
+    task_description: str,
+    board_title: str,
+    goal_context: str,
+    language: str,
+    user_context: str | None = None,
+    memory_context: str | None = None,
+) -> list[QuestionItem]:
+    """Generate 2-4 focused questions for decomposing a task into a sub-board.
+
+    Single structured output LLM call — no LangGraph, no classification.
+    """
+    from app.domains.ai.lang_utils import get_language_name
+    from app.domains.ai.llm import get_llm
+    from app.domains.ai.prompts.sub_board_questions import (
+        SUB_BOARD_QUESTIONS_SYSTEM_PROMPT,
+        SUB_BOARD_QUESTIONS_USER_PROMPT,
+    )
+
+    language_name = get_language_name(language)
+
+    system_content = SUB_BOARD_QUESTIONS_SYSTEM_PROMPT.format(
+        language=language,
+        language_name=language_name,
+    )
+    user_content = SUB_BOARD_QUESTIONS_USER_PROMPT.format(
+        task_title=task_title,
+        task_description=task_description or "No description provided",
+        board_title=board_title,
+        goal_context=goal_context,
+        language=language,
+        user_context=f"\nUser context: {user_context}" if user_context else "",
+        memory_context=f"\nMemory context: {memory_context}" if memory_context else "",
+    )
+
+    llm = get_llm()
+    structured_llm = llm.with_structured_output(QuestionsOutput)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+
+    async def _call() -> QuestionsOutput:
+        result = await structured_llm.ainvoke(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+            [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_content},
+            ]
+        )
+        if not isinstance(result, QuestionsOutput):
+            msg = f"Expected QuestionsOutput, got {type(result)}"  # pyright: ignore[reportUnknownArgumentType]
+            raise TypeError(msg)
+        return result
+
+    output: QuestionsOutput = await _retry_async(_call)
+
+    # Ensure IDs are prefixed with "sbq" and count is 2-4
+    questions = output.questions[:4]  # Cap at 4
+    for i, q in enumerate(questions):
+        if not q.id.startswith("sbq"):
+            q.id = f"sbq{i + 1}"
+
+    return questions
 
 
 # ── Subtask Action Generation ────────────────────────────
@@ -384,6 +453,174 @@ async def generate_board_stream(
         )
 
     # ── Step 3: Generation complete ──
+    yield _format_sse_event(
+        "generation_complete",
+        {
+            "board_title": skeleton.board_title,
+            "failed_tasks": failed_tasks,
+        },
+    )
+
+
+# ── Sub-Board Generation (Streaming) ────────────────────
+
+
+async def generate_sub_board_stream(
+    task_title: str,
+    task_description: str,
+    board_title: str,
+    raw_input: str,
+    domain: str,
+    qa_pairs: str,
+    language: str = "en",
+    user_context: str = "",
+    memory_context: str = "",
+) -> AsyncGenerator[str, None]:
+    """Async generator that yields SSE events for sub-board generation.
+
+    Same event format as generate_board_stream but uses the sub-board
+    skeleton prompt (3-15 tasks instead of 5-30).
+    """
+    max_retries = settings.ai_max_retries
+    skeleton: BoardSkeletonOutput | None = None
+    last_error: Exception | None = None
+
+    for attempt in range(max_retries):
+        try:
+            skeleton = await _generate_sub_board_skeleton(
+                task_title=task_title,
+                task_description=task_description,
+                board_title=board_title,
+                raw_input=raw_input,
+                domain=domain,
+                qa_pairs=qa_pairs,
+                language=language,
+                user_context=user_context,
+                memory_context=memory_context,
+            )
+            _validate_skeleton_dag(skeleton)
+            break
+        except (ValidationError, TypeError) as e:
+            last_error = e
+            logger.warning(
+                "Sub-board skeleton validation failed (attempt %d/%d): %s",
+                attempt + 1,
+                max_retries,
+                str(e),
+            )
+        except (CyclicDependencyError, GoalNodeValidationError) as e:
+            last_error = e
+            logger.warning(
+                "Sub-board skeleton invalid DAG (attempt %d/%d): %s",
+                attempt + 1,
+                max_retries,
+                str(e),
+            )
+
+    if skeleton is None:
+        yield _format_sse_event(
+            "generation_error",
+            {
+                "error": "skeleton_generation_failed",
+                "message": (
+                    f"Sub-board skeleton generation failed after {max_retries} attempts"
+                ),
+                "detail": str(last_error) if last_error else None,
+            },
+        )
+        return
+
+    task_map = {t.id: t for t in skeleton.tasks}
+    task_id_set = set(task_map.keys())
+
+    dependency_titles_map: dict[str, list[str]] = {t.id: [] for t in skeleton.tasks}
+    dependent_titles_map: dict[str, list[str]] = {t.id: [] for t in skeleton.tasks}
+    for t in skeleton.tasks:
+        for dep_id in t.depends_on:
+            if dep_id in task_id_set:
+                dependency_titles_map[t.id].append(task_map[dep_id].title)
+                dependent_titles_map[dep_id].append(t.title)
+
+    skeleton_data = {
+        "board_title": skeleton.board_title,
+        "tasks": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "depends_on": t.depends_on,
+                "is_goal_node": t.is_goal_node,
+            }
+            for t in skeleton.tasks
+        ],
+        "edges": [
+            {"source": dep_id, "target": t.id}
+            for t in skeleton.tasks
+            for dep_id in t.depends_on
+            if dep_id in task_id_set
+        ],
+    }
+    yield _format_sse_event("skeleton_ready", skeleton_data)
+
+    # Parallel enrichment
+    semaphore = asyncio.Semaphore(settings.ai_enrichment_concurrency)
+    failed_tasks: list[str] = []
+
+    async def _enrich_single_task(
+        ai_task_id: str,
+    ) -> tuple[str, TaskEnrichmentOutput | None]:
+        async with semaphore:
+            last_err: Exception | None = None
+            for attempt in range(max_retries):
+                try:
+                    result = await _enrich_task(
+                        task_title=task_map[ai_task_id].title,
+                        dependency_titles=dependency_titles_map[ai_task_id],
+                        dependent_titles=dependent_titles_map[ai_task_id],
+                        raw_input=raw_input,
+                        domain=domain,
+                        complexity=3,  # Sub-boards are mid-complexity
+                        language=language,
+                        user_context=user_context,
+                        memory_context=memory_context,
+                    )
+                    return ai_task_id, result
+                except (ValidationError, TypeError) as e:
+                    last_err = e
+                    logger.warning(
+                        "Sub-board task enrichment failed for '%s' (attempt %d/%d): %s",
+                        ai_task_id,
+                        attempt + 1,
+                        max_retries,
+                        str(e),
+                    )
+            logger.error(
+                "Sub-board task enrichment failed for '%s' after %d attempts: %s",
+                ai_task_id,
+                max_retries,
+                str(last_err),
+            )
+            return ai_task_id, None
+
+    tasks = [asyncio.create_task(_enrich_single_task(t.id)) for t in skeleton.tasks]
+
+    for coro in asyncio.as_completed(tasks):
+        ai_task_id, enrichment = await coro
+        if enrichment is None:
+            failed_tasks.append(ai_task_id)
+            continue
+
+        yield _format_sse_event(
+            "task_enriched",
+            {
+                "task_id": ai_task_id,
+                "description": enrichment.description,
+                "due_date": enrichment.due_date,
+                "priority": enrichment.priority,
+                "estimated_minutes": enrichment.estimated_minutes,
+                "subtasks": [{"title": s.title} for s in enrichment.subtasks],
+            },
+        )
+
     yield _format_sse_event(
         "generation_complete",
         {

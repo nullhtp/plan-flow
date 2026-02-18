@@ -33,6 +33,8 @@ from app.domains.boards.schemas import (
     BoardListResponse,
     BoardResponse,
     BoardUpdate,
+    SubBoardGenerateRequest,
+    SubBoardQuestionsResponse,
     SubtaskCreate,
     SubtaskUpdate,
     TaskCreate,
@@ -54,6 +56,7 @@ from app.domains.boards.task_service import (
     update_task,
     validate_goal_for_generation,
 )
+from app.domains.goals.models import Goal
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +102,16 @@ async def get_board_endpoint(
         ) from None
 
     user_meta = await get_user_meta_for_board(session, board)
-    return build_board_response(board, user_meta=user_meta)
+
+    # For sub-boards, resolve parent board for breadcrumb navigation
+    from app.domains.boards.board_repository import BoardRepository
+
+    parent_board = None
+    if board.parent_task_id is not None:
+        repo = BoardRepository(session)
+        parent_board = await repo.get_parent_board(board)
+
+    return build_board_response(board, user_meta=user_meta, parent_board=parent_board)
 
 
 @router.patch("/{board_id}", response_model=BoardResponse)
@@ -276,6 +288,291 @@ async def delete_subtask_endpoint(
         ) from None
 
     return build_board_response(board)
+
+
+# ── Sub-Board Endpoints ──────────────────────────────────
+
+
+@tasks_router.post(
+    "/{task_id}/sub-board-questions",
+    response_model=SubBoardQuestionsResponse,
+)
+async def sub_board_questions_endpoint(
+    task_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SubBoardQuestionsResponse:
+    """Generate 2-4 focused questions for decomposing a task into a sub-board."""
+    try:
+        task = await validate_task_ownership(session, task_id, current_user.id)
+    except TaskNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        ) from None
+
+    # Validate: task must be on a root board
+    from app.domains.boards.dag_utils import NestingDepthError, validate_nesting_depth
+    from app.domains.boards.models import Board
+
+    board = await session.get(Board, task.board_id)
+    if board is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Board not found",
+        )
+
+    try:
+        validate_nesting_depth(board)
+    except NestingDepthError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Sub-boards cannot be nested. This task belongs to a sub-board.",
+        ) from None
+
+    # Validate: task must not already have a sub-board
+    from app.domains.boards.board_repository import BoardRepository
+
+    repo = BoardRepository(session)
+    existing_sub_board = await repo.get_sub_board_by_parent_task(task_id)
+    if existing_sub_board is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A sub-board already exists for this task",
+        )
+
+    # Resolve goal context for AI prompts
+    from app.domains.boards.board_service import format_qa_pairs
+
+    goal_id = board.goal_id
+    goal = await session.get(Goal, goal_id) if goal_id else None  # type: ignore[arg-type]
+
+    ai_context = dict(goal.ai_context) if goal and goal.ai_context else {}
+    goal_context = ai_context.get("classification", {}).get("domain", "")
+    qa_pairs = format_qa_pairs(ai_context) if ai_context else ""
+    language = ai_context.get("classification", {}).get("language", "en")
+
+    # Format user context
+    from app.domains.ai.prompts.meta import format_user_meta_block
+
+    user_context = format_user_meta_block(ai_context.get("user_meta"))
+
+    # Retrieve memory context
+    from app.core.config import settings as app_settings
+
+    memory_context = ""
+    if app_settings.ai_memory_enabled:
+        from app.domains.ai.memory import retrieve_relevant_memories
+        from app.domains.ai.prompts.memory import format_memory_block
+
+        memories = await retrieve_relevant_memories(
+            session, current_user.id, task.title
+        )
+        memory_context = format_memory_block(memories)
+
+    from app.domains.ai.service import generate_sub_board_questions
+
+    questions = await generate_sub_board_questions(
+        task_title=task.title,
+        task_description=task.description or "",
+        board_title=board.title,
+        goal_context=f"{goal_context}\n{qa_pairs}" if goal_context else "",
+        language=language,
+        user_context=user_context or None,
+        memory_context=memory_context or None,
+    )
+
+    return SubBoardQuestionsResponse(questions=[q.model_dump() for q in questions])
+
+
+@tasks_router.post("/{task_id}/generate-sub-board")
+async def generate_sub_board_endpoint(
+    task_id: str,
+    body: SubBoardGenerateRequest,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BoardResponse:
+    """Generate a sub-board for a task using AI (skeleton + enrichment).
+
+    Internally uses the streaming pipeline but returns a standard JSON response.
+    """
+    import json
+
+    from app.core.config import settings as app_settings
+    from app.core.types import BoardSkeletonOutput, TaskEnrichmentOutput
+    from app.domains.boards.board_repository import BoardRepository
+    from app.domains.boards.dag_utils import (
+        CyclicDependencyError,
+        GoalNodeValidationError,
+        NestingDepthError,
+        validate_nesting_depth,
+    )
+    from app.domains.boards.models import Board
+    from app.domains.boards.task_service import (
+        auto_start_parent_task,
+        create_sub_board_from_skeleton,
+        delete_task_subtasks,
+        update_task_with_enrichment,
+    )
+
+    try:
+        task = await validate_task_ownership(session, task_id, current_user.id)
+    except TaskNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        ) from None
+
+    board = await session.get(Board, task.board_id)
+    if board is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Board not found",
+        )
+
+    try:
+        validate_nesting_depth(board)
+    except NestingDepthError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Sub-boards cannot be nested. This task belongs to a sub-board.",
+        ) from None
+
+    # Check no existing sub-board
+    repo = BoardRepository(session)
+    existing = await repo.get_sub_board_by_parent_task(task_id)
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A sub-board already exists for this task",
+        )
+
+    # Check task is not locked (unless already in_progress)
+    if task.status == "not_started":
+        from app.domains.boards.task_repository import TaskRepository
+
+        task_repo = TaskRepository(session)
+        deps_met = await task_repo.are_dependencies_met(task.id)
+        if not deps_met:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot create sub-board: task dependencies are not met",
+            )
+
+    # Resolve goal context
+    goal_id = board.goal_id
+    goal = await session.get(Goal, goal_id) if goal_id else None  # type: ignore[arg-type]
+    ai_context = dict(goal.ai_context) if goal and goal.ai_context else {}
+    classification_data = ai_context.get("classification", {})
+    domain = classification_data.get("domain", "general")
+    language = classification_data.get("language", "en")
+    raw_input = goal.original_input if goal else task.title
+
+    # Format Q&A pairs from answers
+    answer_pairs: list[str] = []
+    for a in body.answers:
+        val = a.value if isinstance(a.value, str) else str(a.value)
+        answer_pairs.append(f"Q ({a.question_id}): ?\nA: {val}")
+    qa_pairs = "\n\n".join(answer_pairs)
+
+    from app.domains.ai.prompts.meta import format_user_meta_block
+
+    user_context = format_user_meta_block(ai_context.get("user_meta")) or ""
+
+    memory_context = ""
+    if app_settings.ai_memory_enabled:
+        from app.domains.ai.memory import retrieve_relevant_memories
+        from app.domains.ai.prompts.memory import format_memory_block
+
+        memories = await retrieve_relevant_memories(
+            session, current_user.id, task.title
+        )
+        memory_context = format_memory_block(memories)
+
+    # Delete existing subtasks before creating sub-board
+    await delete_task_subtasks(session, task)
+
+    # Auto-start parent task
+    await auto_start_parent_task(session, task)
+    await session.commit()
+
+    # Run the AI pipeline
+    from app.domains.ai.service import generate_sub_board_stream
+
+    sub_board: Board | None = None
+    ai_id_to_db_id: dict[str, str] = {}
+
+    async for sse_event in generate_sub_board_stream(
+        task_title=task.title,
+        task_description=task.description or "",
+        board_title=board.title,
+        raw_input=raw_input,
+        domain=domain,
+        qa_pairs=qa_pairs,
+        language=language,
+        user_context=user_context,
+        memory_context=memory_context,
+    ):
+        lines = sse_event.strip().split("\n")
+        event_type = ""
+        event_data: dict = {}
+        for line in lines:
+            if line.startswith("event: "):
+                event_type = line[7:]
+            elif line.startswith("data: "):
+                event_data = json.loads(line[6:])
+
+        if event_type == "skeleton_ready":
+            try:
+                skel = BoardSkeletonOutput.model_validate(event_data)
+                sub_board, ai_id_to_db_id = await create_sub_board_from_skeleton(
+                    session, task, skel
+                )
+            except (CyclicDependencyError, GoalNodeValidationError) as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Sub-board skeleton produced invalid graph: {e}",
+                ) from None
+            except Exception as e:
+                logger.error("Sub-board skeleton persistence failed: %s", str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to persist sub-board skeleton",
+                ) from None
+
+        elif event_type == "task_enriched":
+            ai_task_id = event_data.get("task_id", "")
+            db_task_id = ai_id_to_db_id.get(ai_task_id, "")
+            if db_task_id:
+                try:
+                    enrichment = TaskEnrichmentOutput.model_validate(event_data)
+                    await update_task_with_enrichment(session, db_task_id, enrichment)
+                except Exception as e:
+                    logger.error(
+                        "Sub-board enrichment failed for task '%s': %s",
+                        ai_task_id,
+                        str(e),
+                    )
+
+        elif event_type == "generation_error":
+            error_msg = event_data.get("message", "Sub-board generation failed")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=error_msg,
+            )
+
+    if sub_board is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Sub-board generation produced no output",
+        )
+
+    # Return the parent board (refreshed) so the frontend can update the DAG view
+    from app.domains.boards.board_service import get_board
+
+    refreshed_board = await get_board(session, board.id, current_user.id)
+    user_meta = await get_user_meta_for_board(session, refreshed_board)
+    return build_board_response(refreshed_board, user_meta=user_meta)
 
 
 # ── Artifact Endpoints ───────────────────────────────────

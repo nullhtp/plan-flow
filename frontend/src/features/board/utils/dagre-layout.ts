@@ -10,6 +10,7 @@ const GOAL_NODE_HEIGHT = 120;
 export interface TaskNodeData {
 	task: TaskResponse;
 	allTasks: TaskResponse[];
+	has_sub_board: boolean;
 	[key: string]: unknown;
 }
 
@@ -56,6 +57,7 @@ export function getLayoutedElements(board: BoardResponse): {
 			data: {
 				task,
 				allTasks: board.tasks,
+				has_sub_board: !!task.sub_board_id,
 			},
 		};
 	});

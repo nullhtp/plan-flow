@@ -1,5 +1,5 @@
 import { Handle, Position } from "@xyflow/react";
-import { Calendar, CheckCircle2, Circle, Clock, Lock, PlayCircle } from "lucide-react";
+import { Calendar, CheckCircle2, Circle, Clock, Layers, Lock, PlayCircle } from "lucide-react";
 import type { TaskNodeData } from "../utils/dagre-layout";
 
 const priorityDots: Record<string, string> = {
@@ -19,7 +19,7 @@ interface TaskNodeProps {
 }
 
 export function TaskNode({ data }: TaskNodeProps) {
-	const { task, allTasks } = data;
+	const { task, allTasks, has_sub_board } = data;
 	const isLocked = task.is_locked;
 	const subtaskCount = task.subtasks?.length ?? 0;
 	const completedSubtasks = task.subtasks?.filter((s) => s.completed).length ?? 0;
@@ -40,14 +40,27 @@ export function TaskNode({ data }: TaskNodeProps) {
 				? "border-blue-400 bg-blue-50/80 dark:bg-blue-950/20"
 				: "border-gray-300 bg-gray-50/80 dark:bg-gray-900/20";
 
+	// Sub-board tasks get a dashed purple border
+	const borderStyle = has_sub_board ? "border-dashed border-violet-500" : "";
+
+	// Sub-board progress
+	const subBoardProgress = task.sub_board_progress;
+
 	return (
 		<div
-			className={`relative rounded-3xl border-2 px-4 py-3 shadow-md cursor-pointer transition-all duration-300 ease-in-out ${statusClass} ${
+			className={`relative rounded-3xl border-2 px-4 py-3 shadow-md cursor-pointer transition-all duration-300 ease-in-out ${statusClass} ${borderStyle} ${
 				isLocked ? "opacity-60" : ""
 			}`}
 			style={{ width: 280 }}
 			title={isLocked ? `Blocked by: ${blockedByNames.join(", ")}` : undefined}
 		>
+			{/* Sub-board indicator icon */}
+			{has_sub_board && (
+				<div className="absolute top-2 right-2">
+					<Layers className="h-3.5 w-3.5 text-violet-500" />
+				</div>
+			)}
+
 			{/* Hidden handles — required by React Flow internally */}
 			<Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0" />
 
@@ -86,10 +99,18 @@ export function TaskNode({ data }: TaskNodeProps) {
 								{task.estimated_minutes}m
 							</span>
 						)}
-						{subtaskCount > 0 && (
-							<span className="text-xs text-muted-foreground">
-								{completedSubtasks}/{subtaskCount}
+						{/* Show sub-board progress instead of subtask count when sub-board exists */}
+						{has_sub_board && subBoardProgress ? (
+							<span className="flex items-center gap-1 text-xs text-violet-600 font-medium">
+								<Layers className="h-3 w-3" />
+								{subBoardProgress.completed_task_count}/{subBoardProgress.task_count} tasks
 							</span>
+						) : (
+							subtaskCount > 0 && (
+								<span className="text-xs text-muted-foreground">
+									{completedSubtasks}/{subtaskCount}
+								</span>
+							)
 						)}
 					</div>
 				</div>

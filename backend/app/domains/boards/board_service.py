@@ -13,7 +13,13 @@ from app.domains.boards.ownership import (
     BoardNotFoundError,
     validate_board_ownership,
 )
-from app.domains.boards.schemas import BoardResponse, EdgeResponse, TaskResponse
+from app.domains.boards.schemas import (
+    BoardResponse,
+    EdgeResponse,
+    ParentBoardResponse,
+    SubBoardProgressResponse,
+    TaskResponse,
+)
 from app.domains.goals.models import Goal
 
 # ── Board CRUD ──────────────────────────────────────────
@@ -33,19 +39,51 @@ async def get_board(
     board_id: str,
     user_id: str,
 ) -> Board:
-    """Retrieve a board with nested data, validating ownership."""
+    """Retrieve a board with nested data, validating ownership.
+
+    Supports both root boards (ownership via goal) and sub-boards
+    (ownership traced via parent_task -> parent_board -> goal).
+    """
     repo = BoardRepository(session)
     board = await repo.get_with_relations(board_id)
 
     if board is None:
         raise BoardNotFoundError
 
-    # Validate ownership via goal
-    goal = await session.get(Goal, board.goal_id)
-    if goal is None or goal.user_id != user_id:
-        raise BoardNotFoundError
+    # Validate ownership: root boards check goal directly,
+    # sub-boards trace parent_task -> board -> goal
+    await _validate_board_ownership_chain(session, board, user_id)
 
     return board
+
+
+async def _validate_board_ownership_chain(
+    session: AsyncSession, board: Board, user_id: str
+) -> None:
+    """Validate ownership for both root boards and sub-boards.
+
+    Root boards: board -> goal -> user
+    Sub-boards: board -> parent_task -> parent_board -> goal -> user
+    """
+    if board.goal_id is not None:
+        # Root board: check goal ownership directly
+        goal = await session.get(Goal, board.goal_id)
+        if goal is None or goal.user_id != user_id:
+            raise BoardNotFoundError
+    elif board.parent_task_id is not None:
+        # Sub-board: trace to root board's goal
+        from app.domains.boards.models import Task
+
+        parent_task = await session.get(Task, board.parent_task_id)
+        if parent_task is None:
+            raise BoardNotFoundError
+        parent_board = await session.get(Board, parent_task.board_id)
+        if parent_board is None:
+            raise BoardNotFoundError
+        # Recurse (handles multi-level if ever needed, but currently 1-level only)
+        await _validate_board_ownership_chain(session, parent_board, user_id)
+    else:
+        raise BoardNotFoundError
 
 
 async def get_board_by_goal(
@@ -87,8 +125,20 @@ async def get_user_meta_for_board(
     session: AsyncSession,
     board: Board,
 ) -> dict[str, Any] | None:
-    """Read user_meta from the board's related goal's ai_context."""
-    goal = await session.get(Goal, board.goal_id)
+    """Read user_meta from the board's related goal's ai_context.
+
+    For sub-boards, traces to the root board's goal.
+    """
+    goal_id = board.goal_id
+    if goal_id is None and board.parent_task_id is not None:
+        # Sub-board: trace to root board's goal
+        repo = BoardRepository(session)
+        parent_board = await repo.get_parent_board(board)
+        if parent_board is not None:
+            goal_id = parent_board.goal_id
+    if goal_id is None:
+        return None
+    goal = await session.get(Goal, goal_id)
     if goal is None:
         return None
     ai_context: dict[str, Any] = dict(goal.ai_context) if goal.ai_context else {}
@@ -99,9 +149,17 @@ async def get_user_meta_for_board(
 
 
 def build_board_response(
-    board: Board, user_meta: dict[str, Any] | None = None
+    board: Board,
+    user_meta: dict[str, Any] | None = None,
+    parent_board: Board | None = None,
 ) -> BoardResponse:
-    """Build a BoardResponse from a Board with loaded relationships."""
+    """Build a BoardResponse from a Board with loaded relationships.
+
+    Args:
+        board: The board with tasks and edges loaded.
+        user_meta: Optional user metadata from goal's ai_context.
+        parent_board: Optional parent board for breadcrumb navigation (sub-boards only).
+    """
     tasks = board.tasks
     edges: list[EdgeResponse] = []
     task_responses: list[TaskResponse] = []
@@ -120,6 +178,20 @@ def build_board_response(
                     break
             if is_locked:
                 break
+
+        # Compute sub-board info for this task.
+        # Check the instance __dict__ to avoid triggering a lazy load
+        # in async context (MissingGreenlet error).
+        sub_board_id: str | None = None
+        sub_board_progress: SubBoardProgressResponse | None = None
+        sub_board = task.__dict__.get("sub_board")
+        if sub_board is not None:
+            sub_board_id = sub_board.id
+            sb_tasks = sub_board.__dict__.get("tasks", [])
+            sub_board_progress = SubBoardProgressResponse(
+                task_count=len(sb_tasks),
+                completed_task_count=sum(1 for t in sb_tasks if t.status == "done"),
+            )
 
         task_responses.append(
             TaskResponse(
@@ -147,6 +219,8 @@ def build_board_response(
                 dependency_ids=dependency_ids,
                 dependent_ids=dependent_ids,
                 is_locked=is_locked,
+                sub_board_id=sub_board_id,
+                sub_board_progress=sub_board_progress,
                 created_at=task.created_at,
             )
         )
@@ -172,6 +246,14 @@ def build_board_response(
     # Compute is_completed: goal node has status done
     is_completed = any(t.is_goal_node and t.status == "done" for t in tasks)
 
+    # Build parent_board reference for breadcrumb navigation
+    parent_board_ref: ParentBoardResponse | None = None
+    if parent_board is not None:
+        parent_board_ref = ParentBoardResponse(
+            id=parent_board.id,
+            title=parent_board.title,
+        )
+
     return BoardResponse(
         id=board.id,
         goal_id=board.goal_id,
@@ -180,6 +262,8 @@ def build_board_response(
         edges=unique_edges,
         is_completed=is_completed,
         user_meta=user_meta,
+        parent_task_id=board.parent_task_id,
+        parent_board=parent_board_ref,
         created_at=board.created_at,
     )
 

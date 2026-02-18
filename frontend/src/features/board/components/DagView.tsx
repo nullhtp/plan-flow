@@ -1,5 +1,6 @@
 import { Controls, MiniMap, type NodeMouseHandler, ReactFlow } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSubtaskMutations } from "../hooks/use-subtask-mutations";
@@ -27,6 +28,7 @@ export function DagView({ board }: DagViewProps) {
 	const { selectedTaskId, openTask, closeTask } = useTaskDetailPanel();
 	const [showCelebration, setShowCelebration] = useState(false);
 	const prevIsCompleted = useRef(board.is_completed);
+	const navigate = useNavigate();
 
 	// Check if board just became completed
 	if (board.is_completed && !prevIsCompleted.current) {
@@ -43,9 +45,15 @@ export function DagView({ board }: DagViewProps) {
 
 	const onNodeClick: NodeMouseHandler = useCallback(
 		(_event, node) => {
+			// If the task has a sub-board, navigate to it instead of opening the detail panel
+			const task = board.tasks.find((t) => t.id === node.id);
+			if (task?.sub_board_id) {
+				navigate({ to: "/boards/$boardId", params: { boardId: task.sub_board_id } });
+				return;
+			}
 			openTask(node.id);
 		},
-		[openTask],
+		[openTask, board.tasks, navigate],
 	);
 
 	const handleStatusToggle = useCallback(
@@ -104,6 +112,7 @@ export function DagView({ board }: DagViewProps) {
 					task={selectedTask}
 					allTasks={board.tasks}
 					boardId={board.id}
+					isSubBoard={!!board.parent_task_id}
 					onClose={closeTask}
 					onUpdateTask={(data) => updateTask.mutate({ taskId: selectedTask.id, data })}
 					onDeleteTask={() => {

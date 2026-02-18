@@ -1,9 +1,11 @@
-import { ArrowRight, Lock, Trash2, X } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { ArrowRight, ExternalLink, Layers, Lock, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { TaskResponse } from "@/features/board/types";
+import { SubBoardCreationFlow } from "./SubBoardCreationFlow";
 import { SubtaskChecklist } from "./SubtaskChecklist";
 import { TaskArtifacts } from "./TaskArtifacts";
 import { TaskChat } from "./TaskChat";
@@ -12,6 +14,7 @@ interface TaskDetailPanelProps {
 	task: TaskResponse;
 	allTasks: TaskResponse[];
 	boardId: string;
+	isSubBoard?: boolean;
 	onClose: () => void;
 	onUpdateTask: (data: {
 		title?: string;
@@ -32,6 +35,7 @@ export function TaskDetailPanel({
 	task,
 	allTasks,
 	boardId,
+	isSubBoard = false,
 	onClose,
 	onUpdateTask,
 	onDeleteTask,
@@ -40,12 +44,18 @@ export function TaskDetailPanel({
 	onAddSubtask,
 	onDeleteSubtask,
 }: TaskDetailPanelProps) {
+	const navigate = useNavigate();
 	const [title, setTitle] = useState(task.title);
 	const [description, setDescription] = useState(task.description);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+	const [showExpandConfirm, setShowExpandConfirm] = useState(false);
+	const [showCreationFlow, setShowCreationFlow] = useState(false);
 	const [chatPrompt, setChatPrompt] = useState<string | null>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const chatSectionRef = useRef<HTMLDivElement>(null);
+
+	const hasSubBoard = !!task.sub_board_id;
+	const canExpand = !hasSubBoard && !isSubBoard;
 
 	useEffect(() => {
 		setTitle(task.title);
@@ -259,14 +269,77 @@ export function TaskDetailPanel({
 					</div>
 				)}
 
-				{/* Subtasks */}
-				<SubtaskChecklist
-					subtasks={task.subtasks ?? []}
-					onToggle={onToggleSubtask}
-					onAdd={onAddSubtask}
-					onDelete={onDeleteSubtask}
-					onActionClick={handleActionClick}
-				/>
+				{/* Subtasks or Sub-Board section */}
+				{hasSubBoard ? (
+					<div>
+						<Label>Sub-Board</Label>
+						<div className="mt-2 rounded-lg border border-violet-200 bg-violet-50/50 dark:border-violet-800 dark:bg-violet-950/20 p-3">
+							<div className="flex items-center gap-2 mb-2">
+								<Layers className="h-4 w-4 text-violet-600" />
+								<span className="font-medium text-sm">
+									{task.sub_board_progress
+										? `${task.sub_board_progress.completed_task_count}/${task.sub_board_progress.task_count} tasks completed`
+										: "Sub-board"}
+								</span>
+							</div>
+							<Button
+								size="sm"
+								variant="outline"
+								className="w-full border-violet-300 text-violet-700 hover:bg-violet-100"
+								onClick={() => {
+									if (task.sub_board_id) {
+										navigate({ to: "/boards/$boardId", params: { boardId: task.sub_board_id } });
+										onClose();
+									}
+								}}
+							>
+								<ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+								Open Sub-Board
+							</Button>
+						</div>
+					</div>
+				) : showCreationFlow ? (
+					<SubBoardCreationFlow
+						taskId={task.id}
+						boardId={boardId}
+						onComplete={() => {
+							setShowCreationFlow(false);
+							// Close the panel so user sees the refreshed DAG
+							// (board data is already being refetched by React Query invalidation)
+							onClose();
+						}}
+						onCancel={() => setShowCreationFlow(false)}
+					/>
+				) : (
+					<>
+						<SubtaskChecklist
+							subtasks={task.subtasks ?? []}
+							onToggle={onToggleSubtask}
+							onAdd={onAddSubtask}
+							onDelete={onDeleteSubtask}
+							onActionClick={handleActionClick}
+						/>
+						{canExpand && (
+							<div className="mt-2">
+								<Button
+									variant="outline"
+									size="sm"
+									className="w-full text-violet-700 border-violet-300 hover:bg-violet-50"
+									onClick={() => {
+										if (task.subtasks && task.subtasks.length > 0) {
+											setShowExpandConfirm(true);
+										} else {
+											setShowCreationFlow(true);
+										}
+									}}
+								>
+									<Layers className="h-3.5 w-3.5 mr-1.5" />
+									Expand to Board
+								</Button>
+							</div>
+						)}
+					</>
+				)}
 
 				{/* Artifacts */}
 				<TaskArtifacts taskId={task.id} />
@@ -298,6 +371,35 @@ export function TaskDetailPanel({
 							</Button>
 							<Button variant="destructive" onClick={onDeleteTask}>
 								Delete
+							</Button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Expand to Board confirmation (when subtasks exist) */}
+			{showExpandConfirm && (
+				<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
+					<div className="mx-4 max-w-sm rounded-lg bg-background p-6 shadow-xl">
+						<h3 className="text-lg font-semibold mb-2">Expand to Board</h3>
+						<p className="text-sm text-muted-foreground mb-4">
+							This task has {task.subtasks?.length ?? 0} subtask
+							{(task.subtasks?.length ?? 0) !== 1 ? "s" : ""}. Expanding to a board will{" "}
+							<span className="font-medium text-foreground">replace all subtasks</span> with an
+							AI-generated task board. This cannot be undone.
+						</p>
+						<div className="flex justify-end gap-2">
+							<Button variant="outline" onClick={() => setShowExpandConfirm(false)}>
+								Cancel
+							</Button>
+							<Button
+								className="bg-violet-600 hover:bg-violet-700 text-white"
+								onClick={() => {
+									setShowExpandConfirm(false);
+									setShowCreationFlow(true);
+								}}
+							>
+								Continue
 							</Button>
 						</div>
 					</div>

@@ -17,6 +17,11 @@ export interface EdgeResponse {
 	target: string; // dependent_task_id (blocked task)
 }
 
+export interface SubBoardProgressResponse {
+	task_count: number;
+	completed_task_count: number;
+}
+
 export interface TaskResponse {
 	id: string;
 	title: string;
@@ -30,6 +35,8 @@ export interface TaskResponse {
 	dependency_ids: string[];
 	dependent_ids: string[];
 	is_locked: boolean;
+	sub_board_id: string | null;
+	sub_board_progress: SubBoardProgressResponse | null;
 	created_at: string;
 }
 
@@ -46,14 +53,21 @@ export interface UserMetaResponse {
 	device_type: string;
 }
 
+export interface ParentBoardResponse {
+	id: string;
+	title: string;
+}
+
 export interface BoardResponse {
 	id: string;
-	goal_id: string;
+	goal_id: string | null;
 	title: string;
 	tasks: TaskResponse[];
 	edges: EdgeResponse[];
 	is_completed: boolean;
 	user_meta: UserMetaResponse | null;
+	parent_task_id: string | null;
+	parent_board: ParentBoardResponse | null;
 	created_at: string;
 }
 

@@ -1,8 +1,10 @@
 import uuid
 from datetime import UTC, datetime
+from typing import Optional
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -16,16 +18,35 @@ from sqlmodel import Field, Relationship, SQLModel
 
 
 class Board(SQLModel, table=True):
-    """A DAG-based task board generated from a goal by the AI pipeline."""
+    """A DAG-based task board generated from a goal by the AI pipeline.
+
+    Root boards have goal_id set and parent_task_id null.
+    Sub-boards have parent_task_id set and goal_id null.
+    """
 
     id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
         primary_key=True,
     )
-    goal_id: str = Field(
-        foreign_key="goal.id",
-        index=True,
-        sa_column_kwargs={"unique": True},
+    goal_id: str | None = Field(
+        default=None,
+        sa_column=Column(
+            String,
+            ForeignKey("goal.id"),
+            nullable=True,
+            unique=True,
+            index=True,
+        ),
+    )
+    parent_task_id: str | None = Field(
+        default=None,
+        sa_column=Column(
+            String,
+            ForeignKey("task.id", ondelete="CASCADE"),
+            nullable=True,
+            unique=True,
+            index=True,
+        ),
     )
     title: str = Field(default="")
     created_at: datetime = Field(
@@ -40,12 +61,26 @@ class Board(SQLModel, table=True):
     tasks: list["Task"] = Relationship(
         back_populates="board",
         sa_relationship_kwargs={
+            "foreign_keys": "Task.board_id",
             "order_by": "Task.created_at",
             "lazy": "selectin",
         },
     )
+    parent_task: Optional["Task"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "Board.parent_task_id",
+            "lazy": "selectin",
+            "uselist": False,
+        },
+    )
 
-    __table_args__ = (UniqueConstraint("goal_id", name="uq_board_goal_id"),)
+    __table_args__ = (
+        UniqueConstraint("goal_id", name="uq_board_goal_id"),
+        CheckConstraint(
+            "goal_id IS NOT NULL OR parent_task_id IS NOT NULL",
+            name="ck_board_goal_or_parent_task",
+        ),
+    )
 
 
 class Task(SQLModel, table=True):
@@ -86,7 +121,12 @@ class Task(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
 
-    board: "Board" = Relationship(back_populates="tasks")
+    board: "Board" = Relationship(
+        back_populates="tasks",
+        sa_relationship_kwargs={
+            "foreign_keys": "Task.board_id",
+        },
+    )
     subtasks: list["Subtask"] = Relationship(
         back_populates="task",
         sa_relationship_kwargs={"order_by": "Subtask.position", "lazy": "selectin"},
@@ -104,6 +144,14 @@ class Task(SQLModel, table=True):
         back_populates="dependency_task",
         sa_relationship_kwargs={
             "foreign_keys": "TaskDependency.dependency_task_id",
+            "lazy": "selectin",
+        },
+    )
+    # Sub-board: optional board that decomposes this task into a full DAG
+    sub_board: Optional["Board"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "Board.parent_task_id",
+            "uselist": False,
             "lazy": "selectin",
         },
     )

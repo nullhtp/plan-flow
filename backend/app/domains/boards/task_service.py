@@ -97,6 +97,11 @@ async def update_task(
         await _validate_status_transition(session, task, status)
         task.status = status
 
+        # Completion propagation: if this is a goal node on a sub-board
+        # that was just marked done, auto-complete the parent task
+        if status == "done" and task.is_goal_node:
+            await _propagate_sub_board_completion(session, task)
+
     if title is not None:
         task.title = title
     if description is not None:
@@ -151,6 +156,33 @@ async def _validate_status_transition(
         pass  # Allow undo
 
 
+async def _propagate_sub_board_completion(
+    session: AsyncSession, goal_task: Task
+) -> None:
+    """When a sub-board's goal node is marked done, auto-complete the parent task.
+
+    The propagation bypasses the normal 'in_progress' prerequisite check
+    since the sub-board completion proves the work is done.
+    """
+    board = await session.get(Board, goal_task.board_id)
+    if board is None or board.parent_task_id is None:
+        return  # Not a sub-board, nothing to propagate
+
+    parent_task = await session.get(Task, board.parent_task_id)
+    if parent_task is None or parent_task.status == "done":
+        return  # Already done or deleted
+
+    # Auto-complete the parent task (skip normal transition validation)
+    parent_task.status = "done"
+    parent_task.updated_at = datetime.now(UTC)
+    task_repo = TaskRepository(session)
+    await task_repo.update(parent_task)
+    logger.info(
+        "Auto-completed parent task '%s' via sub-board goal node completion",
+        parent_task.id,
+    )
+
+
 async def delete_task(
     session: AsyncSession,
     task_id: str,
@@ -188,6 +220,99 @@ async def are_dependencies_met(session: AsyncSession, task_id: str) -> bool:
     """Check if all prerequisite tasks have status 'done'."""
     repo = TaskRepository(session)
     return await repo.are_dependencies_met(task_id)
+
+
+# ── Sub-Board Generation ─────────────────────────────────
+
+
+class SubBoardAlreadyExistsError(Exception):
+    """Raised when a sub-board already exists for the given task."""
+
+
+class TaskLockedError(Exception):
+    """Raised when the task is locked (dependencies not met)."""
+
+
+async def create_sub_board_from_skeleton(
+    session: AsyncSession,
+    parent_task: Task,
+    skeleton: BoardSkeletonOutput,
+) -> tuple[Board, dict[str, str]]:
+    """Persist sub-board skeleton as Board + Tasks + TaskDependency records.
+
+    Similar to create_board_from_skeleton but sets parent_task_id instead of goal_id.
+    Returns (sub_board, ai_id_to_db_id mapping).
+    """
+    board_repo = BoardRepository(session)
+    task_repo = TaskRepository(session)
+
+    sub_board = Board(
+        parent_task_id=parent_task.id,
+        title=skeleton.board_title,
+    )
+    await board_repo.create(sub_board)
+
+    # Build mapping from AI task IDs to DB task IDs
+    ai_id_to_db_id: dict[str, str] = {}
+    ai_id_to_goal_flag: dict[str, bool] = {}
+    edges: list[tuple[str, str]] = []
+
+    for task_output in skeleton.tasks:
+        task = Task(
+            board_id=sub_board.id,
+            title=task_output.title,
+            description="",
+            status="not_started",
+            is_goal_node=task_output.is_goal_node,
+        )
+        await task_repo.create(task)
+        ai_id_to_db_id[task_output.id] = task.id
+        ai_id_to_goal_flag[task_output.id] = task_output.is_goal_node
+
+    # Validate DAG structure
+    all_ai_ids = list(ai_id_to_db_id.keys())
+    for task_output in skeleton.tasks:
+        for dep_id in task_output.depends_on:
+            if dep_id in ai_id_to_db_id:
+                edges.append((dep_id, task_output.id))
+
+    validate_dag(all_ai_ids, edges)
+    validate_goal_node(all_ai_ids, ai_id_to_goal_flag, edges)
+
+    # Create dependency edges
+    for dep_ai_id, dependent_ai_id in edges:
+        dep_db_id = ai_id_to_db_id[dep_ai_id]
+        dependent_db_id = ai_id_to_db_id[dependent_ai_id]
+        await task_repo.create_dependency(dependent_db_id, dep_db_id)
+
+    await session.commit()
+    await session.refresh(sub_board)
+    return sub_board, ai_id_to_db_id
+
+
+async def delete_task_subtasks(session: AsyncSession, task: Task) -> None:
+    """Delete all subtasks for a task (before sub-board creation)."""
+    subtask_repo = SubtaskRepository(session)
+    for subtask in list(task.subtasks):
+        await subtask_repo.delete(subtask)
+    # Clear the in-memory collection so the task object no longer
+    # references the deleted Subtask instances (avoids
+    # "Instance has been deleted" errors on subsequent session.add).
+    task.subtasks.clear()
+    await session.flush()
+
+
+async def auto_start_parent_task(session: AsyncSession, task: Task) -> None:
+    """Auto-transition a task to in_progress if it's not_started and deps are met."""
+    if task.status != "not_started":
+        return
+    task_repo = TaskRepository(session)
+    deps_met = await task_repo.are_dependencies_met(task.id)
+    if deps_met:
+        task.status = "in_progress"
+        task.updated_at = datetime.now(UTC)
+        await task_repo.update(task)
+        logger.info("Auto-started parent task '%s' on sub-board creation", task.id)
 
 
 # ── Board Generation (skeleton + enrichment) ─────────────

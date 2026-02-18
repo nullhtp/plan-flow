@@ -34,14 +34,36 @@ class ArtifactNotFoundError(Exception):
 # ── Validation functions ─────────────────────────────────
 
 
+async def _resolve_goal_for_board(session: AsyncSession, board: Board) -> Goal | None:
+    """Resolve the owning Goal for a board (root or sub-board).
+
+    Root boards: board.goal_id -> Goal
+    Sub-boards: board.parent_task_id -> Task -> Board -> ... -> Goal
+    """
+    if board.goal_id is not None:
+        return await session.get(Goal, board.goal_id)
+    if board.parent_task_id is not None:
+        parent_task = await session.get(Task, board.parent_task_id)
+        if parent_task is None:
+            return None
+        parent_board = await session.get(Board, parent_task.board_id)
+        if parent_board is None:
+            return None
+        return await _resolve_goal_for_board(session, parent_board)
+    return None
+
+
 async def validate_board_ownership(
     session: AsyncSession, board_id: str, user_id: str
 ) -> Board:
-    """Return board if it belongs to user, else raise BoardNotFoundError."""
+    """Return board if it belongs to user, else raise BoardNotFoundError.
+
+    Supports both root boards and sub-boards (traces ownership chain).
+    """
     board = await session.get(Board, board_id)
     if board is None:
         raise BoardNotFoundError
-    goal = await session.get(Goal, board.goal_id)
+    goal = await _resolve_goal_for_board(session, board)
     if goal is None or goal.user_id != user_id:
         raise BoardNotFoundError
     return board
@@ -50,14 +72,17 @@ async def validate_board_ownership(
 async def validate_task_ownership(
     session: AsyncSession, task_id: str, user_id: str
 ) -> Task:
-    """Return task if it belongs to user, else raise TaskNotFoundError."""
+    """Return task if it belongs to user, else raise TaskNotFoundError.
+
+    Supports tasks on both root boards and sub-boards.
+    """
     task = await session.get(Task, task_id)
     if task is None:
         raise TaskNotFoundError
     board = await session.get(Board, task.board_id)
     if board is None:
         raise TaskNotFoundError
-    goal = await session.get(Goal, board.goal_id)
+    goal = await _resolve_goal_for_board(session, board)
     if goal is None or goal.user_id != user_id:
         raise TaskNotFoundError
     return task
@@ -76,7 +101,7 @@ async def validate_subtask_ownership(
     board = await session.get(Board, task.board_id)
     if board is None:
         raise SubtaskNotFoundError
-    goal = await session.get(Goal, board.goal_id)
+    goal = await _resolve_goal_for_board(session, board)
     if goal is None or goal.user_id != user_id:
         raise SubtaskNotFoundError
     return subtask
@@ -95,7 +120,7 @@ async def validate_artifact_ownership(
     board = await session.get(Board, task.board_id)
     if board is None:
         raise ArtifactNotFoundError
-    goal = await session.get(Goal, board.goal_id)
+    goal = await _resolve_goal_for_board(session, board)
     if goal is None or goal.user_id != user_id:
         raise ArtifactNotFoundError
     return artifact

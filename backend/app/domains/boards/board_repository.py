@@ -29,7 +29,7 @@ class BoardRepository:
         return result.scalar_one_or_none()
 
     async def get_with_relations(self, board_id: str) -> Board | None:
-        """Fetch a board with tasks, subtasks, and dependency edges eager-loaded."""
+        """Fetch a board with tasks, subtasks, sub-boards, and edges."""
         self.session.expire_all()
         stmt = (
             select(Board)
@@ -37,6 +37,9 @@ class BoardRepository:
                 selectinload(Board.tasks).selectinload(Task.subtasks),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
                 selectinload(Board.tasks).selectinload(Task.dependencies),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
                 selectinload(Board.tasks).selectinload(Task.dependents),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+                selectinload(Board.tasks)
+                .selectinload(Task.sub_board)
+                .selectinload(Board.tasks),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
             )
             .where(Board.id == board_id)
         )
@@ -52,6 +55,9 @@ class BoardRepository:
                 selectinload(Board.tasks).selectinload(Task.subtasks),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
                 selectinload(Board.tasks).selectinload(Task.dependencies),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
                 selectinload(Board.tasks).selectinload(Task.dependents),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+                selectinload(Board.tasks)
+                .selectinload(Task.sub_board)
+                .selectinload(Board.tasks),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
             )
             .where(Board.goal_id == goal_id)
         )
@@ -68,8 +74,14 @@ class BoardRepository:
         """Mark a board as dirty so changes are flushed on next commit."""
         self.session.add(board)
 
-    async def list_by_user(self, user_id: str) -> list[dict[str, Any]]:
-        """Return all boards for a user with summary stats.
+    async def get_sub_board_by_parent_task(self, task_id: str) -> Board | None:
+        """Fetch a sub-board by its parent_task_id."""
+        stmt = select(Board).where(Board.parent_task_id == task_id)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_root_boards_for_user(self, user_id: str) -> list[dict[str, Any]]:
+        """Return root boards (no parent_task_id) for a user with stats.
 
         Each dict contains: id, goal_id, title, goal_title, task_count,
         completed_task_count, created_at.
@@ -83,7 +95,7 @@ class BoardRepository:
                 Goal.title.label("goal_title"),
             )
             .join(Goal, Board.goal_id == Goal.id)
-            .where(Goal.user_id == user_id)
+            .where(Goal.user_id == user_id, Board.parent_task_id.is_(None))  # pyright: ignore[reportUnknownMemberType]
             .order_by(Board.created_at.desc())
         )
         result = await self.session.execute(stmt)
@@ -118,6 +130,28 @@ class BoardRepository:
             )
 
         return boards
+
+    async def list_by_user(self, user_id: str) -> list[dict[str, Any]]:
+        """Return all root boards for a user with summary stats.
+
+        Delegates to list_root_boards_for_user (filters to parent_task_id IS NULL).
+        """
+        return await self.list_root_boards_for_user(user_id)
+
+    async def get_parent_board(self, board: Board) -> Board | None:
+        """Get the parent board for a sub-board.
+
+        Traces: sub-board -> parent_task -> parent_task's board.
+        Returns None for root boards.
+        """
+        if board.parent_task_id is None:
+            return None
+
+        parent_task = await self.session.get(Task, board.parent_task_id)
+        if parent_task is None:
+            return None
+
+        return await self.get_by_id(parent_task.board_id)
 
 
 __all__ = ["BoardRepository"]

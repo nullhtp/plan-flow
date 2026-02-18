@@ -30,6 +30,13 @@ class EdgeResponse(BaseModel):
     target: str  # dependent_task_id (blocked task)
 
 
+class SubBoardProgressResponse(BaseModel):
+    """Progress summary for a sub-board."""
+
+    task_count: int
+    completed_task_count: int
+
+
 class TaskResponse(BaseModel):
     """Response schema for a task within a board."""
 
@@ -46,21 +53,32 @@ class TaskResponse(BaseModel):
     dependent_ids: list[str] = []
     is_locked: bool = False
     artifact_count: int = 0
+    sub_board_id: str | None = None
+    sub_board_progress: SubBoardProgressResponse | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ParentBoardResponse(BaseModel):
+    """Lightweight parent board reference for breadcrumb navigation."""
+
+    id: str
+    title: str
 
 
 class BoardResponse(BaseModel):
     """Response schema for a full board with nested tasks and dependency edges."""
 
     id: str
-    goal_id: str
+    goal_id: str | None = None
     title: str
     tasks: list[TaskResponse]
     edges: list[EdgeResponse]
     is_completed: bool = False
     user_meta: dict[str, Any] | None = None
+    parent_task_id: str | None = None
+    parent_board: ParentBoardResponse | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -131,6 +149,28 @@ class SubtaskUpdate(BaseModel):
     title: str | None = None
     completed: bool | None = None
     position: str | None = None
+
+
+# ── Sub-Board Schemas ────────────────────────────────────
+
+
+class SubBoardQuestionsResponse(BaseModel):
+    """Response from sub-board question generation."""
+
+    questions: list[dict[str, Any]]
+
+
+class SubBoardAnswerItem(BaseModel):
+    """A single answer to a sub-board question."""
+
+    question_id: str
+    value: str | list[str] | int
+
+
+class SubBoardGenerateRequest(BaseModel):
+    """Request body for generating a sub-board from question answers."""
+
+    answers: list[SubBoardAnswerItem]
 
 
 # ── Artifact Schemas ─────────────────────────────────────

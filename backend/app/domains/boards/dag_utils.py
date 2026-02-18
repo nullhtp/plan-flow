@@ -16,6 +16,10 @@ class GoalNodeValidationError(Exception):
     """Raised when goal node constraints are violated."""
 
 
+class NestingDepthError(Exception):
+    """Raised when sub-board nesting would exceed the 1-level limit."""
+
+
 def validate_dag(
     task_ids: list[str],
     edges: list[tuple[str, str]],
@@ -113,3 +117,34 @@ def validate_goal_node(
             raise GoalNodeValidationError(
                 "Goal node must be the final task (nothing should depend on it)"
             )
+
+
+def is_root_board(board: object) -> bool:
+    """Check whether a board is a root board (not a sub-board).
+
+    Args:
+        board: A Board instance (uses duck typing to avoid import cycles).
+
+    Returns:
+        True if the board has no parent_task_id (i.e., is a root board).
+    """
+    return getattr(board, "parent_task_id", None) is None
+
+
+def validate_nesting_depth(board: object) -> None:
+    """Validate that sub-board creation is allowed for tasks on this board.
+
+    Sub-boards are limited to 1 level deep. Tasks on sub-boards cannot
+    themselves have sub-boards.
+
+    Args:
+        board: The board the task belongs to.
+
+    Raises:
+        NestingDepthError: If the board is already a sub-board.
+    """
+    if not is_root_board(board):
+        raise NestingDepthError(
+            "Sub-boards cannot be nested beyond 1 level. "
+            "Tasks on sub-boards cannot themselves have sub-boards."
+        )
