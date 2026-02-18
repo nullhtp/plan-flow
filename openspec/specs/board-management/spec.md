@@ -131,15 +131,23 @@ The system SHALL include an Alembic migration that drops the existing `subtask`,
 - **AND** indexes exist on `board.goal_id`, `task.board_id`, `task_dependency.dependent_task_id`, `task_dependency.dependency_task_id`, and `subtask.task_id`
 
 ### Requirement: Subtask Data Model
-The system SHALL store subtasks as database records with the following fields: `id` (UUID primary key), `task_id` (FK to Task), `title` (string), `completed` (boolean, default false), `position` (varchar(50), fractional index string for ordering), `created_at`, and `updated_at`. Subtasks SHALL be returned ordered by `position` ascending (lexicographic sort) within their parent task. Subtasks are single-level only — no nested subtasks.
+The system SHALL store subtasks as database records with the following fields: `id` (UUID primary key), `task_id` (FK to Task), `title` (string), `completed` (boolean, default false), `position` (varchar(50), fractional index string for ordering), `action_label` (varchar(60), nullable, short button text for AI action), `action_icon` (varchar(20), nullable, semantic icon category), `action_prompt` (text, nullable, max 500 chars, prompt to send to task chat), `created_at`, and `updated_at`. Subtasks SHALL be returned ordered by `position` ascending (lexicographic sort) within their parent task. Subtasks are single-level only — no nested subtasks. The action fields (`action_label`, `action_icon`, `action_prompt`) represent an optional AI-generated action button for the subtask. When all three are null, the subtask has no AI action available.
 
 #### Scenario: Subtask created for a task
 - **WHEN** a user creates a subtask with title "Research visa requirements" for a task
-- **THEN** a Subtask record is created with `completed` set to false and a fractional index `position`
+- **THEN** a Subtask record is created with `completed` set to false, a fractional index `position`, and null action fields
 
 #### Scenario: Subtask ordering within task
 - **WHEN** a task has 3 subtasks with fractional index positions
 - **THEN** subtasks are returned in lexicographic position order
+
+#### Scenario: Subtask with AI action
+- **WHEN** the enrichment pipeline generates a subtask "Draft rental agreement" with an AI action
+- **THEN** the Subtask record has `action_label: "Generate agreement draft"`, `action_icon: "generate"`, `action_prompt: "Generate a rental agreement draft based on the task context"`
+
+#### Scenario: Subtask without AI action
+- **WHEN** the enrichment pipeline generates a subtask "Sign documents at notary"
+- **THEN** the Subtask record has `action_label: null`, `action_icon: null`, `action_prompt: null`
 
 ### Requirement: List Boards Endpoint
 The system SHALL expose `GET /api/boards` as an authenticated endpoint that returns all boards belonging to the authenticated user. Each board in the response SHALL include summary data: `id`, `goal_id`, `title`, `goal_title`, `task_count`, `completed_task_count` (tasks with status `done`), and `created_at`. Boards SHALL be ordered by `created_at` descending (newest first).
@@ -325,4 +333,59 @@ The system SHALL mount the `POST /api/boards/{board_id}/chat` endpoint in the AI
 #### Scenario: Board chat endpoint in OpenAPI spec
 - **WHEN** the OpenAPI spec is generated
 - **THEN** the board chat endpoint appears under the `ai` tag with request/response schemas documented
+
+### Requirement: Artifact Data Model and Migration
+The system SHALL define an `Artifact` SQLModel in `app/domains/boards/models.py` with fields: `id` (UUID string, primary key, default uuid4), `task_id` (UUID string, foreign key to `task.id`, on-delete cascade), `title` (str, max 200), `content` (text), `content_type` (str, default "text/markdown"), `created_by` (str, one of "ai" | "user"), `created_at` (datetime, server default), `updated_at` (datetime, server default, on-update). The model SHALL have an index on `task_id`. An Alembic migration SHALL create the `artifact` table.
+
+#### Scenario: Artifact table created by migration
+- **WHEN** the Alembic migration runs
+- **THEN** the `artifact` table exists with all columns, the foreign key to `task` with cascade delete, and an index on `task_id`
+
+### Requirement: Artifact Repository
+The system SHALL define an `ArtifactRepository` in `app/domains/boards/artifact_repository.py` with methods: `create(db, task_id, title, content, content_type, created_by) -> Artifact`, `list_by_task(db, task_id) -> list[Artifact]` (ordered by created_at desc), `get_by_id(db, artifact_id) -> Artifact | None`, `delete(db, artifact_id) -> None`, `count_by_task(db, task_id) -> int`.
+
+#### Scenario: List artifacts for a task ordered by newest first
+- **WHEN** `list_by_task` is called for a task with 3 artifacts
+- **THEN** the 3 artifacts are returned ordered by `created_at` descending
+
+#### Scenario: Count artifacts for a task
+- **WHEN** `count_by_task` is called for a task with 2 artifacts
+- **THEN** the method returns 2
+
+### Requirement: Artifact Service
+The system SHALL define artifact service functions in `app/domains/boards/artifact_service.py` with methods: `create_artifact(db, task_id, title, content, content_type, created_by) -> Artifact`, `list_artifacts(db, task_id) -> list[Artifact]`, `get_artifact(db, artifact_id) -> Artifact`, `delete_artifact(db, artifact_id) -> None`. The service SHALL use `ArtifactRepository` for data access.
+
+#### Scenario: Create artifact via service
+- **WHEN** `create_artifact` is called with valid task_id and content
+- **THEN** an Artifact record is created and returned
+
+### Requirement: Artifact CRUD Router
+The system SHALL provide artifact CRUD endpoints in the boards router: `GET /api/tasks/{task_id}/artifacts` (list), `GET /api/tasks/{task_id}/artifacts/{artifact_id}` (get), `DELETE /api/tasks/{task_id}/artifacts/{artifact_id}` (delete). All endpoints SHALL validate task ownership via the existing ownership utility. The router SHALL be mounted alongside existing task endpoints.
+
+#### Scenario: List artifacts endpoint
+- **WHEN** `GET /api/tasks/{task_id}/artifacts` is called by the task owner
+- **THEN** the endpoint returns the list of artifacts for that task
+
+#### Scenario: Delete artifact by non-owner
+- **WHEN** `DELETE /api/tasks/{task_id}/artifacts/{artifact_id}` is called by a user who does not own the task
+- **THEN** the endpoint returns 403 Forbidden
+
+### Requirement: Action Suggestion Router
+The system SHALL provide a `POST /api/tasks/{task_id}/actions/suggest` endpoint in the AI router. The endpoint SHALL validate task ownership, build the task context string (title, description, status, subtasks, immediate dependencies and dependents), call `generate_action_suggestions`, and return `ActionSuggestionsResponse`. The endpoint SHALL be mounted alongside the existing task chat endpoint.
+
+#### Scenario: Action suggestions returned for owned task
+- **WHEN** `POST /api/tasks/{task_id}/actions/suggest` is called by the task owner
+- **THEN** the endpoint returns 2–4 action suggestions
+
+#### Scenario: Action suggestions for non-owned task
+- **WHEN** `POST /api/tasks/{task_id}/actions/suggest` is called by a non-owner
+- **THEN** the endpoint returns 403 Forbidden
+
+### Requirement: Subtask Action Fields Migration
+The system SHALL include an Alembic migration that adds three nullable columns to the `subtask` table: `action_label` (varchar(60)), `action_icon` (varchar(20)), and `action_prompt` (text). The migration SHALL be non-destructive — existing subtask records retain their current data with null action fields.
+
+#### Scenario: Migration adds action columns
+- **WHEN** the Alembic migration runs
+- **THEN** the `subtask` table has new nullable columns `action_label`, `action_icon`, and `action_prompt`
+- **AND** existing subtask records have null values for all three new columns
 

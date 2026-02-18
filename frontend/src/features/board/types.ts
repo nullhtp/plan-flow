@@ -6,6 +6,9 @@ export interface SubtaskResponse {
 	title: string;
 	completed: boolean;
 	position: string;
+	action_label: string | null;
+	action_icon: string | null;
+	action_prompt: string | null;
 	created_at: string;
 }
 

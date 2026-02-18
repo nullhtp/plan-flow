@@ -116,8 +116,55 @@ function PendingActionCard({ actionId, boardId }: { actionId: string; boardId: s
 	);
 }
 
-function ChatMessageBubble({ message, boardId }: { message: ChatMessage; boardId: string }) {
+interface QuickReply {
+	label: string;
+	value: string;
+}
+
+/**
+ * Extract quick-reply options from an AI message. The AI embeds them as a
+ * ```json block containing {"quick_replies": [...]}.
+ * Returns the display text (without the JSON block) and the parsed replies.
+ */
+function parseQuickReplies(content: string): { text: string; quickReplies: QuickReply[] } {
+	const jsonBlockRegex = /```json\s*\n?([\s\S]*?)\n?```/;
+	const match = content.match(jsonBlockRegex);
+	if (!match) return { text: content, quickReplies: [] };
+
+	try {
+		const parsed: unknown = JSON.parse(match[1]);
+		if (
+			parsed &&
+			typeof parsed === "object" &&
+			"quick_replies" in parsed &&
+			Array.isArray((parsed as { quick_replies: unknown }).quick_replies)
+		) {
+			const replies = (parsed as { quick_replies: QuickReply[] }).quick_replies;
+			const text = content.replace(jsonBlockRegex, "").trim();
+			return { text, quickReplies: replies };
+		}
+	} catch {
+		// Not valid JSON or wrong shape — treat as normal text
+	}
+
+	return { text: content, quickReplies: [] };
+}
+
+function ChatMessageBubble({
+	message,
+	boardId,
+	onQuickReply,
+	isLoading,
+}: {
+	message: ChatMessage;
+	boardId: string;
+	onQuickReply?: (value: string) => void;
+	isLoading?: boolean;
+}) {
 	const isUser = message.role === "user";
+	const { text, quickReplies } = isUser
+		? { text: message.content, quickReplies: [] }
+		: parseQuickReplies(message.content);
 
 	return (
 		<div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -126,7 +173,7 @@ function ChatMessageBubble({ message, boardId }: { message: ChatMessage; boardId
 					isUser ? "bg-primary text-primary-foreground" : "bg-muted"
 				}`}
 			>
-				<div className="whitespace-pre-wrap">{message.content}</div>
+				<div className="whitespace-pre-wrap">{text}</div>
 				{message.actions && message.actions.length > 0 && (
 					<div className="mt-2 space-y-1">
 						{message.actions.map((action, i) => (
@@ -137,6 +184,22 @@ function ChatMessageBubble({ message, boardId }: { message: ChatMessage; boardId
 				{message.pendingActionId && (
 					<div className="mt-2">
 						<PendingActionCard actionId={message.pendingActionId} boardId={boardId} />
+					</div>
+				)}
+				{quickReplies.length > 0 && onQuickReply && (
+					<div className="mt-2 flex flex-wrap gap-1.5">
+						{quickReplies.map((qr) => (
+							<Button
+								key={qr.value}
+								variant="outline"
+								size="sm"
+								className="h-auto px-2.5 py-1 text-xs"
+								disabled={isLoading}
+								onClick={() => onQuickReply(qr.value)}
+							>
+								{qr.label}
+							</Button>
+						))}
 					</div>
 				)}
 			</div>
@@ -198,11 +261,17 @@ export function TaskChat({ taskId, boardId, initialPrompt }: TaskChatProps) {
 				<div className="max-h-80 min-h-[120px] overflow-y-auto p-3 space-y-3">
 					{messages.length === 0 && !isLoading && (
 						<p className="text-center text-xs text-muted-foreground py-6">
-							Ask AI anything about this task, or click an action above.
+							Ask AI anything about this task, or use a subtask action.
 						</p>
 					)}
 					{messages.map((msg) => (
-						<ChatMessageBubble key={msg.id} message={msg} boardId={boardId} />
+						<ChatMessageBubble
+							key={msg.id}
+							message={msg}
+							boardId={boardId}
+							onQuickReply={(value) => sendMessage(value)}
+							isLoading={isLoading}
+						/>
 					))}
 					{isLoading && (
 						<div className="flex justify-start">

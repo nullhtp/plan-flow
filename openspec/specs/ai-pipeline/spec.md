@@ -154,7 +154,7 @@ System prompts for classification, question generation, and board generation SHA
 - **THEN** it imports the prompt from `app/domains/ai/prompts/generate_board.py`
 
 ### Requirement: Board Generation Node
-The system SHALL implement a two-step board generation pipeline replacing the single-call board generation node. **Step 1 (Skeleton):** A LangGraph node SHALL generate the board structure from goal context. The skeleton node SHALL receive: the goal's original text, classification output (domain, complexity, dimensions, language), all Q&A pairs, and the formatted `user_meta` context (when available). The skeleton output SHALL conform to a Pydantic schema (`BoardSkeletonOutput`) containing: `board_title` (string), and `tasks` (array of objects each with `id` (string, e.g., "t1"), `title`, `depends_on` (array of task id strings), and `is_goal_node` (boolean, default false)). The output MUST form a valid DAG — no circular dependencies. Tasks with an empty `depends_on` array are root tasks. Exactly one task MUST have `is_goal_node: true`. All generated content (board_title, task titles) SHALL be in the language detected during classification. **Step 2 (Enrichment):** For each task produced by the skeleton, a separate LLM call SHALL generate: `description` (string), `due_date` (nullable ISO date string), `priority` (nullable, one of "low"/"medium"/"high"), `estimated_minutes` (nullable integer), and `subtasks` (array of objects each with `title` (string)). The enrichment output SHALL conform to a Pydantic schema (`TaskEnrichmentOutput`). Enrichment calls SHALL run in parallel with concurrency bounded by a configurable limit (`ai_enrichment_concurrency`, default 5) using `asyncio.Semaphore`. Each enrichment call receives the task title, its dependency and dependent task titles (for context), the full goal context, the detected language, and the formatted `user_meta` context (when available). All generated content SHALL be in the detected language. The enrichment prompts SHALL be stored as a separate module in `prompts/enrich_task.py`. The skeleton prompt SHALL be stored in `prompts/generate_board.py` (updated).
+The system SHALL implement a two-step board generation pipeline replacing the single-call board generation node. **Step 1 (Skeleton):** A LangGraph node SHALL generate the board structure from goal context. The skeleton node SHALL receive: the goal's original text, classification output (domain, complexity, dimensions, language), all Q&A pairs, and the formatted `user_meta` context (when available). The skeleton output SHALL conform to a Pydantic schema (`BoardSkeletonOutput`) containing: `board_title` (string), and `tasks` (array of objects each with `id` (string, e.g., "t1"), `title`, `depends_on` (array of task id strings), and `is_goal_node` (boolean, default false)). The output MUST form a valid DAG — no circular dependencies. Tasks with an empty `depends_on` array are root tasks. Exactly one task MUST have `is_goal_node: true`. All generated content (board_title, task titles) SHALL be in the language detected during classification. **Step 2 (Enrichment):** For each task produced by the skeleton, a separate LLM call SHALL generate: `description` (string), `due_date` (nullable ISO date string), `priority` (nullable, one of "low"/"medium"/"high"), `estimated_minutes` (nullable integer), and `subtasks` (array of objects each with `title` (string)). The enrichment output SHALL conform to a Pydantic schema (`TaskEnrichmentOutput`). Enrichment calls SHALL run in parallel with concurrency bounded by a configurable limit (`ai_enrichment_concurrency`, default 5) using `asyncio.Semaphore`. Each enrichment call receives the task title, its dependency and dependent task titles (for context), the full goal context, the detected language, and the formatted `user_meta` context (when available). All generated content SHALL be in the detected language. The enrichment prompts SHALL be stored as a separate module in `prompts/enrich_task.py`. The skeleton prompt SHALL be stored in `prompts/generate_board.py` (updated). **Step 3 (Subtask Action Generation):** After each task's enrichment is persisted (subtask records exist in the database), a follow-up LLM call SHALL generate actions for the task's subtasks using `generate_subtask_actions`. This call receives the task title, description, status, and the list of subtask titles. The LLM returns action data (label, icon, prompt) for subtasks that can be meaningfully automated, and null for non-automatable subtasks. The generated actions SHALL be persisted on the Subtask records. Action generation failure SHALL NOT block or fail the enrichment — subtasks are created without actions on failure (graceful degradation). Action generation calls SHALL reuse the same concurrency semaphore as enrichment.
 
 #### Scenario: Skeleton generated for a relocation goal with dependencies
 - **WHEN** the skeleton node receives a relocation goal with classification domain "relocation", complexity 4, and answers covering timeline, budget, housing, and logistics
@@ -203,6 +203,18 @@ The system SHALL implement a two-step board generation pipeline replacing the si
 #### Scenario: Single task enrichment failure does not block others
 - **WHEN** enrichment for task "t3" fails after all retries but enrichment for other tasks succeeds
 - **THEN** other tasks are fully enriched and task "t3" has empty description and no subtasks
+
+#### Scenario: Subtask actions generated after enrichment persistence
+- **WHEN** enrichment for a task is persisted and subtask records exist
+- **THEN** a follow-up LLM call generates actions for automatable subtasks and persists action_label, action_icon, action_prompt on the Subtask records
+
+#### Scenario: Subtask action generation failure does not block enrichment
+- **WHEN** subtask action generation fails for a task after retries
+- **THEN** the subtasks exist without actions (action fields remain null) and the enrichment is still considered successful
+
+#### Scenario: Mixed automatable and non-automatable subtasks
+- **WHEN** action generation runs for subtasks ["Draft agreement", "Visit notary", "Research options"]
+- **THEN** "Draft agreement" and "Research options" get actions; "Visit notary" gets null action fields
 
 ### Requirement: Board Generation Prompt Module
 The board generation skeleton prompt SHALL be stored in `app/domains/ai/prompts/generate_board.py` as a separate module. The prompt SHALL instruct the AI to: design tasks as concrete, actionable steps for achieving the goal; define dependency edges between tasks where one task logically must complete before another can begin; create parallel task paths for independent work streams; create convergence nodes where parallel paths merge into a single milestone task; create exactly one final goal node (with `is_goal_node: true`) that represents the user's original goal, depends on all leaf tasks, and serves as the single sink of the DAG; and ensure the dependency graph forms a valid DAG with no cycles. The prompt SHALL instruct the AI to generate all content in the specified language. The prompt SHALL NOT include instructions about descriptions, metadata, or subtasks — those are handled by the enrichment prompt. The prompt SHALL NOT be inlined in node logic or service functions.
@@ -379,13 +391,53 @@ The system SHALL add an `AI_CHAT_MODEL` setting (string, default: same as `AI_DE
 - **THEN** the chat graphs use the value of `AI_DEFAULT_MODEL`
 
 ### Requirement: Tool-Aware Chat System Prompts
-The system SHALL update the task chat system prompt and create a board chat system prompt that instruct the AI about tool usage. The prompts SHALL be stored in `app/domains/ai/prompts/chat.py` (updated) and `app/domains/ai/prompts/board_chat.py` (new). The prompts SHALL instruct the AI to: (1) use tools proactively when they can help answer the user's question or fulfill their request, (2) prefer reading board state via tools over making assumptions, (3) explain what it's doing when using tools, (4) clearly communicate when an action requires user confirmation, (5) use web search only when the user asks for research or when external info is genuinely needed, and (6) never fabricate tool results.
+The system SHALL maintain separate system prompt modules for task chat (`app/domains/ai/prompts/chat.py`) and board chat (`app/domains/ai/prompts/board_chat.py`). The task chat prompt SHALL instruct the AI on available tools (retrieval, mutations, web search, save_artifact), establish its role as a helpful task assistant, and guide appropriate tool usage. The prompt SHALL include instructions to use the `save_artifact` tool when generating substantial, reusable content such as agreements, plans, research summaries, or comparisons — rather than including long content only in the chat message. The board chat prompt SHALL additionally cover structural tools (add/remove tasks and dependencies, split tasks).
 
 #### Scenario: Task chat prompt includes tool instructions
-- **WHEN** the task chat system prompt is constructed
-- **THEN** it includes instructions about available tools, when to use them, and confirmation behavior
+- **WHEN** a task chat graph is compiled
+- **THEN** the system prompt from `prompts/chat.py` is used, including instructions for all available tools
+
+#### Scenario: Task chat prompt includes artifact instructions
+- **WHEN** the task chat system prompt is loaded
+- **THEN** it includes instructions to use `save_artifact` for substantial generated content
 
 #### Scenario: Board chat prompt includes structural tool instructions
-- **WHEN** the board chat system prompt is constructed
-- **THEN** it includes instructions about board-wide tools including adding/removing tasks and managing dependencies
+- **WHEN** a board chat graph is compiled
+- **THEN** the system prompt from `prompts/board_chat.py` is used, including instructions for structural tools
+
+### Requirement: Action Suggestion Generation
+The system SHALL provide an async function `generate_action_suggestions(task_context: str, model: str | None = None) -> list[ActionSuggestion]` in the AI service layer. The function SHALL call the LLM with structured output using the action suggestion prompt and task context string. The function SHALL use the `AI_ACTION_SUGGEST_MODEL` (falling back to `AI_CHAT_MODEL`, then `AI_DEFAULT_MODEL`). The function SHALL return 2–4 `ActionSuggestion` objects. The function SHALL NOT use LangGraph or tools — it is a single structured output LLM call.
+
+#### Scenario: Generate suggestions for a planning task
+- **WHEN** `generate_action_suggestions` is called with context for a task titled "Plan team offsite"
+- **THEN** it returns 2–4 ActionSuggestion objects with contextual labels and prompts
+
+#### Scenario: Suggestions respect task language
+- **WHEN** the task context is in German
+- **THEN** the returned suggestions have German labels and prompts
+
+### Requirement: Action Suggestion Prompt Module
+The system SHALL store the action suggestion system prompt in `app/domains/ai/prompts/action_suggestions.py`. The prompt SHALL instruct the LLM to: analyze the task's title, description, status, subtasks, and relationships; generate 2–4 diverse action suggestions; use the same language as the task content; produce labels that are short and action-oriented (verb-led); produce prompts that are clear instructions for the task chat AI; and vary the icon categories across suggestions.
+
+#### Scenario: Action suggestion prompt stored as module
+- **WHEN** the action suggestion feature loads its prompt
+- **THEN** the prompt is imported from `app/domains/ai/prompts/action_suggestions.py`
+
+### Requirement: Subtask Action Generation AI Service Function
+The system SHALL provide an async function `generate_subtask_actions(task_title: str, task_description: str, task_status: str, subtasks: list[dict], model: str | None = None) -> list[SubtaskActionOutput]` in the AI service layer. The function SHALL call the LLM with structured output using the subtask action prompt and the task/subtask context. The function SHALL use `AI_ACTION_SUGGEST_MODEL` (falling back to `AI_CHAT_MODEL`, then `AI_DEFAULT_MODEL`). The function SHALL return one `SubtaskActionOutput` per input subtask, with null action fields for non-automatable subtasks. The function SHALL NOT use LangGraph or tools — it is a single structured output LLM call.
+
+#### Scenario: Service function called with task context
+- **WHEN** `generate_subtask_actions` is called with task title "Create rental agreement" and subtasks ["Draft agreement terms", "Get notary appointment"]
+- **THEN** it returns a list with action data for "Draft agreement terms" and null actions for "Get notary appointment"
+
+#### Scenario: Language matching in service function
+- **WHEN** `generate_subtask_actions` is called with German task title and subtask titles
+- **THEN** returned action labels and prompts are in German
+
+### Requirement: Subtask Action Prompt Module
+The system SHALL store the subtask action system prompt in `app/domains/ai/prompts/action_suggestions.py` (repurposed). The prompt SHALL instruct the LLM to: analyze each subtask in the context of the parent task title, description, and status; determine if AI can meaningfully help with each subtask; generate an action (label, icon, prompt) only for automatable subtasks; return null action fields for subtasks requiring physical presence, manual work, or human interaction; use the same language as the task content; vary action types (icons) across subtasks; write the `prompt` field as a natural instruction that references the specific subtask. The prompt SHALL receive the task title, description, status, and a list of subtask titles.
+
+#### Scenario: Prompt stored as module
+- **WHEN** the subtask action generation feature is invoked
+- **THEN** the system prompt is loaded from `app/domains/ai/prompts/action_suggestions.py`
 

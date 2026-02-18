@@ -42,6 +42,21 @@ class SubtaskOutput(BaseModel):
     """A single subtask generated during task enrichment."""
 
     title: str = Field(description="Concise, actionable subtask title")
+    action_label: str | None = Field(
+        default=None,
+        description="Short button text for the AI action (max 60 chars), "
+        "or null if the subtask cannot be meaningfully automated",
+    )
+    action_icon: str | None = Field(
+        default=None,
+        description="Semantic icon category for the action (generate, research, "
+        "plan, analyze, summarize, review, compare, create), or null",
+    )
+    action_prompt: str | None = Field(
+        default=None,
+        description="Natural language prompt to send to task chat when the action "
+        "is clicked (max 500 chars), or null",
+    )
 
 
 class TaskEnrichmentOutput(BaseModel):

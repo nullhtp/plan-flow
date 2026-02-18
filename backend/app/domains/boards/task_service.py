@@ -292,6 +292,8 @@ async def update_task_with_enrichment(
     """Update a single Task record with enrichment data and create Subtask records.
 
     Phase 2 of two-phase persistence. Each call is its own transaction.
+    After subtasks are created, generates AI actions for automatable subtasks
+    (Phase 3 - graceful degradation on failure).
     Returns list of created subtask IDs.
     """
     task_repo = TaskRepository(session)
@@ -322,11 +324,12 @@ async def update_task_with_enrichment(
     await task_repo.update(task)
 
     # Create subtask records with fractional index positions
+    from app.domains.boards.models import Subtask
+
     subtask_ids: list[str] = []
+    created_subtasks: list[Subtask] = []
     last_position: str | None = None
     for subtask_output in enrichment.subtasks:
-        from app.domains.boards.models import Subtask
-
         new_pos = generate_position_after(last_position)
         subtask = Subtask(
             task_id=task_id,
@@ -335,9 +338,42 @@ async def update_task_with_enrichment(
         )
         await subtask_repo.create(subtask)
         subtask_ids.append(subtask.id)
+        created_subtasks.append(subtask)
         last_position = new_pos
 
     await session.commit()
+
+    # Phase 3: Generate AI actions for the created subtasks
+    if created_subtasks:
+        try:
+            from app.domains.ai.service import generate_subtask_actions
+
+            subtask_dicts = [{"title": s.title} for s in created_subtasks]
+            actions = await generate_subtask_actions(
+                task_title=task.title,
+                task_description=task.description or "",
+                task_status=task.status,
+                subtasks=subtask_dicts,
+            )
+
+            # Match actions to subtasks by title and persist
+            action_map = {a.subtask_title: a for a in actions}
+            for subtask in created_subtasks:
+                action = action_map.get(subtask.title)
+                if action and action.action_label is not None:
+                    subtask.action_label = action.action_label
+                    subtask.action_icon = action.action_icon
+                    subtask.action_prompt = action.action_prompt
+                    session.add(subtask)
+
+            await session.commit()
+        except Exception:
+            logger.exception(
+                "Subtask action generation failed for task '%s' — "
+                "subtasks created without actions",
+                task.title,
+            )
+
     return subtask_ids
 
 

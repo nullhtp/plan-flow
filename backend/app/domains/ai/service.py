@@ -23,9 +23,10 @@ from app.domains.ai.nodes.questions import (
     generate_questions as _generate_questions,
 )
 from app.domains.ai.schemas import (
-    ActionSuggestionsResponse,
     ClassificationOutput,
     QuestionItem,
+    SubtaskActionOutput,
+    SubtaskActionsResponse,
 )
 from app.domains.boards.dag_utils import (
     CyclicDependencyError,
@@ -129,54 +130,68 @@ async def generate_follow_up_questions(
     return follow_ups
 
 
-# ── Action Suggestions ───────────────────────────────────
+# ── Subtask Action Generation ────────────────────────────
 
 
-async def generate_action_suggestions(
+async def generate_subtask_actions(
     task_title: str,
     task_description: str,
     task_status: str,
-    subtasks: str,
-    dependency_titles: str,
-    dependent_titles: str,
-) -> ActionSuggestionsResponse:
-    """Generate 2-4 contextual action suggestions for a task.
+    subtasks: list[dict[str, str]],
+    model: str | None = None,
+) -> list[SubtaskActionOutput]:
+    """Generate actions for subtasks in a single batch LLM call.
 
+    Each subtask gets at most one action. Non-automatable subtasks get null fields.
     Uses a lightweight structured-output LLM call (no tools, no graph).
+
+    Args:
+        task_title: Title of the parent task.
+        task_description: Description of the parent task.
+        task_status: Current status of the parent task.
+        subtasks: List of dicts with at least a "title" key.
+        model: Optional model override.
+
+    Returns:
+        List of SubtaskActionOutput, one per input subtask.
     """
+    if not subtasks:
+        return []
+
     from langchain_core.messages import HumanMessage, SystemMessage
 
     from app.domains.ai.llm import get_action_suggest_llm
     from app.domains.ai.prompts.action_suggestions import (
-        ACTION_SUGGESTIONS_SYSTEM_PROMPT,
-        ACTION_SUGGESTIONS_USER_PROMPT,
+        SUBTASK_ACTIONS_SYSTEM_PROMPT,
+        SUBTASK_ACTIONS_USER_PROMPT,
     )
 
-    system_prompt = ACTION_SUGGESTIONS_SYSTEM_PROMPT.format(
+    subtasks_formatted = "\n".join(f"- {s['title']}" for s in subtasks)
+
+    system_prompt = SUBTASK_ACTIONS_SYSTEM_PROMPT.format(
         task_title=task_title,
         task_description=task_description or "No description provided",
         task_status=task_status,
-        subtasks=subtasks or "None",
-        dependency_titles=dependency_titles or "None",
-        dependent_titles=dependent_titles or "None",
+        subtasks_list=subtasks_formatted,
     )
 
     llm = get_action_suggest_llm()
-    structured_llm = llm.with_structured_output(ActionSuggestionsResponse)
+    structured_llm = llm.with_structured_output(SubtaskActionsResponse)
 
-    async def _call() -> ActionSuggestionsResponse:
+    async def _call() -> SubtaskActionsResponse:
         result = await structured_llm.ainvoke(  # pyright: ignore[reportUnknownMemberType]
             [
                 SystemMessage(content=system_prompt),
-                HumanMessage(content=ACTION_SUGGESTIONS_USER_PROMPT),
+                HumanMessage(content=SUBTASK_ACTIONS_USER_PROMPT),
             ]
         )
-        if not isinstance(result, ActionSuggestionsResponse):
-            msg = f"Expected ActionSuggestionsResponse, got {type(result)}"
+        if not isinstance(result, SubtaskActionsResponse):
+            msg = f"Expected SubtaskActionsResponse, got {type(result)}"
             raise TypeError(msg)
         return result
 
-    return await _retry_async(_call)
+    response: SubtaskActionsResponse = await _retry_async(_call)
+    return response.actions
 
 
 # ── Two-Step Board Generation (Streaming) ────────────────

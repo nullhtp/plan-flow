@@ -212,6 +212,43 @@ class ActionSuggestionsResponse(BaseModel):
     )
 
 
+# ── Subtask Action Schemas ────────────────────────────
+
+
+class SubtaskActionOutput(BaseModel):
+    """A single subtask action output from the batch LLM call."""
+
+    subtask_title: str = Field(
+        description="Title of the subtask this action applies to (for matching)",
+    )
+    action_label: str | None = Field(
+        default=None,
+        max_length=60,
+        description="Short button text (e.g., 'Generate agreement draft'), "
+        "or null if the subtask cannot be meaningfully automated",
+    )
+    action_icon: str | None = Field(
+        default=None,
+        description="Semantic icon hint (generate, research, plan, analyze, "
+        "summarize, review, compare, create), or null",
+    )
+    action_prompt: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Natural language prompt to send to task chat when clicked, "
+        "or null",
+    )
+
+
+class SubtaskActionsResponse(BaseModel):
+    """Response from the subtask action generation LLM call."""
+
+    actions: list[SubtaskActionOutput] = Field(
+        description="One entry per input subtask, with null action fields "
+        "for non-automatable subtasks",
+    )
+
+
 class ActionConfirmResponse(BaseModel):
     """Response from confirm/reject action endpoints."""
 

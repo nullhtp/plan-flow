@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { TaskResponse } from "@/features/board/types";
 import { SubtaskChecklist } from "./SubtaskChecklist";
-import { TaskAiActions } from "./TaskAiActions";
 import { TaskArtifacts } from "./TaskArtifacts";
 import { TaskChat } from "./TaskChat";
 
@@ -266,10 +265,8 @@ export function TaskDetailPanel({
 					onToggle={onToggleSubtask}
 					onAdd={onAddSubtask}
 					onDelete={onDeleteSubtask}
+					onActionClick={handleActionClick}
 				/>
-
-				{/* AI Actions */}
-				<TaskAiActions taskId={task.id} onActionClick={handleActionClick} />
 
 				{/* Artifacts */}
 				<TaskArtifacts taskId={task.id} />

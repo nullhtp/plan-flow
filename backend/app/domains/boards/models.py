@@ -156,6 +156,18 @@ class Subtask(SQLModel, table=True):
         default=False, sa_column=Column(Boolean, nullable=False, server_default="false")
     )
     position: str = Field(default="a0", sa_column=Column(String(50), nullable=False))
+    action_label: str | None = Field(
+        default=None,
+        sa_column=Column(String(60), nullable=True),
+    )
+    action_icon: str | None = Field(
+        default=None,
+        sa_column=Column(String(20), nullable=True),
+    )
+    action_prompt: str | None = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),

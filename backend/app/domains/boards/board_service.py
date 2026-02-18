@@ -137,6 +137,9 @@ def build_board_response(
                         "title": s.title,
                         "completed": s.completed,
                         "position": s.position,
+                        "action_label": s.action_label,
+                        "action_icon": s.action_icon,
+                        "action_prompt": s.action_prompt,
                         "created_at": s.created_at,
                     }
                     for s in task.subtasks

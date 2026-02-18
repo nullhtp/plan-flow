@@ -15,6 +15,9 @@ class SubtaskResponse(BaseModel):
     title: str
     completed: bool
     position: str
+    action_label: str | None = None
+    action_icon: str | None = None
+    action_prompt: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

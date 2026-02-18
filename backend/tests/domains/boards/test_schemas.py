@@ -239,7 +239,89 @@ def test_subtask_output_valid() -> None:
     assert subtask.title == "Check visa options"
 
 
+def test_subtask_output_action_fields_default_none() -> None:
+    """SubtaskOutput action fields default to None."""
+    subtask = SubtaskOutput(title="Check visa options")
+    assert subtask.action_label is None
+    assert subtask.action_icon is None
+    assert subtask.action_prompt is None
+
+
+def test_subtask_output_with_action_fields() -> None:
+    """SubtaskOutput parses correctly with action fields."""
+    subtask = SubtaskOutput(
+        title="Check visa options",
+        action_label="Research D7 visa",
+        action_icon="research",
+        action_prompt="Find information about the D7 visa requirements for Portugal",
+    )
+    assert subtask.action_label == "Research D7 visa"
+    assert subtask.action_icon == "research"
+    assert subtask.action_prompt is not None
+
+
 def test_subtask_output_missing_title() -> None:
     """Missing title fails validation."""
     with pytest.raises(ValidationError):
         SubtaskOutput.model_validate({})
+
+
+# ── Subtask Action Schema Tests ──────────────────────────
+
+
+def test_subtask_action_output_with_action() -> None:
+    """SubtaskActionOutput with action fields parses correctly."""
+    from app.domains.ai.schemas import SubtaskActionOutput
+
+    action = SubtaskActionOutput(
+        subtask_title="Research visa requirements",
+        action_label="Research visa",
+        action_icon="research",
+        action_prompt="Find information about visa requirements for Portugal",
+    )
+    assert action.subtask_title == "Research visa requirements"
+    assert action.action_label == "Research visa"
+    assert action.action_icon == "research"
+    assert action.action_prompt is not None
+
+
+def test_subtask_action_output_no_action() -> None:
+    """SubtaskActionOutput with null action fields (non-automatable subtask)."""
+    from app.domains.ai.schemas import SubtaskActionOutput
+
+    action = SubtaskActionOutput(
+        subtask_title="Go to the store",
+        action_label=None,
+        action_icon=None,
+        action_prompt=None,
+    )
+    assert action.subtask_title == "Go to the store"
+    assert action.action_label is None
+    assert action.action_icon is None
+    assert action.action_prompt is None
+
+
+def test_subtask_actions_response_valid() -> None:
+    """SubtaskActionsResponse with mixed automatable/non-automatable subtasks."""
+    from app.domains.ai.schemas import SubtaskActionsResponse
+
+    data = {
+        "actions": [
+            {
+                "subtask_title": "Research visa",
+                "action_label": "Research visa",
+                "action_icon": "research",
+                "action_prompt": "Find visa information",
+            },
+            {
+                "subtask_title": "Go to store",
+                "action_label": None,
+                "action_icon": None,
+                "action_prompt": None,
+            },
+        ]
+    }
+    result = SubtaskActionsResponse.model_validate(data)
+    assert len(result.actions) == 2
+    assert result.actions[0].action_label == "Research visa"
+    assert result.actions[1].action_label is None
