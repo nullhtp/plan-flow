@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.core.config import settings
+from app.core.types import BoardSkeletonOutput, TaskEnrichmentOutput
 from app.domains.ai.nodes.classify import classify_goal
 from app.domains.ai.nodes.enrich_task import enrich_task as _enrich_task
 from app.domains.ai.nodes.generate_board import (
@@ -22,10 +23,8 @@ from app.domains.ai.nodes.questions import (
     generate_questions as _generate_questions,
 )
 from app.domains.ai.schemas import (
-    BoardSkeletonOutput,
     ClassificationOutput,
     QuestionItem,
-    TaskEnrichmentOutput,
 )
 from app.domains.boards.dag_utils import (
     CyclicDependencyError,

@@ -7,12 +7,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from langchain_core.messages import HumanMessage
-from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.db import get_session
-from app.domains.ai.schemas import ChatResponse, ToolAction
+from app.domains.ai.schemas import (
+    ActionConfirmResponse,
+    BoardChatRequest,
+    ChatResponse,
+    TaskChatRequest,
+    ToolAction,
+)
 from app.domains.auth.deps import CurrentUser
 
 logger = logging.getLogger(__name__)
@@ -22,54 +27,19 @@ actions_router = APIRouter(prefix="/actions", tags=["ai-actions"])
 boards_chat_router = APIRouter(prefix="/boards", tags=["ai"])
 
 
-# ── Schemas ──────────────────────────────────────────────
-
-
-class TaskChatRequest(BaseModel):
-    """Request body for the task chat endpoint."""
-
-    message: str = Field(
-        min_length=1,
-        max_length=4000,
-        description="The user's chat message",
-    )
-
-
-class BoardChatRequest(BaseModel):
-    """Request body for the board chat endpoint."""
-
-    message: str = Field(
-        min_length=1,
-        max_length=4000,
-        description="The user's chat message",
-    )
-
-
-class TaskChatResponse(BaseModel):
-    """Response from the task chat endpoint (legacy, kept for backward compat)."""
-
-    response: str = Field(description="The AI assistant's response")
-    thread_id: str = Field(description="The conversation thread ID")
-
-
-class ActionConfirmResponse(BaseModel):
-    """Response from confirm/reject action endpoints."""
-
-    status: str = Field(
-        description="Outcome: executed, rejected, failed, expired, etc."
-    )
-    description: str | None = Field(default=None)
-    error: str | None = Field(default=None)
-    result: dict | None = Field(default=None)  # pyright: ignore[reportMissingTypeArgument]
-
-
 # ── Helpers ──────────────────────────────────────────────
 
 
 async def _validate_board_ownership(
     session: AsyncSession, board_id: str, user_id: str
 ) -> tuple:  # pyright: ignore[reportMissingTypeArgument]
-    """Load board + goal and verify ownership. Returns (board, goal)."""
+    """Load board + goal and verify ownership. Returns (board, goal).
+
+    NOTE: This is a router-level helper that raises HTTPException directly.
+    It is NOT the same as boards.ownership.validate_board_ownership which
+    raises domain errors. Kept here because it returns (board, goal) tuple
+    needed by the chat endpoints.
+    """
     from app.domains.boards.models import Board
     from app.domains.goals.models import Goal
 

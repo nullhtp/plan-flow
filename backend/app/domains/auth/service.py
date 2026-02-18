@@ -1,25 +1,22 @@
 from __future__ import annotations
 
-from typing import cast
-
-from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password, verify_password
 from app.domains.auth.models import User
+from app.domains.auth.repository import UserRepository
 
 
 async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
     """Fetch a user by email (case-insensitive)."""
-    condition = cast(ColumnElement[bool], User.email == email.lower())
-    stmt = select(User).where(condition)
-    result = await session.execute(stmt)
-    return result.scalar_one_or_none()
+    repo = UserRepository(session)
+    return await repo.get_by_email(email)
 
 
 async def get_user_by_id(session: AsyncSession, user_id: str) -> User | None:
     """Fetch a user by primary key."""
-    return await session.get(User, user_id)
+    repo = UserRepository(session)
+    return await repo.get_by_id(user_id)
 
 
 async def register_user(
@@ -31,7 +28,8 @@ async def register_user(
 
     Raises ValueError if the email is already registered.
     """
-    existing = await get_user_by_email(session, email)
+    repo = UserRepository(session)
+    existing = await repo.get_by_email(email)
     if existing is not None:
         raise ValueError("Email already registered")
 
@@ -39,10 +37,7 @@ async def register_user(
         email=email.lower(),
         hashed_password=hash_password(password),
     )
-    session.add(user)
-    await session.commit()
-    await session.refresh(user)
-    return user
+    return await repo.create(user)
 
 
 async def authenticate_user(
@@ -51,7 +46,8 @@ async def authenticate_user(
     password: str,
 ) -> User | None:
     """Verify credentials and return the user, or None on failure."""
-    user = await get_user_by_email(session, email)
+    repo = UserRepository(session)
+    user = await repo.get_by_email(email)
     if user is None:
         return None
     if not user.is_active:

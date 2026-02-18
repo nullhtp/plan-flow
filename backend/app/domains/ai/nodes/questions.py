@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-
-from app.core.config import settings
 from app.domains.ai.lang_utils import get_language_name
+from app.domains.ai.llm import get_llm
 from app.domains.ai.prompts.questions import (
     FOLLOW_UP_SYSTEM_PROMPT,
     FOLLOW_UP_USER_PROMPT,
@@ -15,16 +13,6 @@ from app.domains.ai.prompts.questions import (
 from app.domains.ai.schemas import ClassificationOutput, QuestionItem, QuestionsOutput
 
 
-def _get_llm() -> ChatOpenAI:
-    """Create a LangChain chat model configured for question generation."""
-    return ChatOpenAI(
-        model=settings.ai_default_model,
-        api_key=settings.openrouter_api_key,  # pyright: ignore[reportArgumentType]
-        base_url="https://openrouter.ai/api/v1",
-        timeout=float(settings.ai_llm_timeout),
-    )
-
-
 async def generate_questions(
     raw_input: str,
     classification: ClassificationOutput,
@@ -32,7 +20,7 @@ async def generate_questions(
     memory_context: str = "",
 ) -> list[QuestionItem]:
     """Generate initial questions based on goal classification."""
-    llm = _get_llm()
+    llm = get_llm()
     structured_llm = llm.with_structured_output(QuestionsOutput)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
     language = classification.language
@@ -76,7 +64,7 @@ async def generate_follow_up_questions(
     memory_context: str = "",
 ) -> list[QuestionItem]:
     """Generate follow-up questions based on initial answers."""
-    llm = _get_llm()
+    llm = get_llm()
     structured_llm = llm.with_structured_output(QuestionsOutput)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
     # Format Q&A pairs for the prompt

@@ -79,67 +79,84 @@ Each domain owns its own models, schemas, router, and service. Shared infrastruc
 ```
 backend/
 ├── app/
-│   ├── main.py              # FastAPI app, middleware, startup, router aggregation
-│   ├── core/                # Shared infrastructure (not a domain)
-│   │   ├── config.py        # Settings via pydantic-settings
-│   │   ├── db.py            # Database engine, session factory, base model
-│   │   ├── deps.py          # Shared dependencies (DB session, current user)
-│   │   ├── security.py      # Password hashing, JWT/token utilities
-│   │   └── exceptions.py    # Shared exception types and handlers
+│   ├── main.py                    # FastAPI app, middleware, startup, router aggregation
+│   ├── core/                      # Shared infrastructure (not a domain)
+│   │   ├── config.py              # Settings via pydantic-settings
+│   │   ├── db.py                  # Database engine, session factory, base model
+│   │   ├── deps.py                # Shared dependencies (DB session, current user)
+│   │   ├── security.py            # Password hashing, JWT/token utilities
+│   │   └── types.py               # Cross-domain Pydantic schemas (BoardSkeletonOutput, etc.)
 │   ├── domains/
 │   │   ├── auth/
-│   │   │   ├── models.py    # User SQLModel
-│   │   │   ├── schemas.py   # RegisterRequest, LoginRequest, TokenResponse, etc.
-│   │   │   ├── router.py    # POST /auth/register, /auth/login, etc.
-│   │   │   ├── service.py   # Auth business logic
-│   │   │   └── deps.py      # Domain-specific dependencies (e.g., get_current_user)
+│   │   │   ├── models.py          # User SQLModel
+│   │   │   ├── schemas.py         # RegisterRequest, LoginRequest, TokenResponse, etc.
+│   │   │   ├── repository.py      # UserRepository (DB queries)
+│   │   │   ├── router.py          # POST /auth/register, /auth/login, etc.
+│   │   │   ├── service.py         # Auth business logic (uses UserRepository)
+│   │   │   └── deps.py            # Domain-specific dependencies (e.g., get_current_user)
 │   │   ├── goals/
-│   │   │   ├── models.py    # Goal, Conversation SQLModels
-│   │   │   ├── schemas.py   # GoalCreate, GoalResponse, QuestionSchema, etc.
-│   │   │   ├── router.py    # POST /goals, GET /goals, POST /goals/:id/answers, etc.
-│   │   │   └── service.py   # Goal CRUD, question flow orchestration
+│   │   │   ├── models.py          # Goal SQLModel
+│   │   │   ├── schemas.py         # GoalCreate, GoalResponse, QuestionSchema, etc.
+│   │   │   ├── repository.py      # GoalRepository (DB queries)
+│   │   │   ├── router.py          # POST /goals, GET /goals, POST /goals/:id/answers
+│   │   │   └── service.py         # Goal CRUD, question flow, state transitions
 │   │   ├── boards/
-│   │   │   ├── models.py    # Board, Task, TaskDependency, Subtask SQLModels
-│   │   │   ├── schemas.py   # BoardResponse, EdgeResponse, TaskCreate, TaskUpdate, etc.
-│   │   │   ├── router.py    # Board/task/subtask CRUD endpoints (no columns)
-│   │   │   ├── service.py   # Board CRUD, DAG persistence, status validation, board generation orchestration
-│   │   │   └── dag_utils.py # DAG validation (Kahn's algorithm), goal node validation
+│   │   │   ├── models.py          # Board, Task, TaskDependency, Subtask SQLModels
+│   │   │   ├── schemas.py         # BoardResponse, EdgeResponse, TaskCreate, etc.
+│   │   │   ├── dag_utils.py       # DAG validation (Kahn's algorithm), goal node validation
+│   │   │   ├── position_utils.py  # Fractional indexing for ordered positioning
+│   │   │   ├── ownership.py       # Board/task/subtask ownership validation + error classes
+│   │   │   ├── board_repository.py   # BoardRepository (DB queries)
+│   │   │   ├── task_repository.py    # TaskRepository + dependency queries
+│   │   │   ├── subtask_repository.py # SubtaskRepository
+│   │   │   ├── board_service.py   # Board CRUD, list, response building
+│   │   │   ├── task_service.py    # Task CRUD, status validation, board generation
+│   │   │   ├── subtask_service.py # Subtask CRUD
+│   │   │   ├── service.py         # Backward-compat re-export shim (will be removed)
+│   │   │   └── router.py          # Thin HTTP layer, delegates to services
 │   │   └── ai/
-│   │       ├── schemas.py   # AI input/output schemas (structured output definitions)
-│   │       ├── router.py    # POST /tasks/:id/chat, POST /goals/:id/adapt-board, etc.
-│   │       ├── service.py   # High-level AI operations (classify, generate, chat)
-│   │       ├── pipeline.py  # LangGraph graph definition and state
-│   │       ├── nodes/       # Individual LangGraph nodes
+│   │       ├── schemas.py         # AI schemas (classification, questions, chat, tool actions)
+│   │       ├── llm.py             # Shared LLM factory (get_llm, get_chat_llm)
+│   │       ├── router.py          # POST /tasks/:id/chat, POST /boards/:id/chat, etc.
+│   │       ├── service.py         # High-level AI operations (classify, generate, chat)
+│   │       ├── memory.py          # AI memory retrieval and storage
+│   │       ├── pending_actions.py # PendingAction CRUD and tool execution dispatcher
+│   │       ├── checkpointer.py    # LangGraph checkpoint persistence
+│   │       ├── lang_utils.py      # Language detection utilities
+│   │       ├── nodes/             # Individual LangGraph nodes
 │   │       │   ├── classify.py
 │   │       │   ├── questions.py
 │   │       │   ├── generate_board.py
-│   │       │   └── chat.py
-│   │       └── prompts/     # System prompts and output JSON schemas
-│   │           ├── classify.py
-│   │           ├── questions.py
-│   │           └── generate_board.py
-├── migrations/              # Alembic migrations
+│   │       │   └── enrich_task.py
+│   │       ├── graphs/            # LangGraph graph definitions
+│   │       │   ├── base.py        # Shared graph utilities (should_continue, execute_tools)
+│   │       │   ├── chat.py        # Task chat graph
+│   │       │   └── board_chat.py  # Board chat graph
+│   │       ├── tools/             # AI chat tools (retrieval, mutations, structure)
+│   │       └── prompts/           # System prompts and output JSON schemas
+├── migrations/                    # Alembic migrations
 ├── tests/
-│   ├── domains/             # Tests mirror domain structure
+│   ├── domains/                   # Tests mirror domain structure
 │   │   ├── auth/
 │   │   ├── goals/
 │   │   ├── boards/
 │   │   └── ai/
-│   ├── conftest.py          # Shared fixtures (db session, test client, auth helpers)
-│   └── factories.py         # Test data factories
+│   ├── conftest.py                # Shared fixtures (db session, test client, auth helpers)
+│   └── factories.py               # Test data factories
 ├── pyproject.toml
 └── Dockerfile
 ```
 
 **Domain rules:**
-- Each domain is self-contained: owns its models, schemas, router, and service
-- A domain may import from `core/` (shared infrastructure)
+- Each domain is self-contained: owns its models, schemas, repositories, services, and router
+- **Repository pattern**: each domain has repository classes that encapsulate DB queries. Services call repositories, never use `session.execute()` directly.
+- A domain may import from `core/` (shared infrastructure and cross-domain types)
 - A domain may import **models and schemas** from other domains when needed (e.g., `boards` references `goals.models.Goal`)
 - A domain must NOT import **services or routers** from other domains — use dependency injection or pass data through the router/service layer instead
-- Cross-domain business logic that involves multiple domains lives in the calling domain's service (e.g., `boards/service.py` calls `ai/service.py` for board generation)
+- **Exception**: `boards/task_service.py` imports `goals/service.py` for goal state transitions (board generation needs to transition goals). This is the only cross-domain service import.
 - The `ai/` domain is a service provider — other domains call it, it does not call other domain services
-- Routers call services, never access the DB directly
-- Services contain business logic and DB access
+- Routers are thin HTTP layers — they call services and convert domain errors to HTTP responses
+- Services contain business logic and use repositories for data access
 - All models from all domains are importable by Alembic for migration auto-generation
 
 #### Frontend Structure

@@ -5,13 +5,15 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.domains.ai.schemas import (
-    BoardGenerationOutput,
-    BoardGenerationTaskOutput,
+from app.core.types import (
     BoardSkeletonOutput,
     BoardSkeletonTaskOutput,
     SubtaskOutput,
     TaskEnrichmentOutput,
+)
+from app.domains.ai.schemas import (
+    BoardGenerationOutput,
+    BoardGenerationTaskOutput,
 )
 
 # ── Legacy Schema Tests (BoardGenerationOutput) ─────────

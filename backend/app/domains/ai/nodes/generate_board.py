@@ -2,25 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-
-from app.core.config import settings
+from app.core.types import BoardSkeletonOutput
 from app.domains.ai.lang_utils import get_language_name
+from app.domains.ai.llm import get_llm
 from app.domains.ai.prompts.generate_board import (
     SKELETON_SYSTEM_PROMPT,
     SKELETON_USER_PROMPT,
 )
-from app.domains.ai.schemas import BoardSkeletonOutput
-
-
-def _get_llm() -> ChatOpenAI:
-    """Create a LangChain chat model configured for board generation."""
-    return ChatOpenAI(
-        model=settings.ai_default_model,
-        api_key=settings.openrouter_api_key,  # pyright: ignore[reportArgumentType]
-        base_url="https://openrouter.ai/api/v1",
-        timeout=float(settings.ai_llm_timeout),
-    )
 
 
 async def generate_board_skeleton(
@@ -34,7 +22,7 @@ async def generate_board_skeleton(
     memory_context: str = "",
 ) -> BoardSkeletonOutput:
     """Generate a board skeleton (structure only) using the LLM."""
-    llm = _get_llm()
+    llm = get_llm()
     structured_llm = llm.with_structured_output(BoardSkeletonOutput)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
     language_name = get_language_name(language)

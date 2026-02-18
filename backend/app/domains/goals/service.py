@@ -16,6 +16,7 @@ from app.domains.ai.service import (
     generate_follow_up_questions,
 )
 from app.domains.goals.models import Goal, GoalStatus
+from app.domains.goals.repository import GoalRepository
 from app.domains.goals.schemas import UserMeta
 
 logger = logging.getLogger(__name__)
@@ -265,7 +266,46 @@ async def _get_goal_for_user(
     user_id: str,
 ) -> Goal:
     """Fetch a goal and verify ownership."""
-    goal = await session.get(Goal, goal_id)
-    if goal is None or goal.user_id != user_id:
+    repo = GoalRepository(session)
+    goal = await repo.get_for_user(goal_id, user_id)
+    if goal is None:
         raise GoalNotFoundError
     return goal
+
+
+# ── Goal State Transitions ───────────────────────────────
+
+
+async def transition_goal_to_generating(
+    session: AsyncSession,
+    goal: Goal,
+) -> None:
+    """Transition goal status to 'generating'."""
+    goal.status = GoalStatus.GENERATING.value
+    goal.updated_at = datetime.now(UTC)
+    session.add(goal)
+    await session.commit()
+    await session.refresh(goal)
+
+
+async def transition_goal_to_active(
+    session: AsyncSession,
+    goal: Goal,
+) -> None:
+    """Transition goal status to 'active'."""
+    goal.status = GoalStatus.ACTIVE.value
+    goal.updated_at = datetime.now(UTC)
+    session.add(goal)
+    await session.commit()
+    await session.refresh(goal)
+
+
+async def revert_goal_to_answered(
+    session: AsyncSession,
+    goal: Goal,
+) -> None:
+    """Revert goal status back to 'answered' on generation failure."""
+    goal.status = GoalStatus.ANSWERED.value
+    goal.updated_at = datetime.now(UTC)
+    session.add(goal)
+    await session.commit()

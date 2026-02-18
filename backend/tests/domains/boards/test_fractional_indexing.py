@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domains.boards.service import (
+from app.domains.boards.position_utils import (
     generate_position_after,
     generate_position_between,
 )

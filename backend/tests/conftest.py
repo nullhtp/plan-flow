@@ -15,10 +15,10 @@ from sqlmodel import SQLModel
 from app.core.config import settings
 from app.core.db import get_session
 from app.core.security import create_access_token, hash_password
-from app.domains.ai.schemas import BoardSkeletonOutput, BoardSkeletonTaskOutput
+from app.core.types import BoardSkeletonOutput, BoardSkeletonTaskOutput
 from app.domains.auth.models import User
 from app.domains.boards.models import Board, Subtask, Task, TaskDependency  # noqa: F401
-from app.domains.boards.service import create_board_from_skeleton
+from app.domains.boards.task_service import create_board_from_skeleton
 from app.domains.goals.models import Goal, GoalStatus
 from app.main import app
 

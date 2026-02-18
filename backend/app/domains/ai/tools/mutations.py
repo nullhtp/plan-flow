@@ -15,10 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.ai.tools._pending import create_pending_action
 from app.domains.boards.models import Subtask, Task
-from app.domains.boards.service import (
-    are_dependencies_met,
-    generate_position_after,
-)
+from app.domains.boards.position_utils import generate_position_after
+from app.domains.boards.task_service import are_dependencies_met
 
 logger = logging.getLogger(__name__)
 

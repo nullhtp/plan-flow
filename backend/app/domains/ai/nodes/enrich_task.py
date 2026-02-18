@@ -2,25 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-
-from app.core.config import settings
+from app.core.types import TaskEnrichmentOutput
 from app.domains.ai.lang_utils import get_language_name
+from app.domains.ai.llm import get_llm
 from app.domains.ai.prompts.enrich_task import (
     ENRICHMENT_SYSTEM_PROMPT,
     ENRICHMENT_USER_PROMPT,
 )
-from app.domains.ai.schemas import TaskEnrichmentOutput
-
-
-def _get_llm() -> ChatOpenAI:
-    """Create a LangChain chat model configured for task enrichment."""
-    return ChatOpenAI(
-        model=settings.ai_default_model,
-        api_key=settings.openrouter_api_key,  # pyright: ignore[reportArgumentType]
-        base_url="https://openrouter.ai/api/v1",
-        timeout=float(settings.ai_llm_timeout),
-    )
 
 
 async def enrich_task(
@@ -35,7 +23,7 @@ async def enrich_task(
     memory_context: str = "",
 ) -> TaskEnrichmentOutput:
     """Enrich a single task with description, metadata, and subtasks."""
-    llm = _get_llm()
+    llm = get_llm()
     structured_llm = llm.with_structured_output(TaskEnrichmentOutput)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
     language_name = get_language_name(language)
