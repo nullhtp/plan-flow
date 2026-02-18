@@ -131,6 +131,8 @@ When a confirmable tool is called, the tool function SHALL: (1) validate the act
 
 Only one PendingAction with status `pending` SHALL exist per thread at a time. If a new confirmable tool is called while a pending action exists, the old pending action SHALL be automatically set to `expired`.
 
+The `app/domains/ai/pending_actions.py` module SHALL delegate all data mutations to the boards domain services (`boards/task_service.py`, `boards/subtask_service.py`) instead of reimplementing business logic. Status transition validation, task deletion, and subtask operations SHALL have a single source of truth in the boards domain.
+
 #### Scenario: Confirmable tool creates pending action
 - **WHEN** the AI calls `update_task_status(task_id, "done")` and validation passes
 - **THEN** a PendingAction record is created with status `pending`, tool_name `update_task_status`, tool_args `{"task_id": "...", "new_status": "done"}`, and a description like "Mark task 'Research flights' as done"
@@ -146,6 +148,10 @@ Only one PendingAction with status `pending` SHALL exist per thread at a time. I
 #### Scenario: Validation failure prevents pending action creation
 - **WHEN** the AI calls `add_dependency(a, b)` but it would create a cycle
 - **THEN** no PendingAction is created and the tool returns an error result
+
+#### Scenario: Pending action execution delegates to boards service
+- **WHEN** a pending action for `update_task_status` is confirmed
+- **THEN** the execution calls `boards/task_service.py` for the status transition, using the same validation logic as the REST endpoint
 
 ### Requirement: Pending Action Data Model
 The system SHALL store pending actions in a `pending_action` PostgreSQL table with the following columns: `id` (UUID primary key), `user_id` (FK to user, indexed), `thread_id` (string — the chat thread that proposed this action, indexed), `tool_name` (string — which tool was called), `tool_args` (JSON — the arguments passed to the tool), `description` (string — human-readable description of the proposed action), `status` (string enum: `pending` / `confirmed` / `rejected` / `expired`, default `pending`), `result` (JSON, nullable — the execution result after confirmation), `created_at` (datetime with timezone), `expires_at` (datetime with timezone — 10 minutes after created_at). The table SHALL be defined as a SQLModel model in `app/domains/ai/models.py`. An Alembic migration SHALL create this table.

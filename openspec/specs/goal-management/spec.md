@@ -19,7 +19,7 @@ The system SHALL store goals as database records with the following fields: `id`
 - **THEN** `ai_context` SHALL contain a `user_meta` key with the timezone, locale, current_datetime, location, and device_type
 
 ### Requirement: Goal Status State Machine
-The Goal model SHALL have a `status` field tracking pipeline progress through ordered states: `input`, `classifying`, `questioning`, `answered`, `generating`, `active`, `completed`, `archived`. M2 uses states through `answered`. M3 enables the `answered` -> `generating` -> `active` transitions when board generation is triggered. Transitions MUST be forward-only within a pipeline run (no skipping states). The `status` field SHALL be a string enum.
+The Goal model SHALL have a `status` field tracking pipeline progress through ordered states: `input`, `classifying`, `questioning`, `answered`, `generating`, `active`, `completed`, `archived`. M2 uses states through `answered`. M3 enables the `answered` -> `generating` -> `active` transitions when board generation is triggered. Transitions MUST be forward-only within a pipeline run (no skipping states). The `status` field SHALL be a string enum. The goals domain (`app/domains/goals/service.py`) SHALL own all goal status transitions, including `transition_to_generating()`, `transition_to_active()`, and `revert_to_answered()`. Other domains (e.g., boards) SHALL call these goal service functions to request state transitions rather than modifying goal status directly.
 
 #### Scenario: Status transitions during goal creation
 - **WHEN** a user creates a goal via `POST /goals`
@@ -40,6 +40,10 @@ The Goal model SHALL have a `status` field tracking pipeline progress through or
 #### Scenario: Status reverts on generation failure
 - **WHEN** the AI board generation fails (timeout, validation error, provider error)
 - **THEN** the goal status reverts to `answered` so the user can retry
+
+#### Scenario: Goal state transitions owned by goals domain
+- **WHEN** the boards domain needs to transition a goal to `generating` status during board generation
+- **THEN** it calls `goals/service.transition_to_generating()` instead of modifying the goal model directly
 
 ### Requirement: Create Goal Endpoint
 The system SHALL expose `POST /api/goals` as an authenticated endpoint that accepts `{ "original_input": string, "user_meta"?: UserMeta }` in the request body. The `user_meta` field is optional. When provided, the system SHALL store it in `Goal.ai_context["user_meta"]` before running the AI pipeline. The backend SHALL also capture the client IP address from request headers (`X-Forwarded-For` or `request.client.host`) and store it in `ai_context["user_meta"]["client_ip"]` for potential future geolocation fallback. The `current_datetime` field in `user_meta` SHALL be set or overridden server-side to the current UTC time to prevent client clock manipulation. The endpoint SHALL create a Goal record, run the AI classification and question generation pipeline synchronously (passing `user_meta` to the question generation prompts when available), and return the result. On success, the response SHALL include the goal ID, suggested title, and generated questions. On rejection (goal too vague), the response SHALL include the rejection reason and refinement suggestions with HTTP 422.
