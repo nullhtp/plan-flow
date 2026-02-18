@@ -1,14 +1,18 @@
 import { ArrowRight, Lock, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { TaskResponse } from "@/features/board/types";
 import { SubtaskChecklist } from "./SubtaskChecklist";
+import { TaskAiActions } from "./TaskAiActions";
+import { TaskArtifacts } from "./TaskArtifacts";
+import { TaskChat } from "./TaskChat";
 
 interface TaskDetailPanelProps {
 	task: TaskResponse;
 	allTasks: TaskResponse[];
+	boardId: string;
 	onClose: () => void;
 	onUpdateTask: (data: {
 		title?: string;
@@ -28,6 +32,7 @@ interface TaskDetailPanelProps {
 export function TaskDetailPanel({
 	task,
 	allTasks,
+	boardId,
 	onClose,
 	onUpdateTask,
 	onDeleteTask,
@@ -39,6 +44,9 @@ export function TaskDetailPanel({
 	const [title, setTitle] = useState(task.title);
 	const [description, setDescription] = useState(task.description);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+	const [chatPrompt, setChatPrompt] = useState<string | null>(null);
+	const scrollContainerRef = useRef<HTMLDivElement>(null);
+	const chatSectionRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		setTitle(task.title);
@@ -87,6 +95,14 @@ export function TaskDetailPanel({
 
 	const unmetDeps = dependencyTasks.filter((t) => t.status !== "done");
 
+	const handleActionClick = useCallback((prompt: string) => {
+		setChatPrompt(prompt);
+		// Scroll to chat section after a tick
+		setTimeout(() => {
+			chatSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+		}, 100);
+	}, []);
+
 	return (
 		<div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l bg-background shadow-xl">
 			<div className="flex items-center justify-between border-b p-4">
@@ -105,7 +121,7 @@ export function TaskDetailPanel({
 					</Button>
 				</div>
 			</div>
-			<div className="flex-1 overflow-y-auto p-4 space-y-4">
+			<div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
 				{/* Status */}
 				<div>
 					<Label>Status</Label>
@@ -251,6 +267,17 @@ export function TaskDetailPanel({
 					onAdd={onAddSubtask}
 					onDelete={onDeleteSubtask}
 				/>
+
+				{/* AI Actions */}
+				<TaskAiActions taskId={task.id} onActionClick={handleActionClick} />
+
+				{/* Artifacts */}
+				<TaskArtifacts taskId={task.id} />
+
+				{/* Chat */}
+				<div ref={chatSectionRef}>
+					<TaskChat taskId={task.id} boardId={boardId} initialPrompt={chatPrompt} />
+				</div>
 			</div>
 
 			{/* Delete confirmation */}

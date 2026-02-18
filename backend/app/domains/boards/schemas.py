@@ -42,6 +42,7 @@ class TaskResponse(BaseModel):
     dependency_ids: list[str] = []
     dependent_ids: list[str] = []
     is_locked: bool = False
+    artifact_count: int = 0
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -127,3 +128,26 @@ class SubtaskUpdate(BaseModel):
     title: str | None = None
     completed: bool | None = None
     position: str | None = None
+
+
+# ── Artifact Schemas ─────────────────────────────────────
+
+
+class ArtifactResponse(BaseModel):
+    """Response schema for a task artifact."""
+
+    id: str
+    task_id: str
+    title: str
+    content: str
+    content_type: str
+    created_by: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ArtifactListResponse(BaseModel):
+    """Response containing a list of artifacts."""
+
+    artifacts: list[ArtifactResponse]

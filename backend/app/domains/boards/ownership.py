@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domains.boards.models import Board, Subtask, Task
+from app.domains.boards.models import Artifact, Board, Subtask, Task
 from app.domains.goals.models import Goal
 
 # ── Error classes (imported from service for now; will move in Phase 3) ──
@@ -25,6 +25,10 @@ class TaskNotFoundError(Exception):
 
 class SubtaskNotFoundError(Exception):
     """Raised when a subtask is not found or not owned by the user."""
+
+
+class ArtifactNotFoundError(Exception):
+    """Raised when an artifact is not found or not owned by the user."""
 
 
 # ── Validation functions ─────────────────────────────────
@@ -78,10 +82,31 @@ async def validate_subtask_ownership(
     return subtask
 
 
+async def validate_artifact_ownership(
+    session: AsyncSession, artifact_id: str, user_id: str
+) -> Artifact:
+    """Return artifact if it belongs to user, else raise ArtifactNotFoundError."""
+    artifact = await session.get(Artifact, artifact_id)
+    if artifact is None:
+        raise ArtifactNotFoundError
+    task = await session.get(Task, artifact.task_id)
+    if task is None:
+        raise ArtifactNotFoundError
+    board = await session.get(Board, task.board_id)
+    if board is None:
+        raise ArtifactNotFoundError
+    goal = await session.get(Goal, board.goal_id)
+    if goal is None or goal.user_id != user_id:
+        raise ArtifactNotFoundError
+    return artifact
+
+
 __all__ = [
+    "ArtifactNotFoundError",
     "BoardNotFoundError",
     "SubtaskNotFoundError",
     "TaskNotFoundError",
+    "validate_artifact_ownership",
     "validate_board_ownership",
     "validate_subtask_ownership",
     "validate_task_ownership",

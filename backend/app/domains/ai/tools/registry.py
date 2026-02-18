@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.ai.tools.mutations import (
     make_create_subtask,
     make_delete_subtask,
+    make_save_artifact,
     make_toggle_subtask,
     make_update_task_field,
     make_update_task_status,
@@ -59,6 +60,8 @@ def get_task_chat_tools(
         make_create_subtask(db, board_id, user_id, thread_id),
         make_toggle_subtask(db, board_id, user_id, thread_id),
         make_delete_subtask(db, board_id, user_id, thread_id),
+        # Artifact
+        make_save_artifact(db, board_id, task_id, user_id, thread_id),
     ]
 
     # Optional web search

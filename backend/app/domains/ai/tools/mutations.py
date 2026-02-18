@@ -14,7 +14,7 @@ from langchain_core.tools import tool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.ai.tools._pending import create_pending_action
-from app.domains.boards.models import Subtask, Task
+from app.domains.boards.models import Artifact, Subtask, Task
 from app.domains.boards.position_utils import generate_position_after
 from app.domains.boards.task_service import are_dependencies_met
 
@@ -296,3 +296,60 @@ def make_delete_subtask(
         }
 
     return delete_subtask
+
+
+def make_save_artifact(
+    db: AsyncSession, board_id: str, task_id: str, user_id: str, thread_id: str
+) -> Any:
+    """Create a save_artifact tool (executes immediately).
+
+    Saves AI-generated content as a persistent artifact on the current task.
+    """
+
+    @tool
+    async def save_artifact(title: str, content: str) -> dict[str, Any]:
+        """Save content as a named artifact on the current task. Executes immediately.
+
+        Use this when you generate substantial, reusable content that the user
+        will want to keep — such as a drafted agreement, a research summary,
+        an action plan, a comparison table, or any other document.
+
+        Do NOT use this for short answers or conversational responses.
+
+        When the content includes information obtained from web search, ALWAYS
+        add a "## Sources" section at the end with Markdown links to the
+        original pages (e.g., "- [Page Title](https://example.com)").
+
+        Args:
+            title: A short descriptive title for the artifact
+                (e.g., "Rental Agreement Draft").
+            content: The full content in Markdown format.
+                Include source links when based on web research.
+        """
+        try:
+            artifact = Artifact(
+                task_id=task_id,
+                title=title,
+                content=content,
+                content_type="text/markdown",
+                created_by="ai",
+            )
+            db.add(artifact)
+            await db.commit()
+            await db.refresh(artifact)
+
+            return {
+                "status": "executed",
+                "description": f"Saved artifact '{title}' on the task",
+                "artifact_id": artifact.id,
+                "title": title,
+            }
+        except Exception:
+            await db.rollback()
+            logger.exception("Failed to save artifact")
+            return {
+                "status": "failed",
+                "error": "Unable to save artifact. Please try again.",
+            }
+
+    return save_artifact

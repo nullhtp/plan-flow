@@ -35,4 +35,23 @@ def get_chat_llm() -> ChatOpenAI:
     )
 
 
-__all__ = ["get_chat_llm", "get_llm"]
+def get_action_suggest_llm() -> ChatOpenAI:
+    """Create a LangChain chat model for action suggestion generation.
+
+    Uses ``ai_action_suggest_model`` if set, falling back to
+    ``ai_chat_model``, then to ``ai_default_model``.
+    """
+    model = (
+        settings.ai_action_suggest_model
+        or settings.ai_chat_model
+        or settings.ai_default_model
+    )
+    return ChatOpenAI(
+        model=model,
+        api_key=settings.openrouter_api_key,  # pyright: ignore[reportArgumentType]
+        base_url="https://openrouter.ai/api/v1",
+        timeout=float(settings.ai_llm_timeout),
+    )
+
+
+__all__ = ["get_action_suggest_llm", "get_chat_llm", "get_llm"]

@@ -28,6 +28,13 @@ estimated time on any task. These changes happen immediately.
 This requires the user to confirm before it takes effect.
 - **Manage subtasks**: Create and toggle subtasks immediately. \
 Deleting subtasks requires confirmation.
+- **Save artifacts**: Save substantial content you generate (agreements, plans, \
+research summaries, comparison tables, checklists) as named artifacts on the \
+task. Use the save_artifact tool whenever your response contains reusable, \
+document-like content. Do NOT use it for short answers or chat replies. \
+When saving artifacts that include information from web search results, \
+ALWAYS include a "## Sources" section at the end with links to the original \
+pages in Markdown format (e.g., `- [Page Title](https://example.com)`).
 - **Search the web**: Look up information online when the user asks for \
 research help or when you need external information to give a good answer.
 

@@ -23,6 +23,7 @@ from app.domains.ai.nodes.questions import (
     generate_questions as _generate_questions,
 )
 from app.domains.ai.schemas import (
+    ActionSuggestionsResponse,
     ClassificationOutput,
     QuestionItem,
 )
@@ -126,6 +127,56 @@ async def generate_follow_up_questions(
         return []
 
     return follow_ups
+
+
+# ── Action Suggestions ───────────────────────────────────
+
+
+async def generate_action_suggestions(
+    task_title: str,
+    task_description: str,
+    task_status: str,
+    subtasks: str,
+    dependency_titles: str,
+    dependent_titles: str,
+) -> ActionSuggestionsResponse:
+    """Generate 2-4 contextual action suggestions for a task.
+
+    Uses a lightweight structured-output LLM call (no tools, no graph).
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from app.domains.ai.llm import get_action_suggest_llm
+    from app.domains.ai.prompts.action_suggestions import (
+        ACTION_SUGGESTIONS_SYSTEM_PROMPT,
+        ACTION_SUGGESTIONS_USER_PROMPT,
+    )
+
+    system_prompt = ACTION_SUGGESTIONS_SYSTEM_PROMPT.format(
+        task_title=task_title,
+        task_description=task_description or "No description provided",
+        task_status=task_status,
+        subtasks=subtasks or "None",
+        dependency_titles=dependency_titles or "None",
+        dependent_titles=dependent_titles or "None",
+    )
+
+    llm = get_action_suggest_llm()
+    structured_llm = llm.with_structured_output(ActionSuggestionsResponse)
+
+    async def _call() -> ActionSuggestionsResponse:
+        result = await structured_llm.ainvoke(  # pyright: ignore[reportUnknownMemberType]
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=ACTION_SUGGESTIONS_USER_PROMPT),
+            ]
+        )
+        if not isinstance(result, ActionSuggestionsResponse):
+            msg = f"Expected ActionSuggestionsResponse, got {type(result)}"
+            raise TypeError(msg)
+        return result
+
+    return await _retry_async(_call)
 
 
 # ── Two-Step Board Generation (Streaming) ────────────────

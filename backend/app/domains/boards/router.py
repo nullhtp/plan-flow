@@ -8,6 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
 from app.domains.auth.deps import CurrentUser
+from app.domains.boards.artifact_service import (
+    delete_artifact,
+    list_artifacts,
+)
 from app.domains.boards.board_service import (
     build_board_response,
     get_board,
@@ -16,11 +20,16 @@ from app.domains.boards.board_service import (
     update_board,
 )
 from app.domains.boards.ownership import (
+    ArtifactNotFoundError,
     BoardNotFoundError,
     SubtaskNotFoundError,
     TaskNotFoundError,
+    validate_artifact_ownership,
+    validate_task_ownership,
 )
 from app.domains.boards.schemas import (
+    ArtifactListResponse,
+    ArtifactResponse,
     BoardListResponse,
     BoardResponse,
     BoardUpdate,
@@ -267,6 +276,90 @@ async def delete_subtask_endpoint(
         ) from None
 
     return build_board_response(board)
+
+
+# ── Artifact Endpoints ───────────────────────────────────
+
+
+@tasks_router.get("/{task_id}/artifacts", response_model=ArtifactListResponse)
+async def list_artifacts_endpoint(
+    task_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ArtifactListResponse:
+    """List all artifacts for a task."""
+    try:
+        await validate_task_ownership(session, task_id, current_user.id)
+    except TaskNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        ) from None
+
+    artifacts = await list_artifacts(session, task_id)
+    return ArtifactListResponse(
+        artifacts=[ArtifactResponse.model_validate(a) for a in artifacts]
+    )
+
+
+@tasks_router.get("/{task_id}/artifacts/{artifact_id}", response_model=ArtifactResponse)
+async def get_artifact_endpoint(
+    task_id: str,
+    artifact_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ArtifactResponse:
+    """Get a single artifact."""
+    try:
+        await validate_task_ownership(session, task_id, current_user.id)
+    except TaskNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        ) from None
+
+    try:
+        artifact = await validate_artifact_ownership(
+            session, artifact_id, current_user.id
+        )
+    except ArtifactNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Artifact not found",
+        ) from None
+
+    return ArtifactResponse.model_validate(artifact)
+
+
+@tasks_router.delete(
+    "/{task_id}/artifacts/{artifact_id}",
+    status_code=204,
+    response_model=None,
+)
+async def delete_artifact_endpoint(
+    task_id: str,
+    artifact_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    """Delete an artifact."""
+    try:
+        await validate_task_ownership(session, task_id, current_user.id)
+    except TaskNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        ) from None
+
+    try:
+        await validate_artifact_ownership(session, artifact_id, current_user.id)
+    except ArtifactNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Artifact not found",
+        ) from None
+
+    await delete_artifact(session, artifact_id)
 
 
 # ── Goal-scoped Board Generation ─────────────────────────

@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.db import get_session
 from app.domains.ai.schemas import (
     ActionConfirmResponse,
+    ActionSuggestionsResponse,
     BoardChatRequest,
     ChatResponse,
     TaskChatRequest,
@@ -78,6 +79,85 @@ def _extract_tool_actions(result: dict) -> tuple[list[ToolAction], str | None]: 
             pending_action_id = a.get("pending_action_id")  # pyright: ignore[reportUnknownMemberType]
 
     return tool_actions, pending_action_id
+
+
+# ── Action Suggestions Endpoint ─────────────────────────
+
+
+@router.post(
+    "/{task_id}/actions/suggest",
+    response_model=ActionSuggestionsResponse,
+)
+async def suggest_task_actions(
+    task_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ActionSuggestionsResponse:
+    """Generate 2-4 contextual AI action suggestions for a task."""
+    # Load task with all relationships eagerly loaded
+    from sqlalchemy import select as sa_select
+    from sqlalchemy.orm import selectinload
+
+    from app.domains.ai.service import generate_action_suggestions
+    from app.domains.boards.models import Task, TaskDependency
+
+    stmt = (
+        sa_select(Task)
+        .where(Task.id == task_id)  # pyright: ignore[reportArgumentType]
+        .options(
+            selectinload(Task.subtasks),  # pyright: ignore[reportArgumentType]
+            selectinload(Task.dependencies).selectinload(
+                TaskDependency.dependency_task
+            ),  # pyright: ignore[reportArgumentType, reportUnknownMemberType]
+            selectinload(Task.dependents).selectinload(TaskDependency.dependent_task),  # pyright: ignore[reportArgumentType, reportUnknownMemberType]
+        )
+    )
+    result = await session.execute(stmt)
+    task = result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        )
+
+    await _validate_board_ownership(session, task.board_id, current_user.id)
+
+    # Build subtask summary
+    subtask_lines: list[str] = []
+    for st in task.subtasks:
+        done_marker = "[x]" if st.completed else "[ ]"
+        subtask_lines.append(f"- {done_marker} {st.title}")
+    subtasks_text = "\n".join(subtask_lines) if subtask_lines else "None"
+
+    # Build dependency / dependent titles
+    dep_titles = [
+        d.dependency_task.title
+        for d in task.dependencies
+        if d.dependency_task is not None
+    ]
+    dependent_titles = [
+        d.dependent_task.title for d in task.dependents if d.dependent_task is not None
+    ]
+
+    try:
+        result = await generate_action_suggestions(
+            task_title=task.title,
+            task_description=task.description or "",
+            task_status=task.status,
+            subtasks=subtasks_text,
+            dependency_titles=", ".join(dep_titles) if dep_titles else "None",
+            dependent_titles=(
+                ", ".join(dependent_titles) if dependent_titles else "None"
+            ),
+        )
+    except Exception:
+        logger.exception("Action suggestion generation failed for task %s", task_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate action suggestions",
+        ) from None
+
+    return result
 
 
 # ── Task Chat Endpoint ──────────────────────────────────

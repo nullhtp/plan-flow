@@ -182,6 +182,36 @@ class TaskChatResponse(BaseModel):
     thread_id: str = Field(description="The conversation thread ID")
 
 
+# ── Action Suggestion Schemas ────────────────────────────
+
+
+class ActionSuggestion(BaseModel):
+    """A single AI-generated action suggestion for a task."""
+
+    label: str = Field(
+        max_length=60,
+        description="Short, user-facing button text (e.g., 'Generate agreement draft')",
+    )
+    icon: str = Field(
+        description="Semantic icon hint: generate, research, plan, analyze, "
+        "summarize, review, compare, create",
+    )
+    prompt: str = Field(
+        max_length=500,
+        description="Natural language message to send to the task chat when clicked",
+    )
+
+
+class ActionSuggestionsResponse(BaseModel):
+    """Response from the action suggestion endpoint."""
+
+    actions: list[ActionSuggestion] = Field(
+        min_length=2,
+        max_length=4,
+        description="2-4 contextual action suggestions",
+    )
+
+
 class ActionConfirmResponse(BaseModel):
     """Response from confirm/reject action endpoints."""
 

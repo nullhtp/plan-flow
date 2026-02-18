@@ -103,6 +103,7 @@ export function DagView({ board }: DagViewProps) {
 				<TaskDetailPanel
 					task={selectedTask}
 					allTasks={board.tasks}
+					boardId={board.id}
 					onClose={closeTask}
 					onUpdateTask={(data) => updateTask.mutate({ taskId: selectedTask.id, data })}
 					onDeleteTask={() => {

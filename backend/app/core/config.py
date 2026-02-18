@@ -55,6 +55,7 @@ class Settings(BaseSettings):
 
     # AI Chat & Tools
     ai_chat_model: str = ""  # defaults to ai_default_model when empty
+    ai_action_suggest_model: str = ""  # fallback: ai_chat_model -> ai_default_model
     tavily_api_key: str = ""  # Tavily Search API key; empty = web search disabled
     ai_web_search_max_results: int = 5
 
