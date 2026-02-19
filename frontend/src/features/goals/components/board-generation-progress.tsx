@@ -37,8 +37,14 @@ export function BoardGenerationProgress({
 	const navTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
 	// Start the stream on mount, abort on unmount.
+	// Guard prevents the double-fire caused by React StrictMode's
+	// unmount-remount cycle which would send two POST requests to the server.
+	const didStart = useRef(false);
 	useEffect(() => {
-		stream.start();
+		if (!didStart.current) {
+			didStart.current = true;
+			stream.start();
+		}
 		return () => {
 			stream.abort();
 		};
