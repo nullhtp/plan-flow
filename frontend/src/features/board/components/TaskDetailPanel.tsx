@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { TaskResponse } from "@/features/board/types";
-import { SubBoardCreationFlow } from "./SubBoardCreationFlow";
 import { SubtaskChecklist } from "./SubtaskChecklist";
 import { TaskArtifacts } from "./TaskArtifacts";
 import { TaskChat } from "./TaskChat";
@@ -49,7 +48,6 @@ export function TaskDetailPanel({
 	const [description, setDescription] = useState(task.description);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	const [showExpandConfirm, setShowExpandConfirm] = useState(false);
-	const [showCreationFlow, setShowCreationFlow] = useState(false);
 	const [chatPrompt, setChatPrompt] = useState<string | null>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const chatSectionRef = useRef<HTMLDivElement>(null);
@@ -111,6 +109,13 @@ export function TaskDetailPanel({
 			chatSectionRef.current?.scrollIntoView({ behavior: "smooth" });
 		}, 100);
 	}, []);
+
+	function navigateToExpansionPage() {
+		navigate({
+			to: "/boards/$boardId/expand/$taskId",
+			params: { boardId, taskId: task.id },
+		});
+	}
 
 	return (
 		<div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l bg-background shadow-xl">
@@ -298,18 +303,6 @@ export function TaskDetailPanel({
 							</Button>
 						</div>
 					</div>
-				) : showCreationFlow ? (
-					<SubBoardCreationFlow
-						taskId={task.id}
-						boardId={boardId}
-						onComplete={() => {
-							setShowCreationFlow(false);
-							// Close the panel so user sees the refreshed DAG
-							// (board data is already being refetched by React Query invalidation)
-							onClose();
-						}}
-						onCancel={() => setShowCreationFlow(false)}
-					/>
 				) : (
 					<>
 						<SubtaskChecklist
@@ -329,7 +322,7 @@ export function TaskDetailPanel({
 										if (task.subtasks && task.subtasks.length > 0) {
 											setShowExpandConfirm(true);
 										} else {
-											setShowCreationFlow(true);
+											navigateToExpansionPage();
 										}
 									}}
 								>
@@ -396,7 +389,7 @@ export function TaskDetailPanel({
 								className="bg-violet-600 hover:bg-violet-700 text-white"
 								onClick={() => {
 									setShowExpandConfirm(false);
-									setShowCreationFlow(true);
+									navigateToExpansionPage();
 								}}
 							>
 								Continue

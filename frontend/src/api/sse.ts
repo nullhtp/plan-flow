@@ -9,6 +9,7 @@ export type SSEEventHandler = (event: SSEEvent) => void;
 
 export interface SSEOptions {
 	url: string;
+	body?: unknown;
 	onEvent: SSEEventHandler;
 	onError?: (error: Error) => void;
 	onClose?: () => void;
@@ -23,6 +24,7 @@ export interface SSEOptions {
  */
 export async function fetchSSE({
 	url,
+	body,
 	onEvent,
 	onError,
 	onClose,
@@ -30,14 +32,20 @@ export async function fetchSSE({
 }: SSEOptions): Promise<void> {
 	const fullUrl = `${API_BASE_URL}${url}`;
 
+	const headers: Record<string, string> = {
+		Accept: "text/event-stream",
+	};
+	if (body !== undefined) {
+		headers["Content-Type"] = "application/json";
+	}
+
 	let response: Response;
 	try {
 		response = await fetch(fullUrl, {
 			method: "POST",
 			credentials: "include",
-			headers: {
-				Accept: "text/event-stream",
-			},
+			headers,
+			body: body !== undefined ? JSON.stringify(body) : undefined,
 			signal,
 		});
 	} catch (error) {

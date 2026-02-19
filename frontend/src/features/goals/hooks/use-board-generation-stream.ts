@@ -69,7 +69,14 @@ interface GenerationErrorData {
 	error: string;
 }
 
-export function useBoardGenerationStream(goalId: string) {
+interface UseBoardGenerationStreamOptions {
+	/** The SSE endpoint URL (e.g. `/api/goals/{id}/generate-board/stream`) */
+	url: string;
+	/** Optional JSON body to send with the POST request */
+	body?: unknown;
+}
+
+export function useBoardGenerationStream({ url, body }: UseBoardGenerationStreamOptions) {
 	const [state, setState] = useState<GenerationState>(initialState);
 	const abortRef = useRef<AbortController | null>(null);
 	// Keep a ref to task map so we can resolve titles in task_enriched
@@ -105,7 +112,8 @@ export function useBoardGenerationStream(goalId: string) {
 		setState(connectingState);
 
 		fetchSSE({
-			url: `/api/goals/${goalId}/generate-board/stream`,
+			url,
+			body,
 			signal: controller.signal,
 			onEvent: (event) => {
 				switch (event.event) {
@@ -199,7 +207,7 @@ export function useBoardGenerationStream(goalId: string) {
 				});
 			},
 		});
-	}, [goalId]);
+	}, [url, body]);
 
 	const abort = useCallback(() => {
 		abortRef.current?.abort();

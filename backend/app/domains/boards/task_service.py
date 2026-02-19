@@ -885,5 +885,178 @@ async def generate_board_with_streaming(
         )
 
 
+async def generate_sub_board_with_streaming(
+    session: AsyncSession,
+    task: Task,
+    board: Board,
+    answers: list[dict[str, Any]],
+    user_id: str,
+) -> AsyncGenerator[str, None]:
+    """Orchestrate sub-board generation, persisting to DB AND yielding SSE events.
+
+    Same pattern as generate_board_with_streaming() but for sub-board expansion.
+    Client events have simplified payloads (titles + IDs only).
+    """
+    import json
+
+    from app.core.config import settings as app_settings
+    from app.domains.ai.service import generate_sub_board_stream
+    from app.domains.boards.dag_utils import (
+        CyclicDependencyError,
+        GoalNodeValidationError,
+    )
+
+    def _client_sse(event_type: str, data: dict[str, Any]) -> str:
+        return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+    # Resolve goal context
+    goal_id = board.goal_id
+    goal = await session.get(Goal, goal_id) if goal_id else None  # type: ignore[arg-type]
+    ai_context: dict[str, Any] = (
+        dict(goal.ai_context) if goal and goal.ai_context else {}
+    )
+    classification_data = ai_context.get("classification", {})
+    domain = classification_data.get("domain", "general")
+    language = classification_data.get("language", "en")
+    raw_input = goal.original_input if goal else task.title
+
+    # Format Q&A pairs from answers
+    answer_pairs: list[str] = []
+    for a in answers:
+        val = a["value"] if isinstance(a["value"], str) else str(a["value"])
+        answer_pairs.append(f"Q ({a['question_id']}): ?\nA: {val}")
+    qa_pairs = "\n\n".join(answer_pairs)
+
+    from app.domains.ai.prompts.meta import format_user_meta_block
+
+    user_context = format_user_meta_block(ai_context.get("user_meta")) or ""
+
+    memory_context = ""
+    if app_settings.ai_memory_enabled:
+        from app.domains.ai.memory import retrieve_relevant_memories
+        from app.domains.ai.prompts.memory import format_memory_block
+
+        memories = await retrieve_relevant_memories(session, user_id, task.title)
+        memory_context = format_memory_block(memories)
+
+    # Delete existing subtasks before creating sub-board
+    await delete_task_subtasks(session, task)
+
+    # Auto-start parent task
+    await auto_start_parent_task(session, task)
+    await session.commit()
+
+    sub_board: Board | None = None
+    ai_id_to_db_id: dict[str, str] = {}
+
+    async for sse_event in generate_sub_board_stream(
+        task_title=task.title,
+        task_description=task.description or "",
+        board_title=board.title,
+        raw_input=raw_input,
+        domain=domain,
+        qa_pairs=qa_pairs,
+        language=language,
+        user_context=user_context,
+        memory_context=memory_context,
+    ):
+        # Parse the internal SSE event
+        lines = sse_event.strip().split("\n")
+        event_type = ""
+        event_data: dict[str, Any] = {}
+        for line in lines:
+            if line.startswith("event: "):
+                event_type = line[7:]
+            elif line.startswith("data: "):
+                event_data = json.loads(line[6:])
+
+        if event_type == "skeleton_ready":
+            try:
+                skel = BoardSkeletonOutput.model_validate(event_data)
+                sub_board, ai_id_to_db_id = await create_sub_board_from_skeleton(
+                    session, task, skel
+                )
+            except (CyclicDependencyError, GoalNodeValidationError) as e:
+                logger.error("Sub-board skeleton persistence failed: %s", str(e))
+                yield _client_sse(
+                    "generation_error",
+                    {"error": f"Invalid board structure: {e}"},
+                )
+                return
+            except Exception as e:
+                logger.error("Sub-board skeleton persistence failed: %s", str(e))
+                yield _client_sse(
+                    "generation_error",
+                    {"error": "Failed to create board structure"},
+                )
+                return
+
+            # Forward skeleton to client with board_id
+            yield _client_sse(
+                "skeleton_ready",
+                {
+                    "board_id": sub_board.id,
+                    "board_title": skel.board_title,
+                    "tasks": [
+                        {
+                            "id": t.id,
+                            "title": t.title,
+                            "is_goal_node": t.is_goal_node,
+                        }
+                        for t in skel.tasks
+                    ],
+                },
+            )
+
+        elif event_type == "task_enriched":
+            ai_task_id = event_data.get("task_id", "")
+            db_task_id = ai_id_to_db_id.get(ai_task_id, "")
+
+            if db_task_id:
+                try:
+                    enrichment = TaskEnrichmentOutput.model_validate(event_data)
+                    await update_task_with_enrichment(
+                        session, db_task_id, enrichment, user_context=user_context
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Sub-board enrichment failed for task '%s': %s",
+                        ai_task_id,
+                        str(e),
+                    )
+
+            # Forward enrichment event to client
+            yield _client_sse(
+                "task_enriched",
+                {
+                    "task_id": ai_task_id,
+                    "title": event_data.get("title", ""),
+                },
+            )
+
+        elif event_type == "generation_complete":
+            yield _client_sse(
+                "generation_complete",
+                {
+                    "board_id": sub_board.id if sub_board else "",
+                    "failed_tasks": event_data.get("failed_tasks", []),
+                },
+            )
+
+        elif event_type == "generation_error":
+            error_msg = event_data.get("message", "Sub-board generation failed")
+            yield _client_sse(
+                "generation_error",
+                {"error": error_msg},
+            )
+            return
+
+    if sub_board is None:
+        yield _client_sse(
+            "generation_error",
+            {"error": "Sub-board generation produced no output"},
+        )
+
+
 class BoardGenerationError(Exception):
     """Raised when board generation fails at any stage."""

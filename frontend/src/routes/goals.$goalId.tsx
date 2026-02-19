@@ -20,7 +20,12 @@ function GoalDetailPage() {
 	const [isGenerating, setIsGenerating] = useState(false);
 
 	if (isGenerating) {
-		return <BoardGenerationProgress goalId={goalId} onAbort={() => setIsGenerating(false)} />;
+		return (
+			<BoardGenerationProgress
+				sseUrl={`/api/goals/${goalId}/generate-board/stream`}
+				onAbort={() => setIsGenerating(false)}
+			/>
+		);
 	}
 
 	if (goalQuery.isLoading) {

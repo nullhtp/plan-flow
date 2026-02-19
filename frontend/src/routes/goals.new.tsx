@@ -279,7 +279,7 @@ function GoalsNewPage() {
 	if (pageState.step === "generating") {
 		return (
 			<BoardGenerationProgress
-				goalId={pageState.goalId}
+				sseUrl={`/api/goals/${pageState.goalId}/generate-board/stream`}
 				onAbort={() => setPageState({ step: "input" })}
 			/>
 		);

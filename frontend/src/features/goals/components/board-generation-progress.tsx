@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Check, CircleAlert, CircleDot, Loader2 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	type LogEntry,
@@ -11,12 +11,28 @@ const MAX_VISIBLE_ENTRIES = 8;
 const AUTO_NAV_DELAY_MS = 1500;
 
 interface BoardGenerationProgressProps {
-	goalId: string;
+	/** SSE endpoint URL. Defaults to goal-based endpoint if goalId is provided. */
+	sseUrl?: string;
+	/** Optional JSON body to send with the SSE POST request. */
+	sseBody?: unknown;
+	/** @deprecated Use sseUrl instead. Goal ID for the default goal-based endpoint. */
+	goalId?: string;
+	/** Called when user clicks "Back" on error. */
 	onAbort?: () => void;
+	/** Called when generation completes. If provided, overrides default auto-navigation. */
+	onComplete?: (boardId: string) => void;
 }
 
-export function BoardGenerationProgress({ goalId, onAbort }: BoardGenerationProgressProps) {
-	const stream = useBoardGenerationStream(goalId);
+export function BoardGenerationProgress({
+	sseUrl,
+	sseBody,
+	goalId,
+	onAbort,
+	onComplete,
+}: BoardGenerationProgressProps) {
+	const url = sseUrl ?? `/api/goals/${goalId}/generate-board/stream`;
+	const streamOptions = useMemo(() => ({ url, body: sseBody }), [url, sseBody]);
+	const stream = useBoardGenerationStream(streamOptions);
 	const navigate = useNavigate();
 	const navTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -31,18 +47,24 @@ export function BoardGenerationProgress({ goalId, onAbort }: BoardGenerationProg
 	// Auto-navigate on completion
 	useEffect(() => {
 		if (stream.phase === "complete" && stream.boardId) {
-			navTimerRef.current = setTimeout(() => {
-				navigate({
-					to: "/boards/$boardId",
-					params: { boardId: stream.boardId as string },
-				});
-			}, AUTO_NAV_DELAY_MS);
+			if (onComplete) {
+				navTimerRef.current = setTimeout(() => {
+					onComplete(stream.boardId as string);
+				}, AUTO_NAV_DELAY_MS);
+			} else {
+				navTimerRef.current = setTimeout(() => {
+					navigate({
+						to: "/boards/$boardId",
+						params: { boardId: stream.boardId as string },
+					});
+				}, AUTO_NAV_DELAY_MS);
+			}
 		}
 
 		return () => {
 			if (navTimerRef.current) clearTimeout(navTimerRef.current);
 		};
-	}, [stream.phase, stream.boardId, navigate]);
+	}, [stream.phase, stream.boardId, navigate, onComplete]);
 
 	function handleRetry() {
 		stream.start();

@@ -55,6 +55,7 @@ from app.domains.boards.task_service import (
     delete_task,
     generate_board,
     generate_board_with_streaming,
+    generate_sub_board_with_streaming,
     update_task,
     validate_goal_for_generation,
 )
@@ -577,6 +578,72 @@ async def generate_sub_board_endpoint(
     refreshed_board = await get_board(session, board.id, current_user.id)
     user_meta = await get_user_meta_for_board(session, refreshed_board)
     return build_board_response(refreshed_board, user_meta=user_meta)
+
+
+@tasks_router.post("/{task_id}/generate-sub-board/stream")
+async def generate_sub_board_stream_endpoint(
+    task_id: str,
+    body: SubBoardGenerateRequest,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> StreamingResponse:
+    """Generate a sub-board for a task using AI, streaming progress via SSE.
+
+    Returns a text/event-stream response with events:
+    - skeleton_ready: board_id, board_title, tasks (id, title, is_goal_node)
+    - task_enriched: task_id, title
+    - generation_complete: board_id, failed_tasks
+    - generation_error: error message
+    """
+    from app.domains.boards.dag_utils import NestingDepthError, validate_nesting_depth
+    from app.domains.boards.models import Board
+
+    try:
+        task = await validate_task_ownership(session, task_id, current_user.id)
+    except TaskNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        ) from None
+
+    board = await session.get(Board, task.board_id)
+    if board is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Board not found",
+        )
+
+    try:
+        validate_nesting_depth(board)
+    except NestingDepthError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Sub-boards cannot be nested. This task belongs to a sub-board.",
+        ) from None
+
+    # Check no existing sub-board
+    from app.domains.boards.board_repository import BoardRepository
+
+    repo = BoardRepository(session)
+    existing = await repo.get_sub_board_by_parent_task(task_id)
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A sub-board already exists for this task",
+        )
+
+    answers = [a.model_dump() for a in body.answers]
+
+    return StreamingResponse(
+        generate_sub_board_with_streaming(
+            session, task, board, answers, current_user.id
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ── Artifact Endpoints ───────────────────────────────────
