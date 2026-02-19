@@ -4,6 +4,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
@@ -53,6 +54,7 @@ from app.domains.boards.task_service import (
     create_task,
     delete_task,
     generate_board,
+    generate_board_with_streaming,
     update_task,
     validate_goal_for_generation,
 )
@@ -709,3 +711,65 @@ async def generate_board_endpoint(
 
     board_user_meta = await get_user_meta_for_board(session, board)
     return build_board_response(board, user_meta=board_user_meta)
+
+
+@goals_router.post("/{goal_id}/generate-board/stream")
+async def generate_board_stream_endpoint(
+    goal_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> StreamingResponse:
+    """Generate a board for a goal using AI, streaming progress via SSE.
+
+    Returns a text/event-stream response with events:
+    - skeleton_ready: board_id, board_title, tasks (id, title, is_goal_node)
+    - task_enriched: task_id, title
+    - generation_complete: board_id, failed_tasks
+    - generation_error: error message
+
+    Accepts goals in 'answered' or 'generating' status. The 'generating' case
+    handles reconnection when a previous SSE connection was dropped (e.g. by
+    browser StrictMode or network interruption) before the backend completed.
+    """
+    # Pre-flight validation — inline so we can also accept 'generating' status
+    goal = await session.get(Goal, goal_id)
+    if goal is None or goal.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Goal not found",
+        )
+
+    from app.domains.goals.models import GoalStatus
+
+    if goal.status not in (GoalStatus.ANSWERED.value, GoalStatus.GENERATING.value):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Goal is in '{goal.status}' status, expected 'answered'",
+        )
+
+    # If a board already exists, return 409
+    from app.domains.boards.board_repository import BoardRepository
+
+    repo = BoardRepository(session)
+    existing = await repo.get_by_goal_id(goal_id)
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A board already exists for this goal",
+        )
+
+    # If goal was left in 'generating' from a previous aborted attempt,
+    # revert it so the streaming function can transition it cleanly.
+    if goal.status == GoalStatus.GENERATING.value:
+        from app.domains.goals.service import revert_goal_to_answered
+
+        await revert_goal_to_answered(session, goal)
+
+    return StreamingResponse(
+        generate_board_with_streaming(session, goal, current_user.id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

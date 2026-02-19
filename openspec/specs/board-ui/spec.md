@@ -135,7 +135,7 @@ The system SHALL display a list of the authenticated user's boards on the index 
 - **THEN** the browser navigates to `/boards/:boardId`
 
 ### Requirement: Board Loading State
-The system SHALL display a loading state while the board data is being fetched. The loading state SHALL show a centered spinner or placeholder indicating the graph is loading.
+The system SHALL display a loading state while the board data is being fetched. The loading state SHALL show a centered spinner or placeholder indicating the graph is loading. When the user arrives at a board page via auto-navigation from the generation progress view, the board data SHALL already be persisted and load quickly without a prolonged loading state.
 
 #### Scenario: Board loading state
 - **WHEN** a user navigates to `/boards/:boardId` and the data is loading
@@ -144,6 +144,10 @@ The system SHALL display a loading state while the board data is being fetched. 
 #### Scenario: Board loaded successfully
 - **WHEN** the board data finishes loading
 - **THEN** the loading indicator is replaced with the actual DAG graph
+
+#### Scenario: Post-generation board load
+- **WHEN** a user arrives at the board page via auto-navigation from generation progress
+- **THEN** the board data loads from the server (already persisted during generation) and the DAG graph renders promptly
 
 ### Requirement: Optimistic Update Error Handling
 The system SHALL display a toast notification when an optimistic update fails (server rejects the mutation). The toast SHALL include a brief error message. The UI SHALL revert to the state before the failed mutation. The board query SHALL be invalidated to re-sync with the server.

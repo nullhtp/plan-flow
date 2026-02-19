@@ -1,5 +1,7 @@
 import { createRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import type { GoalResponse, QuestionSchema } from "@/api/generated/model";
+import { BoardGenerationProgress } from "@/features/goals/components/board-generation-progress";
 import { ErrorDisplay } from "@/features/goals/components/error-display";
 import { GoalSummary } from "@/features/goals/components/goal-summary";
 import { LoadingState } from "@/features/goals/components/loading-state";
@@ -15,6 +17,11 @@ export const goalDetailRoute = createRoute({
 function GoalDetailPage() {
 	const { goalId } = goalDetailRoute.useParams();
 	const goalQuery = useGoal(goalId);
+	const [isGenerating, setIsGenerating] = useState(false);
+
+	if (isGenerating) {
+		return <BoardGenerationProgress goalId={goalId} onAbort={() => setIsGenerating(false)} />;
+	}
 
 	if (goalQuery.isLoading) {
 		return (
@@ -63,6 +70,7 @@ function GoalDetailPage() {
 					title={goal.title}
 					originalInput={goal.original_input}
 					qaPairs={qaPairs}
+					onGenerateBoard={() => setIsGenerating(true)}
 				/>
 			</div>
 		);

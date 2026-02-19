@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -675,6 +676,213 @@ async def generate_board(
 
     # Reload the board with all relationships for the response
     return await get_board(session, board.id, user_id)
+
+
+async def generate_board_with_streaming(
+    session: AsyncSession,
+    goal: Goal,
+    user_id: str,
+) -> AsyncGenerator[str, None]:
+    """Orchestrate board generation, persisting to DB AND yielding SSE events to client.
+
+    Same logic as generate_board() but yields client-facing SSE events for each stage.
+    Client events have simplified payloads (titles + IDs only, no full enrichment data).
+    """
+    import json
+
+    from app.domains.ai.schemas import ClassificationOutput
+    from app.domains.ai.service import generate_board_stream
+    from app.domains.goals.service import (
+        revert_goal_to_answered,
+        transition_goal_to_active,
+        transition_goal_to_generating,
+    )
+
+    def _client_sse(event_type: str, data: dict[str, Any]) -> str:
+        return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+    goal_id = goal.id
+
+    # Transition goal to generating
+    await transition_goal_to_generating(session, goal)
+
+    # Extract context from ai_context
+    ai_context: dict[str, Any] = dict(goal.ai_context)
+    classification_data = ai_context.get("classification", {})
+    classification = ClassificationOutput.model_validate(classification_data)
+
+    from app.domains.boards.board_service import format_qa_pairs
+
+    qa_pairs = format_qa_pairs(ai_context)
+    language = classification.language
+
+    from app.domains.ai.prompts.meta import format_user_meta_block
+
+    user_context = format_user_meta_block(ai_context.get("user_meta"))
+
+    from app.core.config import settings as app_settings
+
+    memory_context = ""
+    if app_settings.ai_memory_enabled:
+        from app.domains.ai.memory import retrieve_relevant_memories
+        from app.domains.ai.prompts.memory import format_memory_block
+
+        memories = await retrieve_relevant_memories(
+            session, user_id, goal.original_input
+        )
+        memory_context = format_memory_block(memories)
+
+    board: Board | None = None
+    skeleton: BoardSkeletonOutput | None = None
+    ai_id_to_db_id: dict[str, str] = {}
+
+    async for sse_event in generate_board_stream(
+        raw_input=goal.original_input,
+        domain=classification.domain,
+        complexity=classification.complexity,
+        dimensions=classification.dimensions,
+        qa_pairs=qa_pairs,
+        language=language,
+        user_context=user_context,
+        memory_context=memory_context,
+    ):
+        # Parse the internal SSE event
+        lines = sse_event.strip().split("\n")
+        event_type = ""
+        event_data: dict[str, Any] = {}
+        for line in lines:
+            if line.startswith("event: "):
+                event_type = line[7:]
+            elif line.startswith("data: "):
+                event_data = json.loads(line[6:])
+
+        if event_type == "skeleton_ready":
+            from app.domains.boards.dag_utils import (
+                CyclicDependencyError,
+                GoalNodeValidationError,
+            )
+
+            try:
+                skel = BoardSkeletonOutput.model_validate(event_data)
+                skeleton = skel
+                board, ai_id_to_db_id = await create_board_from_skeleton(
+                    session, goal_id, skel
+                )
+            except (CyclicDependencyError, GoalNodeValidationError) as e:
+                logger.error("Skeleton persistence failed: %s", str(e))
+                await revert_goal_to_answered(session, goal)
+                yield _client_sse(
+                    "generation_error",
+                    {"error": f"Invalid board structure: {e}"},
+                )
+                return
+            except Exception as e:
+                logger.error("Skeleton persistence failed: %s", str(e))
+                await revert_goal_to_answered(session, goal)
+                yield _client_sse(
+                    "generation_error",
+                    {"error": "Failed to create board structure"},
+                )
+                return
+
+            # Forward skeleton to client with board_id
+            yield _client_sse(
+                "skeleton_ready",
+                {
+                    "board_id": board.id,
+                    "board_title": skel.board_title,
+                    "tasks": [
+                        {
+                            "id": t.id,
+                            "title": t.title,
+                            "is_goal_node": t.is_goal_node,
+                        }
+                        for t in skel.tasks
+                    ],
+                },
+            )
+
+        elif event_type == "task_enriched":
+            ai_task_id = event_data.get("task_id", "")
+            db_task_id = ai_id_to_db_id.get(ai_task_id, "")
+
+            if db_task_id:
+                try:
+                    enrichment = TaskEnrichmentOutput.model_validate(event_data)
+                    await update_task_with_enrichment(
+                        session, db_task_id, enrichment, user_context=user_context
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Enrichment persistence failed for task '%s': %s",
+                        ai_task_id,
+                        str(e),
+                    )
+
+            # Forward enrichment event to client (lightweight)
+            yield _client_sse(
+                "task_enriched",
+                {
+                    "task_id": ai_task_id,
+                    "title": event_data.get("title", ""),
+                },
+            )
+
+        elif event_type == "generation_complete":
+            if board is not None:
+                await transition_goal_to_active(session, goal)
+
+                if app_settings.ai_memory_enabled:
+                    try:
+                        from app.domains.ai.memory import (
+                            extract_memories_from_board,
+                            store_memories_batch,
+                        )
+
+                        board_title = event_data.get("board_title", board.title)
+                        task_count = len(skeleton.tasks) if skeleton else 0
+                        mem_inputs = extract_memories_from_board(
+                            board_title,
+                            task_count,
+                            classification.domain,
+                            goal_id,
+                        )
+                        if mem_inputs:
+                            await store_memories_batch(
+                                session,
+                                user_id,
+                                mem_inputs,
+                                source_goal_id=goal_id,
+                            )
+                            await session.commit()
+                    except Exception:
+                        logger.exception(
+                            "Memory extraction after board generation failed"
+                        )
+
+            yield _client_sse(
+                "generation_complete",
+                {
+                    "board_id": board.id if board else "",
+                    "failed_tasks": event_data.get("failed_tasks", []),
+                },
+            )
+
+        elif event_type == "generation_error":
+            await revert_goal_to_answered(session, goal)
+            error_msg = event_data.get("message", "Board generation failed")
+            yield _client_sse(
+                "generation_error",
+                {"error": error_msg},
+            )
+            return
+
+    if board is None:
+        await revert_goal_to_answered(session, goal)
+        yield _client_sse(
+            "generation_error",
+            {"error": "Board generation produced no output"},
+        )
 
 
 class BoardGenerationError(Exception):

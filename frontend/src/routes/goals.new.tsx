@@ -6,6 +6,7 @@ import type {
 	GoalRejectionResponse,
 	QuestionSchema,
 } from "@/api/generated/model";
+import { BoardGenerationProgress } from "@/features/goals/components/board-generation-progress";
 import { DynamicQuestionForm } from "@/features/goals/components/dynamic-question-form";
 import { ErrorDisplay } from "@/features/goals/components/error-display";
 import { GoalInput } from "@/features/goals/components/goal-input";
@@ -39,6 +40,7 @@ type PageState =
 			allQuestions: QuestionSchema[];
 			allAnswers: AnswerValues;
 	  }
+	| { step: "generating"; goalId: string }
 	| { step: "error"; message: string; retryAction: () => void };
 
 export const goalsNewRoute = createRoute({
@@ -268,8 +270,18 @@ function GoalsNewPage() {
 					title={title}
 					originalInput={originalInput}
 					qaPairs={qaPairs}
+					onGenerateBoard={() => setPageState({ step: "generating", goalId })}
 				/>
 			</div>
+		);
+	}
+
+	if (pageState.step === "generating") {
+		return (
+			<BoardGenerationProgress
+				goalId={pageState.goalId}
+				onAbort={() => setPageState({ step: "input" })}
+			/>
 		);
 	}
 
