@@ -15,6 +15,7 @@ Dependents (tasks that depend on this): {dependent_titles}
 
 Goal: {goal_title}
 Goal description: {goal_input}
+{user_context}
 {memory_context}
 
 ## Tool Usage Guidelines

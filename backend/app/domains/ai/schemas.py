@@ -43,13 +43,21 @@ class QuestionItem(BaseModel):
     id: str = Field(description="Unique question ID, e.g. 'q1', 'q2'")
     text: str = Field(description="The question text")
     type: str = Field(description="Field type: text, select, multiselect, or number")
-    options: list[str] | None = Field(
-        default=None,
-        description="Options for select/multiselect fields, null for text/number",
+    options: list[str] = Field(
+        min_length=3,
+        max_length=6,
+        description="3-6 selectable options. Required for ALL question types: "
+        "suggested answers for text, human-readable ranges for number, "
+        "choices for select/multiselect.",
     )
     rationale: str = Field(description="Why this question matters for planning")
     required: bool = Field(
         default=True, description="Whether the question must be answered"
+    )
+    allow_other: bool = Field(
+        default=True,
+        description="Whether the UI should render a free-text 'Other' input "
+        "alongside the options.",
     )
 
 

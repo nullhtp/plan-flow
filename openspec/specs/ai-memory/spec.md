@@ -160,11 +160,11 @@ The system SHALL configure a LangGraph PostgreSQL checkpointer using the `langgr
 - **THEN** the checkpointer's database connections are properly closed
 
 ### Requirement: Task Chat Graph
-The system SHALL implement a LangGraph `StateGraph` for task-level AI chat, compiled with the PostgreSQL checkpointer. The chat graph state SHALL include: `messages` (list of chat messages), `task_id` (string), `board_id` (string), `user_id` (string), `task_context` (string — task title, description, subtasks, board context), `memory_context` (string — formatted memory block), and `goal_context` (string — goal text and classification summary). The graph SHALL implement a ReAct agent loop: a `respond` node that produces an AI response (potentially including tool calls), a conditional edge that checks whether the response contains tool calls, a `tool_execute` node that runs the called tools via LangGraph's `ToolNode`, and a loop back to `respond` for the AI to process tool results. The LLM model SHALL be bound to the context-appropriate tool set via `model.bind_tools(tools)` using tools from the tool registry's `get_task_chat_tools`. The `respond` node's system prompt SHALL instruct the AI about available tools, when to use them, and the confirmation flow (that some actions will require user approval). Each task's chat session SHALL use a thread ID of format `task-chat-{task_id}`, enabling conversation persistence across HTTP requests. The graph SHALL be defined in `app/domains/ai/graphs/chat.py`. The graph SHALL enforce a maximum of 10 tool-call iterations per turn to prevent infinite loops.
+The system SHALL implement a LangGraph `StateGraph` for task-level AI chat, compiled with the PostgreSQL checkpointer. The chat graph state SHALL include: `messages` (list of chat messages), `task_id` (string), `board_id` (string), `user_id` (string), `task_context` (string — task title, description, subtasks, board context), `memory_context` (string — formatted memory block), `goal_context` (string — goal text and classification summary), and `user_context` (string — formatted user meta block from `resolve_user_context()`). The graph SHALL implement a ReAct agent loop: a `respond` node that produces an AI response (potentially including tool calls), a conditional edge that checks whether the response contains tool calls, a `tool_execute` node that runs the called tools via LangGraph's `ToolNode`, and a loop back to `respond` for the AI to process tool results. The LLM model SHALL be bound to the context-appropriate tool set via `model.bind_tools(tools)` using tools from the tool registry's `get_task_chat_tools`. The `respond` node's system prompt SHALL instruct the AI about available tools, when to use them, and the confirmation flow (that some actions will require user approval). The `respond` node SHALL inject the `user_context` state field into the system prompt via the `{user_context}` template placeholder. Each task's chat session SHALL use a thread ID of format `task-chat-{task_id}`, enabling conversation persistence across HTTP requests. The graph SHALL be defined in `app/domains/ai/graphs/chat.py`. The graph SHALL enforce a maximum of 10 tool-call iterations per turn to prevent infinite loops.
 
 #### Scenario: First message in task chat
 - **WHEN** a user sends the first chat message for task "t1" (thread "task-chat-t1")
-- **THEN** the graph creates a new thread, injects task context and memory context, and produces an AI response
+- **THEN** the graph creates a new thread, injects task context, user context, and memory context, and produces an AI response
 
 #### Scenario: Resuming task chat
 - **WHEN** a user sends a second message to task "t1" after a previous conversation
@@ -177,6 +177,10 @@ The system SHALL implement a LangGraph `StateGraph` for task-level AI chat, comp
 #### Scenario: Memory context included in chat
 - **WHEN** a user with stored memories chats about a task
 - **THEN** the AI response MAY reference relevant memories (e.g., "Based on your previous preference for tight budgets...")
+
+#### Scenario: User context included in task chat
+- **WHEN** a user chats about a task and the goal has stored user_meta with timezone "Europe/Berlin"
+- **THEN** the system prompt includes a "User context" block with the current date (server-computed for Europe/Berlin timezone), day of week, locale, and other available fields
 
 #### Scenario: AI uses read-only tool in task chat
 - **WHEN** a user asks "What tasks are blocked right now?" in task chat
@@ -195,7 +199,7 @@ The system SHALL implement a LangGraph `StateGraph` for task-level AI chat, comp
 - **THEN** the graph breaks the loop and returns the AI's last response
 
 ### Requirement: Task Chat API Endpoint
-The system SHALL expose a `POST /api/tasks/{task_id}/chat` endpoint that accepts a JSON body with `message` (string). The endpoint SHALL: load the task and its board/goal context, retrieve relevant memories for the user, obtain the task chat tool set from the tool registry, invoke the task chat graph with the appropriate thread ID, collect tool actions from the graph execution, and return the enriched chat response. The response SHALL be a JSON object conforming to the ChatResponse schema: `response` (string — the AI's reply), `thread_id` (string), `actions` (list of ToolAction objects), and `pending_action_id` (nullable string). The endpoint SHALL require authentication. If the task does not belong to the authenticated user's board, the endpoint SHALL return 403.
+The system SHALL expose a `POST /api/tasks/{task_id}/chat` endpoint that accepts a JSON body with `message` (string). The endpoint SHALL: load the task and its board/goal context, resolve user context server-side from the goal's stored `user_meta` via `resolve_user_context()`, retrieve relevant memories for the user, obtain the task chat tool set from the tool registry, invoke the task chat graph with the appropriate thread ID and user_context, collect tool actions from the graph execution, and return the enriched chat response. The response SHALL be a JSON object conforming to the ChatResponse schema: `response` (string — the AI's reply), `thread_id` (string), `actions` (list of ToolAction objects), and `pending_action_id` (nullable string). The endpoint SHALL require authentication. If the task does not belong to the authenticated user's board, the endpoint SHALL return 403.
 
 #### Scenario: Successful chat message with tool usage
 - **WHEN** an authenticated user sends POST /api/tasks/{task_id}/chat with body `{"message": "What's blocking this task?"}`
@@ -212,4 +216,12 @@ The system SHALL expose a `POST /api/tasks/{task_id}/chat` endpoint that accepts
 #### Scenario: Task not found
 - **WHEN** a user sends a chat message for a non-existent task ID
 - **THEN** the endpoint returns 404
+
+#### Scenario: Chat resolves user context from goal
+- **WHEN** a user sends a task chat message for a task on a board whose goal has `user_meta` with timezone "America/Los_Angeles"
+- **THEN** the endpoint resolves the user context server-side with the current date in the America/Los_Angeles timezone and passes it to the chat graph
+
+#### Scenario: Chat without user meta (backward compatible)
+- **WHEN** a user sends a task chat message for a task on a board whose goal has no `user_meta`
+- **THEN** the endpoint passes an empty string as user_context and chat proceeds normally
 

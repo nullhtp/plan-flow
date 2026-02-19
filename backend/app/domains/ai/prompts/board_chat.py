@@ -10,6 +10,7 @@ and restructure the project plan.
 Board: {board_title}
 Goal: {goal_title}
 Goal description: {goal_input}
+{user_context}
 {memory_context}
 
 ## Tool Usage Guidelines

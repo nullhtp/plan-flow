@@ -413,6 +413,7 @@ async def update_task_with_enrichment(
     session: AsyncSession,
     task_id: str,
     enrichment: TaskEnrichmentOutput,
+    user_context: str = "",
 ) -> list[str]:
     """Update a single Task record with enrichment data and create Subtask records.
 
@@ -479,6 +480,7 @@ async def update_task_with_enrichment(
                 task_description=task.description or "",
                 task_status=task.status,
                 subtasks=subtask_dicts,
+                user_context=user_context,
             )
 
             # Match actions to subtasks by title and persist
@@ -616,7 +618,9 @@ async def generate_board(
             if db_task_id:
                 try:
                     enrichment = TaskEnrichmentOutput.model_validate(event_data)
-                    await update_task_with_enrichment(session, db_task_id, enrichment)
+                    await update_task_with_enrichment(
+                        session, db_task_id, enrichment, user_context=user_context
+                    )
                 except Exception as e:
                     logger.error(
                         "Enrichment persistence failed for task '%s': %s",

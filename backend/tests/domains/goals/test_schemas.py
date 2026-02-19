@@ -3,7 +3,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.domains.ai.schemas import ClassificationOutput, QuestionsOutput
+from app.domains.ai.schemas import ClassificationOutput, QuestionItem, QuestionsOutput
+from app.domains.goals.schemas import QuestionSchema
 
 
 def test_classification_output_valid() -> None:
@@ -60,7 +61,7 @@ def test_classification_output_invalid_complexity() -> None:
 
 
 def test_questions_output_valid() -> None:
-    """Valid questions output parses correctly."""
+    """Valid questions output with options on all types parses correctly."""
     data = {
         "questions": [
             {
@@ -75,7 +76,7 @@ def test_questions_output_valid() -> None:
                 "id": "q2",
                 "text": "Timeline?",
                 "type": "text",
-                "options": None,
+                "options": ["1-2 months", "3-4 months", "5-6 months"],
                 "rationale": "Helps set deadlines",
                 "required": True,
             },
@@ -83,7 +84,7 @@ def test_questions_output_valid() -> None:
                 "id": "q3",
                 "text": "Experience level?",
                 "type": "number",
-                "options": None,
+                "options": ["1-3 years", "4-6 years", "7+ years"],
                 "rationale": "Adjusts complexity",
                 "required": False,
             },
@@ -92,8 +93,9 @@ def test_questions_output_valid() -> None:
     result = QuestionsOutput.model_validate(data)
     assert len(result.questions) == 3
     assert result.questions[0].type == "select"
-    assert result.questions[0].options is not None
-    assert result.questions[1].options is None
+    assert result.questions[0].options == ["Low", "Medium", "High"]
+    assert result.questions[1].options == ["1-2 months", "3-4 months", "5-6 months"]
+    assert result.questions[2].options == ["1-3 years", "4-6 years", "7+ years"]
 
 
 def test_questions_output_too_few() -> None:
@@ -104,9 +106,134 @@ def test_questions_output_too_few() -> None:
                 "id": "q1",
                 "text": "One question",
                 "type": "text",
+                "options": ["A", "B", "C"],
                 "rationale": "Only one",
             },
         ]
     }
     with pytest.raises(ValidationError):
         QuestionsOutput.model_validate(data)
+
+
+# --- New tests for options-always-required behavior ---
+
+
+def test_question_schema_options_required() -> None:
+    """QuestionSchema requires non-null options with at least 3 items."""
+    # Valid: 3 options
+    q = QuestionSchema(
+        id="q1",
+        text="Test?",
+        type="text",
+        options=["A", "B", "C"],
+        rationale="test",
+    )
+    assert q.options == ["A", "B", "C"]
+    assert q.allow_other is True
+
+
+def test_question_schema_null_options_rejected() -> None:
+    """QuestionSchema rejects null options."""
+    with pytest.raises(ValidationError):
+        QuestionSchema(
+            id="q1",
+            text="Test?",
+            type="text",
+            options=None,  # type: ignore[arg-type]
+            rationale="test",
+        )
+
+
+def test_question_schema_empty_options_rejected() -> None:
+    """QuestionSchema rejects empty options list."""
+    with pytest.raises(ValidationError):
+        QuestionSchema(
+            id="q1",
+            text="Test?",
+            type="text",
+            options=[],
+            rationale="test",
+        )
+
+
+def test_question_schema_too_few_options_rejected() -> None:
+    """QuestionSchema rejects options with fewer than 3 items."""
+    with pytest.raises(ValidationError):
+        QuestionSchema(
+            id="q1",
+            text="Test?",
+            type="select",
+            options=["A", "B"],
+            rationale="test",
+        )
+
+
+def test_question_schema_too_many_options_rejected() -> None:
+    """QuestionSchema rejects options with more than 6 items."""
+    with pytest.raises(ValidationError):
+        QuestionSchema(
+            id="q1",
+            text="Test?",
+            type="select",
+            options=["A", "B", "C", "D", "E", "F", "G"],
+            rationale="test",
+        )
+
+
+def test_question_schema_allow_other_defaults_true() -> None:
+    """QuestionSchema.allow_other defaults to True."""
+    q = QuestionSchema(
+        id="q1",
+        text="Test?",
+        type="select",
+        options=["A", "B", "C"],
+        rationale="test",
+    )
+    assert q.allow_other is True
+
+
+def test_question_schema_allow_other_false() -> None:
+    """QuestionSchema.allow_other can be set to False."""
+    q = QuestionSchema(
+        id="q1",
+        text="Test?",
+        type="select",
+        options=["A", "B", "C"],
+        rationale="test",
+        allow_other=False,
+    )
+    assert q.allow_other is False
+
+
+def test_question_item_mirrors_schema() -> None:
+    """QuestionItem (AI-side) has the same validation as QuestionSchema."""
+    # Valid
+    qi = QuestionItem(
+        id="q1",
+        text="Test?",
+        type="text",
+        options=["A", "B", "C"],
+        rationale="test",
+    )
+    assert qi.options == ["A", "B", "C"]
+    assert qi.allow_other is True
+
+    # Null options rejected
+    with pytest.raises(ValidationError):
+        QuestionItem(
+            id="q1",
+            text="Test?",
+            type="text",
+            options=None,  # type: ignore[arg-type]
+            rationale="test",
+        )
+
+    # Too few options rejected
+    with pytest.raises(ValidationError):
+        QuestionItem(
+            id="q1",
+            text="Test?",
+            type="text",
+            options=["A"],
+            rationale="test",
+        )

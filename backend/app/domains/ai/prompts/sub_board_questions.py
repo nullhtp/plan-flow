@@ -19,18 +19,23 @@ Each question must include:
 - **id**: A unique identifier prefixed with "sbq" (e.g., "sbq1", "sbq2").
 - **text**: The question text, clear and conversational.
 - **type**: The form field type: "text", "select", "multiselect", or "number".
-- **options**: For "select" and "multiselect" types, provide a list of options. \
-For "text" and "number", set to null.
+- **options**: A list of 3-6 selectable options. REQUIRED for ALL question \
+types — never null or empty.
 - **rationale**: A brief explanation of why this question matters for the breakdown.
 - **required**: Whether the question must be answered (default true).
+- **allow_other**: Whether users can type a custom answer (default true).
+
+CRITICAL — options are required for every question type:
+- "select": Provide 3-6 clear choices.
+- "multiselect": Provide 3-6 options where multiple may apply.
+- "text": Provide 3-6 AI-suggested likely answers the user can pick from.
+- "number": Provide 3-6 human-readable ranges (e.g., "1-3 days", \
+"$100-$500").
+The user always has an "Other" text field for custom answers.
 
 Guidelines:
 - Focus on task-specific decomposition, NOT goal-level exploration.
 - Ask about approach, constraints, and priorities for THIS task specifically.
-- Use "select" for questions with a clear set of choices.
-- Use "multiselect" for questions where multiple options apply.
-- Use "number" for quantities (hours, days, budget).
-- Use "text" for open-ended details about approach or constraints.
 - Keep questions concise — the user already has context from the parent board.
 - Generate exactly 2-4 questions. Fewer for simple tasks, more for complex ones.
 - IMPORTANT: Generate ALL question text, options, and rationale in the \

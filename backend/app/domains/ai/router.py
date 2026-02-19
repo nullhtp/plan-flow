@@ -40,9 +40,12 @@ async def _validate_board_ownership(
     It is NOT the same as boards.ownership.validate_board_ownership which
     raises domain errors. Kept here because it returns (board, goal) tuple
     needed by the chat endpoints.
+
+    Supports both root boards (goal_id set) and sub-boards (parent_task_id set)
+    by walking the ownership chain via _resolve_goal_for_board.
     """
     from app.domains.boards.models import Board
-    from app.domains.goals.models import Goal
+    from app.domains.boards.ownership import _resolve_goal_for_board
 
     board = await session.get(Board, board_id)
     if board is None:
@@ -51,7 +54,7 @@ async def _validate_board_ownership(
             detail="Board not found",
         )
 
-    goal = await session.get(Goal, board.goal_id)
+    goal = await _resolve_goal_for_board(session, board)
     if goal is None or goal.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -134,6 +137,13 @@ async def task_chat(
         f"goal_title: {goal.title or 'Untitled'}\ngoal_input: {goal.original_input}"
     )
 
+    # Resolve user context from the goal's stored user_meta
+    from app.domains.ai.prompts.meta import resolve_user_context
+
+    user_context = resolve_user_context(
+        goal.ai_context.get("user_meta") if goal.ai_context else None
+    )
+
     # Retrieve memory context
     memory_context = ""
     if settings.ai_memory_enabled:
@@ -177,6 +187,7 @@ async def task_chat(
             "task_context": task_context,
             "memory_context": memory_context,
             "goal_context": goal_context,
+            "user_context": user_context,
         },
         config,
     )
@@ -225,6 +236,13 @@ async def board_chat(
         f"goal_title: {goal.title or 'Untitled'}\ngoal_input: {goal.original_input}"
     )
 
+    # Resolve user context from the goal's stored user_meta
+    from app.domains.ai.prompts.meta import resolve_user_context
+
+    user_context = resolve_user_context(
+        goal.ai_context.get("user_meta") if goal.ai_context else None
+    )
+
     # Retrieve memory context
     memory_context = ""
     if settings.ai_memory_enabled:
@@ -267,6 +285,7 @@ async def board_chat(
             "board_title": board.title,
             "goal_context": goal_context,
             "memory_context": memory_context,
+            "user_context": user_context,
         },
         config,
     )
@@ -318,7 +337,16 @@ async def generate_subtask_action(
             detail="Task not found",
         )
 
-    await _validate_board_ownership(session, task.board_id, current_user.id)
+    _board, goal = await _validate_board_ownership(
+        session, task.board_id, current_user.id
+    )
+
+    # Resolve user context from the goal's stored user_meta
+    from app.domains.ai.prompts.meta import resolve_user_context
+
+    user_context = resolve_user_context(
+        goal.ai_context.get("user_meta") if goal.ai_context else None
+    )
 
     # Load subtask
     subtask = await session.get(Subtask, subtask_id)
@@ -334,6 +362,7 @@ async def generate_subtask_action(
             task_description=task.description or "",
             task_status=task.status,
             subtasks=[{"title": subtask.title}],
+            user_context=user_context,
         )
         if actions and actions[0].action_label is not None:
             subtask.action_label = actions[0].action_label

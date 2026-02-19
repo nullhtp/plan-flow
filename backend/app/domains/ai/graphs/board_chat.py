@@ -43,6 +43,7 @@ class BoardChatState(dict):  # pyright: ignore[reportMissingTypeArgument]
     board_title: str
     goal_context: str
     memory_context: str
+    user_context: str
     tool_actions: list[dict[str, Any]]
     iteration_count: int
 
@@ -53,12 +54,14 @@ async def respond(state: dict[str, Any]) -> dict[str, Any]:
     board_title: str = state.get("board_title", "")
     goal_context: str = state.get("goal_context", "")
     memory_context: str = state.get("memory_context", "")
+    user_context: str = state.get("user_context", "")
     tools = state.get("_tools", [])
 
     system_content = BOARD_CHAT_SYSTEM_PROMPT.format(
         board_title=board_title,
         goal_title=extract_field(goal_context, "goal_title"),
         goal_input=extract_field(goal_context, "goal_input"),
+        user_context=user_context,
         memory_context=memory_context,
     )
 

@@ -19,7 +19,7 @@ The system SHALL integrate with OpenRouter (`https://openrouter.ai/api/v1`) via 
 - **THEN** the application SHALL fail to start with a clear error message indicating the missing configuration
 
 ### Requirement: Goal Classification Node
-The system SHALL implement a LangGraph node that classifies a goal from raw text input. The classification output SHALL conform to a Pydantic schema containing: `domain` (string — e.g., "relocation", "learning", "product-launch"), `complexity` (integer 1-5), `confidence` (float 0.0-1.0), `dimensions` (list of strings — key aspects to explore), `suggested_title` (a clean, concise title derived from the raw input), and `language` (string — ISO 639-1 language code detected from the input, e.g., "en", "ru", "es", "de"). The classification prompt SHALL be stored as a separate module in `prompts/classify.py`. The detected language SHALL be stored in the goal's `ai_context` and passed to all downstream pipeline nodes so that all AI-generated content is produced in the user's input language.
+The system SHALL implement a LangGraph node that classifies a goal from raw text input. The classification output SHALL conform to a Pydantic schema containing: `domain` (string — e.g., "relocation", "learning", "product-launch"), `complexity` (integer 1-5), `confidence` (float 0.0-1.0), `dimensions` (list of strings — key aspects to explore), `suggested_title` (a clean, concise title derived from the raw input), and `language` (string — ISO 639-1 language code detected from the input, e.g., "en", "ru", "es", "de"). The classification prompt SHALL be stored as a separate module in `prompts/classify.py`. The detected language SHALL be stored in the goal's `ai_context` and passed to all downstream pipeline nodes so that all AI-generated content is produced in the user's input language. The classification node SHALL accept an optional `user_context` parameter (formatted string from `format_user_meta_block`) and include it in the user prompt alongside the goal text, enabling time-sensitive and location-aware classification.
 
 #### Scenario: Clear goal classified with high confidence
 - **WHEN** the classification node receives "Move from Berlin to Lisbon within 3 months"
@@ -37,6 +37,14 @@ The system SHALL implement a LangGraph node that classifies a goal from raw text
 - **WHEN** the classification node receives input with mixed languages (e.g., "Move to Лиссабон within 3 months")
 - **THEN** the output includes the dominant language detected from the input
 
+#### Scenario: Classification uses user context for time-sensitive goals
+- **WHEN** the classification node receives "Plan a birthday party for next Saturday" with user_context containing "Current date: 2026-02-19" and "Day of week: Thursday"
+- **THEN** the AI MAY factor the current date and proximity into its complexity and dimension analysis
+
+#### Scenario: Classification without user context (backward compatible)
+- **WHEN** the classification node receives a goal without user_context (empty string)
+- **THEN** classification proceeds normally as before
+
 ### Requirement: Confidence-Based Goal Rejection
 The system SHALL reject goals whose classification confidence score falls below a configurable threshold (default: 0.3). When a goal is rejected, the classification node SHALL also output a `rejection_reason` (string explaining why the goal is too vague) and `refinement_suggestions` (list of 2-3 concrete, actionable alternative goal descriptions). The rejection output is part of the classification response, not a separate LLM call.
 
@@ -49,11 +57,11 @@ The system SHALL reject goals whose classification confidence score falls below 
 - **THEN** the pipeline proceeds to the question generation node without rejection
 
 ### Requirement: Question Generation Node
-The system SHALL implement a LangGraph node that generates 3-7 structured questions based on the classification output. Each question SHALL conform to a Pydantic schema containing: `id` (unique string, e.g., "q1"), `text` (the question), `type` (one of: "text", "select", "multiselect", "number"), `options` (list of strings, required for select/multiselect, null for text/number), `rationale` (string explaining why this question matters for planning), and `required` (boolean, default true). The question generation prompt SHALL be stored as a separate module in `prompts/questions.py`. When `user_meta` is available in the goal's `ai_context`, the formatted meta context SHALL be appended to the user prompt to enable location-aware, timezone-aware, and device-aware question generation. When memory context is available, the formatted memory block SHALL be appended to the user prompt after the user meta block. The AI SHOULD use memories to avoid asking questions whose answers are already known (e.g., if memory contains "Budget preference: under $5000", the AI MAY skip or pre-fill a budget question).
+The system SHALL implement a LangGraph node that generates 3-7 structured questions based on the classification output. Each question SHALL conform to a Pydantic schema containing: `id` (unique string, e.g., "q1"), `text` (the question), `type` (one of: "text", "select", "multiselect", "number"), `options` (list of 3-6 strings, REQUIRED for all question types), `rationale` (string explaining why this question matters for planning), `required` (boolean, default true), and `allow_other` (boolean, default true — indicates whether the UI should render a free-text "Other" input alongside the options). The `options` field SHALL always be a non-empty list with at least 3 items regardless of question type. For `text` type questions, options SHALL be AI-suggested likely answers. For `number` type questions, options SHALL be meaningful human-readable ranges (e.g., "$1k-5k", "2-3 months", "1-2 rooms"). For `select` and `multiselect` types, options SHALL be relevant choices as before. The question generation prompt SHALL be stored as a separate module in `prompts/questions.py`. When `user_meta` is available in the goal's `ai_context`, the formatted meta context SHALL be appended to the user prompt to enable location-aware, timezone-aware, and device-aware question generation. When memory context is available, the formatted memory block SHALL be appended to the user prompt after the user meta block. The AI SHOULD use memories to avoid asking questions whose answers are already known (e.g., if memory contains "Budget preference: under $5000", the AI MAY skip or pre-fill a budget question).
 
 #### Scenario: Questions generated for a relocation goal
 - **WHEN** the question generation node receives a classification with domain "relocation" and dimensions ["timeline", "budget", "housing", "logistics"]
-- **THEN** the output contains 3-7 questions covering the identified dimensions, each with appropriate field types (e.g., a budget question might be type "select" with predefined ranges, a timeline question might be type "text")
+- **THEN** the output contains 3-7 questions covering the identified dimensions, each with 3-6 selectable options (e.g., a budget question with options ["Under $5,000", "$5,000-$15,000", "$15,000-$30,000", "$30,000+"], a timeline question with options ["1-2 months", "3-4 months", "5-6 months", "6+ months"])
 
 #### Scenario: Each question includes rationale
 - **WHEN** questions are generated for any goal
@@ -62,6 +70,18 @@ The system SHALL implement a LangGraph node that generates 3-7 structured questi
 #### Scenario: Question count within bounds
 - **WHEN** the question generation node produces output
 - **THEN** the number of questions is between 3 and 7 inclusive
+
+#### Scenario: All questions have non-empty options
+- **WHEN** the question generation node produces output
+- **THEN** every question has an `options` list with at least 3 items, regardless of question type
+
+#### Scenario: Text question has suggested answer options
+- **WHEN** a question has type "text" (e.g., "What is your main motivation for this move?")
+- **THEN** the options list contains 3-6 AI-suggested likely answers (e.g., ["Career opportunity", "Better quality of life", "Family reasons", "Adventure / new experience"])
+
+#### Scenario: Number question has range-based options
+- **WHEN** a question has type "number" (e.g., "What is your monthly budget?")
+- **THEN** the options list contains 3-6 human-readable ranges (e.g., ["Under $1,000", "$1,000-$2,000", "$2,000-$3,000", "$3,000+"])
 
 #### Scenario: Questions informed by user location
 - **WHEN** the question generation node receives a goal with `user_meta.location = { city: "Berlin", country: "Germany" }` and classification domain "relocation"
@@ -304,26 +324,31 @@ The system SHALL add an `ai_enrichment_concurrency` setting (integer, default 5)
 - **THEN** the system allows up to 10 concurrent enrichment LLM calls
 
 ### Requirement: User Meta Prompt Injection
-The system SHALL format the `UserMeta` context into a standardized text block and inject it into AI prompts for question generation, follow-up question generation, board skeleton generation, task enrichment, and task chat. The meta block SHALL be appended to the user prompt (not the system prompt) with the following format:
+The system SHALL format the `UserMeta` context into a standardized text block and inject it into ALL AI prompts: goal classification, question generation, follow-up question generation, board skeleton generation, task enrichment, task chat, board chat, subtask action generation, and sub-board question generation. The meta block SHALL be formatted with the following fields:
 
 ```
 User context:
 - Timezone: {timezone}
 - Locale: {locale}
 - Current date: {current_date} (formatted as YYYY-MM-DD from current_datetime)
+- Day of week: {day_of_week} (e.g., "Thursday", computed from current date and timezone)
 - Location: {city}, {country}
 - Device: {device_type}
 ```
 
-Fields with null values SHALL be omitted from the block. If `location` is null, the "Location" line SHALL be omitted. If `user_meta` is not available at all, the entire "User context" block SHALL be omitted (backward compatible). The formatting function SHALL be implemented as a shared utility in the AI domain (e.g., `app/domains/ai/prompts/meta.py` or a helper in `app/domains/ai/service.py`). When a memory context block is also present, the user meta block SHALL appear before the memory context block in the prompt.
+Fields with null values SHALL be omitted from the block. If `location` is null, the "Location" line SHALL be omitted. If `user_meta` is not available at all, the entire "User context" block SHALL be omitted (backward compatible). The formatting function SHALL be implemented as a shared utility in `app/domains/ai/prompts/meta.py`. When a memory context block is also present, the user meta block SHALL appear before the memory context block in the prompt.
 
-#### Scenario: Full meta injected into prompt
-- **WHEN** the AI generates a board skeleton for a goal with complete `user_meta` (timezone "Europe/Berlin", locale "de-DE", current_datetime "2026-02-17T14:30:00Z", location { city: "Berlin", country: "Germany" }, device_type "desktop")
-- **THEN** the user prompt includes a "User context" section with all five fields
+The `format_user_meta_block()` function SHALL be extended to compute and include the day-of-week name (in English, e.g., "Monday", "Tuesday") from the current date. A new `resolve_user_context()` function SHALL be added to `prompts/meta.py` that accepts a `user_meta` dict (as stored in `goal.ai_context["user_meta"]`), computes the current date and day-of-week server-side from the server clock adjusted to the stored timezone, and returns the formatted context string. This function SHALL be used by chat endpoints and any call site that needs fresh temporal context without requiring the frontend to send it.
+
+For pipeline calls (question generation, board generation, enrichment), the existing `format_user_meta_block()` SHALL continue to be used with the `current_datetime` provided at goal creation time. For chat endpoints and classification, `resolve_user_context()` SHALL be used to ensure the current date is always accurate.
+
+#### Scenario: Full meta injected into prompt with day of week
+- **WHEN** the AI generates a board skeleton for a goal with complete `user_meta` (timezone "Europe/Berlin", locale "de-DE", current_datetime "2026-02-19T14:30:00Z", location { city: "Berlin", country: "Germany" }, device_type "desktop")
+- **THEN** the user prompt includes a "User context" section with all six fields including "Day of week: Thursday"
 
 #### Scenario: Meta without location injected into prompt
 - **WHEN** the AI generates questions for a goal with `user_meta` that has `location: null`
-- **THEN** the user prompt includes a "User context" section with timezone, locale, current date, and device type, but no "Location" line
+- **THEN** the user prompt includes a "User context" section with timezone, locale, current date, day of week, and device type, but no "Location" line
 
 #### Scenario: No meta available (backward compatible)
 - **WHEN** the AI generates a board skeleton for a goal without `user_meta` in `ai_context`
@@ -333,12 +358,20 @@ Fields with null values SHALL be omitted from the block. If `location` is null, 
 - **WHEN** both user meta and memory context are present in a prompt
 - **THEN** the "User context" block appears before the "Relevant memories from past interactions" block
 
+#### Scenario: Server-side date resolution for chat
+- **WHEN** a chat endpoint resolves user context from a goal created yesterday with timezone "America/New_York"
+- **THEN** the "Current date" reflects today's date in the America/New_York timezone and "Day of week" matches that date
+
+#### Scenario: Day of week computed correctly across timezones
+- **WHEN** the server time is 2026-02-20 01:00 UTC and the stored timezone is "Pacific/Auckland" (UTC+13, where it is already 2026-02-20 14:00 Friday)
+- **THEN** the context block shows "Current date: 2026-02-20" and "Day of week: Friday"
+
 ### Requirement: Board Chat Graph
-The system SHALL implement a LangGraph `StateGraph` for board-level AI chat, compiled with the PostgreSQL checkpointer. The graph SHALL share common utilities (should_continue, execute_tools, field extraction) with the task chat graph via `app/domains/ai/graphs/base.py`. The chat graph state SHALL include: `messages` (list of chat messages), `board_id` (string), `user_id` (string), `board_context` (string), `memory_context` (string), and `goal_context` (string). The graph SHALL implement the same ReAct agent loop pattern as the task chat graph. The LLM model SHALL be bound to the board chat tool set via `model.bind_tools(tools)` using tools from the tool registry's `get_board_chat_tools`. The system prompt SHALL instruct the AI about its board-level role. Each board's chat session SHALL use a thread ID of format `board-chat-{board_id}`. The graph SHALL be defined in `app/domains/ai/graphs/board_chat.py`. The graph SHALL enforce a maximum of 10 tool-call iterations per turn.
+The system SHALL implement a LangGraph `StateGraph` for board-level AI chat, compiled with the PostgreSQL checkpointer. The graph SHALL share common utilities (should_continue, execute_tools, field extraction) with the task chat graph via `app/domains/ai/graphs/base.py`. The chat graph state SHALL include: `messages` (list of chat messages), `board_id` (string), `user_id` (string), `board_context` (string), `memory_context` (string), `goal_context` (string), and `user_context` (string — formatted user meta block from `resolve_user_context()`). The graph SHALL implement the same ReAct agent loop pattern as the task chat graph. The LLM model SHALL be bound to the board chat tool set via `model.bind_tools(tools)` using tools from the tool registry's `get_board_chat_tools`. The system prompt SHALL instruct the AI about its board-level role. The `respond` node SHALL inject the `user_context` state field into the system prompt via the `{user_context}` template placeholder. Each board's chat session SHALL use a thread ID of format `board-chat-{board_id}`. The graph SHALL be defined in `app/domains/ai/graphs/board_chat.py`. The graph SHALL enforce a maximum of 10 tool-call iterations per turn.
 
 #### Scenario: First message in board chat
 - **WHEN** a user sends the first chat message for board "b1" (thread "board-chat-b1")
-- **THEN** the graph creates a new thread, injects board context and memory context, and produces an AI response
+- **THEN** the graph creates a new thread, injects board context, user context, and memory context, and produces an AI response
 
 #### Scenario: Resuming board chat
 - **WHEN** a user sends a second message to a board after a previous conversation
@@ -360,8 +393,12 @@ The system SHALL implement a LangGraph `StateGraph` for board-level AI chat, com
 - **WHEN** the board chat graph needs should_continue or execute_tools logic
 - **THEN** it imports these functions from `app/domains/ai/graphs/base.py` rather than reimplementing them
 
+#### Scenario: User context included in board chat
+- **WHEN** a user chats about a board and the goal has stored user_meta with timezone "Asia/Tokyo"
+- **THEN** the system prompt includes a "User context" block with the current date in the Asia/Tokyo timezone and day of week
+
 ### Requirement: Board Chat API Endpoint
-The system SHALL expose `POST /api/boards/{board_id}/chat` as an authenticated endpoint that accepts a JSON body with `message` (string). The endpoint SHALL: load the board and its goal context, validate ownership, retrieve relevant memories, obtain the board chat tool set from the tool registry, invoke the board chat graph with the appropriate thread ID, collect tool actions, and return the enriched chat response conforming to the ChatResponse schema. If the board does not belong to the authenticated user, the endpoint SHALL return 404.
+The system SHALL expose `POST /api/boards/{board_id}/chat` as an authenticated endpoint that accepts a JSON body with `message` (string). The endpoint SHALL: load the board and its goal context, validate ownership, resolve user context server-side from the goal's stored `user_meta` via `resolve_user_context()`, retrieve relevant memories, obtain the board chat tool set from the tool registry, invoke the board chat graph with the appropriate thread ID and user_context, collect tool actions, and return the enriched chat response conforming to the ChatResponse schema. If the board does not belong to the authenticated user, the endpoint SHALL return 404.
 
 #### Scenario: Successful board chat message
 - **WHEN** an authenticated user sends POST /api/boards/{board_id}/chat with body `{"message": "How is the plan looking?"}`
@@ -379,6 +416,14 @@ The system SHALL expose `POST /api/boards/{board_id}/chat` as an authenticated e
 - **WHEN** a user sends a chat message for a non-existent board ID
 - **THEN** the endpoint returns 404
 
+#### Scenario: Board chat resolves user context from goal
+- **WHEN** a user sends a board chat message for a board whose goal has `user_meta` with timezone "Europe/London"
+- **THEN** the endpoint resolves the user context server-side with the current date in the Europe/London timezone and passes it to the chat graph
+
+#### Scenario: Board chat without user meta (backward compatible)
+- **WHEN** a user sends a board chat message for a board whose goal has no `user_meta`
+- **THEN** the endpoint passes an empty string as user_context and chat proceeds normally
+
 ### Requirement: AI Chat Model Configuration
 The system SHALL add an `AI_CHAT_MODEL` setting (string, default: same as `AI_DEFAULT_MODEL`) to the application configuration. This setting allows using a different model for chat interactions that is optimized for tool calling. The task chat and board chat graphs SHALL use this model instead of the default model.
 
@@ -391,7 +436,7 @@ The system SHALL add an `AI_CHAT_MODEL` setting (string, default: same as `AI_DE
 - **THEN** the chat graphs use the value of `AI_DEFAULT_MODEL`
 
 ### Requirement: Tool-Aware Chat System Prompts
-The system SHALL maintain separate system prompt modules for task chat (`app/domains/ai/prompts/chat.py`) and board chat (`app/domains/ai/prompts/board_chat.py`). The task chat prompt SHALL instruct the AI on available tools (retrieval, mutations, web search, save_artifact), establish its role as a helpful task assistant, and guide appropriate tool usage. The prompt SHALL include instructions to use the `save_artifact` tool when generating substantial, reusable content such as agreements, plans, research summaries, or comparisons — rather than including long content only in the chat message. The board chat prompt SHALL additionally cover structural tools (add/remove tasks and dependencies, split tasks).
+The system SHALL maintain separate system prompt modules for task chat (`app/domains/ai/prompts/chat.py`) and board chat (`app/domains/ai/prompts/board_chat.py`). The task chat prompt SHALL instruct the AI on available tools (retrieval, mutations, web search, save_artifact), establish its role as a helpful task assistant, and guide appropriate tool usage. The prompt SHALL include instructions to use the `save_artifact` tool when generating substantial, reusable content such as agreements, plans, research summaries, or comparisons — rather than including long content only in the chat message. The board chat prompt SHALL additionally cover structural tools (add/remove tasks and dependencies, split tasks). Both chat prompts SHALL include a `{user_context}` template placeholder that is populated with the formatted user meta block (from `resolve_user_context()`), enabling the AI to reason about the user's timezone, current date, day of week, locale, location, and device during chat interactions.
 
 #### Scenario: Task chat prompt includes tool instructions
 - **WHEN** a task chat graph is compiled
@@ -404,6 +449,18 @@ The system SHALL maintain separate system prompt modules for task chat (`app/dom
 #### Scenario: Board chat prompt includes structural tool instructions
 - **WHEN** a board chat graph is compiled
 - **THEN** the system prompt from `prompts/board_chat.py` is used, including instructions for structural tools
+
+#### Scenario: Task chat prompt includes user context
+- **WHEN** a task chat prompt is rendered with user_context containing timezone and current date
+- **THEN** the rendered system prompt includes the "User context" block with timezone, date, and day of week
+
+#### Scenario: Board chat prompt includes user context
+- **WHEN** a board chat prompt is rendered with user_context containing location "Berlin, Germany"
+- **THEN** the rendered system prompt includes the "User context" block with the location
+
+#### Scenario: Chat prompt without user context (backward compatible)
+- **WHEN** a chat prompt is rendered with an empty user_context string
+- **THEN** the prompt renders without a "User context" section
 
 ### Requirement: Action Suggestion Generation
 The system SHALL provide an async function `generate_action_suggestions(task_context: str, model: str | None = None) -> list[ActionSuggestion]` in the AI service layer. The function SHALL call the LLM with structured output using the action suggestion prompt and task context string. The function SHALL use the `AI_ACTION_SUGGEST_MODEL` (falling back to `AI_CHAT_MODEL`, then `AI_DEFAULT_MODEL`). The function SHALL return 2–4 `ActionSuggestion` objects. The function SHALL NOT use LangGraph or tools — it is a single structured output LLM call.
@@ -435,22 +492,30 @@ The system SHALL provide an async function `generate_subtask_actions(task_title:
 - **THEN** returned action labels and prompts are in German
 
 ### Requirement: Subtask Action Prompt Module
-The system SHALL store the subtask action system prompt in `app/domains/ai/prompts/action_suggestions.py` (repurposed). The prompt SHALL instruct the LLM to: analyze each subtask in the context of the parent task title, description, and status; determine if AI can meaningfully help with each subtask; generate an action (label, icon, prompt) only for automatable subtasks; return null action fields for subtasks requiring physical presence, manual work, or human interaction; use the same language as the task content; vary action types (icons) across subtasks; write the `prompt` field as a natural instruction that references the specific subtask. The prompt SHALL receive the task title, description, status, and a list of subtask titles.
+The system SHALL store the subtask action system prompt in `app/domains/ai/prompts/action_suggestions.py` (repurposed). The prompt SHALL instruct the LLM to: analyze each subtask in the context of the parent task title, description, and status; determine if AI can meaningfully help with each subtask; generate an action (label, icon, prompt) only for automatable subtasks; return null action fields for subtasks requiring physical presence, manual work, or human interaction; use the same language as the task content; vary action types (icons) across subtasks; write the `prompt` field as a natural instruction that references the specific subtask. The prompt SHALL receive the task title, description, status, a list of subtask titles, and the formatted user context block (when available) to enable time-aware and locale-aware action suggestions.
 
 #### Scenario: Prompt stored as module
 - **WHEN** the subtask action generation feature is invoked
 - **THEN** the system prompt is loaded from `app/domains/ai/prompts/action_suggestions.py`
 
+#### Scenario: Action suggestions use user context
+- **WHEN** subtask action generation receives user_context with "Current date: 2026-02-19" and "Locale: de-DE"
+- **THEN** the AI MAY factor date proximity and locale into its action suggestions
+
 ### Requirement: Sub-Board Question Generation Node
-The system SHALL implement an AI service function `generate_sub_board_questions(task_title: str, task_description: str, board_title: str, goal_context: str, language: str, user_context: str | None = None, memory_context: str | None = None) -> list[QuestionSchema]` that generates 2-4 focused questions for decomposing a task into a sub-board. The function SHALL call the LLM with structured output using a dedicated sub-board question prompt. Each question SHALL conform to the same schema as goal questions (`id`, `text`, `type`, `options`, `rationale`, `required`). Question IDs SHALL be prefixed with "sbq" (e.g., "sbq1", "sbq2"). The function SHALL NOT use LangGraph — it is a single structured output LLM call. All generated content SHALL be in the specified language.
+The system SHALL implement an AI service function `generate_sub_board_questions(task_title: str, task_description: str, board_title: str, goal_context: str, language: str, user_context: str | None = None, memory_context: str | None = None) -> list[QuestionSchema]` that generates 2-4 focused questions for decomposing a task into a sub-board. The function SHALL call the LLM with structured output using a dedicated sub-board question prompt. Each question SHALL conform to the same schema as goal questions (`id`, `text`, `type`, `options`, `rationale`, `required`, `allow_other`). The `options` field SHALL always be a non-empty list with at least 3 items regardless of question type. Question IDs SHALL be prefixed with "sbq" (e.g., "sbq1", "sbq2"). The function SHALL NOT use LangGraph — it is a single structured output LLM call. All generated content SHALL be in the specified language.
 
 #### Scenario: Questions generated for a complex task
 - **WHEN** `generate_sub_board_questions` is called with task title "Find and secure housing in Lisbon", task description, board title "Relocation to Lisbon", and goal context
-- **THEN** the function returns 2-4 questions focused on housing decomposition (e.g., "What type of housing?", "Budget range?", "Timeline for securing housing?")
+- **THEN** the function returns 2-4 questions focused on housing decomposition, each with 3-6 selectable options (e.g., "What type of housing?" with options ["Studio apartment", "1-bedroom apartment", "Shared flat", "House"])
 
 #### Scenario: Question count within bounds
 - **WHEN** `generate_sub_board_questions` produces output
 - **THEN** the number of questions is between 2 and 4 inclusive
+
+#### Scenario: All sub-board questions have non-empty options
+- **WHEN** `generate_sub_board_questions` produces output
+- **THEN** every question has an `options` list with at least 3 items, regardless of question type
 
 #### Scenario: Questions in detected language
 - **WHEN** the language parameter is "ru"

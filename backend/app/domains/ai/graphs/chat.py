@@ -43,6 +43,7 @@ class TaskChatState(dict):  # pyright: ignore[reportMissingTypeArgument]
     task_context: str
     memory_context: str
     goal_context: str
+    user_context: str
     tool_actions: list[dict[str, Any]]
     iteration_count: int
 
@@ -57,11 +58,13 @@ async def respond(state: dict[str, Any]) -> dict[str, Any]:
     task_context: str = state.get("task_context", "")
     memory_context: str = state.get("memory_context", "")
     goal_context: str = state.get("goal_context", "")
+    user_context: str = state.get("user_context", "")
     tools = state.get("_tools", [])
 
     # Build system prompt from the template and context
     system_content = TASK_CHAT_SYSTEM_PROMPT.format(
         **_parse_task_context(task_context),
+        user_context=user_context,
         memory_context=memory_context,
         goal_title=extract_field(goal_context, "goal_title"),
         goal_input=extract_field(goal_context, "goal_input"),

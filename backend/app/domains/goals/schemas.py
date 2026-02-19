@@ -10,9 +10,24 @@ class QuestionSchema(BaseModel):
     id: str
     text: str
     type: str = Field(description="One of: text, select, multiselect, number")
-    options: list[str] | None = None
+    options: list[str] = Field(
+        min_length=3,
+        max_length=6,
+        description=(
+            "3-6 selectable options. Required for all question types: "
+            "suggested answers for text, ranges for number, "
+            "choices for select/multiselect."
+        ),
+    )
     rationale: str
     required: bool = True
+    allow_other: bool = Field(
+        default=True,
+        description=(
+            "Whether the UI should render a free-text "
+            "'Other' input alongside the options."
+        ),
+    )
 
 
 class UserLocationMeta(BaseModel):

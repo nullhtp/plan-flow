@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.domains.ai.prompts.meta import format_user_meta_block
+from app.domains.ai.prompts.meta import format_user_meta_block, resolve_user_context
 from app.domains.ai.schemas import ClassificationOutput, QuestionItem
 from app.domains.ai.service import (
     AIOutputError,
@@ -65,7 +65,8 @@ async def create_goal(
     await session.refresh(goal)
 
     # Format user meta for AI prompt injection
-    user_context = format_user_meta_block(ai_context.get("user_meta"))
+    # Use resolve_user_context for classification (fresh server-side date)
+    user_context = resolve_user_context(ai_context.get("user_meta"))
 
     # Retrieve memory context if memory is enabled
     memory_context = ""

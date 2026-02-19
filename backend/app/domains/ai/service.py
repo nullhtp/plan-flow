@@ -85,7 +85,9 @@ async def classify_and_generate_questions(
     memory_context: str = "",
 ) -> ClassifyAndGenerateResult:
     """Run the full classify -> generate questions pipeline with retries."""
-    classification: ClassificationOutput = await _retry_async(classify_goal, raw_input)
+    classification: ClassificationOutput = await _retry_async(
+        classify_goal, raw_input, user_context
+    )
 
     if classification.confidence < settings.ai_confidence_threshold:
         return ClassifyAndGenerateResult(
@@ -208,6 +210,7 @@ async def generate_subtask_actions(
     task_status: str,
     subtasks: list[dict[str, str]],
     model: str | None = None,
+    user_context: str = "",
 ) -> list[SubtaskActionOutput]:
     """Generate actions for subtasks in a single batch LLM call.
 
@@ -247,11 +250,15 @@ async def generate_subtask_actions(
     llm = get_action_suggest_llm()
     structured_llm = llm.with_structured_output(SubtaskActionsResponse)
 
+    user_prompt = SUBTASK_ACTIONS_USER_PROMPT
+    if user_context:
+        user_prompt += f"\n{user_context}"
+
     async def _call() -> SubtaskActionsResponse:
         result = await structured_llm.ainvoke(  # pyright: ignore[reportUnknownMemberType]
             [
                 SystemMessage(content=system_prompt),
-                HumanMessage(content=SUBTASK_ACTIONS_USER_PROMPT),
+                HumanMessage(content=user_prompt),
             ]
         )
         if not isinstance(result, SubtaskActionsResponse):

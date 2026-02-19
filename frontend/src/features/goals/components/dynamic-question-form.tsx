@@ -3,136 +3,53 @@ import type { QuestionSchema } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+	MultiselectOptionField,
+	OptionField,
+	parseMultiselectValue,
+	parseOptionValue,
+	QuestionFieldWrapper,
+	serializeMultiselectValue,
+	serializeOptionValue,
+} from "@/shared/components/question-fields";
 
 type AnswerValues = Record<string, string | string[] | number>;
 
-// --- Field renderers ---
+// --- Internal state for managing option + other selections ---
 
-function TextField({
-	question,
-	value,
-	onChange,
-	disabled,
-}: {
-	question: QuestionSchema;
-	value: string;
-	onChange: (value: string) => void;
-	disabled: boolean;
-}) {
-	return (
-		<Input
-			id={question.id}
-			value={value}
-			onChange={(e) => onChange(e.target.value)}
-			placeholder="Type your answer..."
-			disabled={disabled}
-		/>
-	);
+interface FieldState {
+	selectedOption: string;
+	otherText: string;
+	// multiselect only
+	selectedOptions: string[];
 }
 
-function NumberField({
-	question,
-	value,
-	onChange,
-	disabled,
-}: {
-	question: QuestionSchema;
-	value: string;
-	onChange: (value: string) => void;
-	disabled: boolean;
-}) {
-	return (
-		<Input
-			id={question.id}
-			type="number"
-			value={value}
-			onChange={(e) => onChange(e.target.value)}
-			placeholder="Enter a number..."
-			disabled={disabled}
-		/>
-	);
-}
-
-function SelectField({
-	question,
-	value,
-	onChange,
-	disabled,
-}: {
-	question: QuestionSchema;
-	value: string;
-	onChange: (value: string) => void;
-	disabled: boolean;
-}) {
-	const options = question.options ?? [];
-	return (
-		<div className="space-y-2">
-			{options.map((option) => (
-				<label
-					key={option}
-					className="flex cursor-pointer items-center gap-2 rounded-lg border p-3 transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:bg-primary/5"
-				>
-					<input
-						type="radio"
-						name={question.id}
-						value={option}
-						checked={value === option}
-						onChange={() => onChange(option)}
-						disabled={disabled}
-						className="accent-primary"
-					/>
-					<span className="text-sm">{option}</span>
-				</label>
-			))}
-		</div>
-	);
-}
-
-function MultiselectField({
-	question,
-	value,
-	onChange,
-	disabled,
-}: {
-	question: QuestionSchema;
-	value: string[];
-	onChange: (value: string[]) => void;
-	disabled: boolean;
-}) {
+function getInitialFieldState(
+	question: QuestionSchema,
+	value: string | string[] | number | undefined,
+): FieldState {
 	const options = question.options ?? [];
 
-	function handleToggle(option: string) {
-		if (value.includes(option)) {
-			onChange(value.filter((v) => v !== option));
-		} else {
-			onChange([...value, option]);
-		}
+	if (question.type === "multiselect") {
+		const arrValue = Array.isArray(value) ? value : [];
+		const parsed = parseMultiselectValue(arrValue, options);
+		return {
+			selectedOption: "",
+			otherText: parsed.otherText,
+			selectedOptions: parsed.selectedOptions,
+		};
 	}
 
-	return (
-		<div className="space-y-2">
-			{options.map((option) => (
-				<label
-					key={option}
-					className="flex cursor-pointer items-center gap-2 rounded-lg border p-3 transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:bg-primary/5"
-				>
-					<input
-						type="checkbox"
-						value={option}
-						checked={value.includes(option)}
-						onChange={() => handleToggle(option)}
-						disabled={disabled}
-						className="accent-primary"
-					/>
-					<span className="text-sm">{option}</span>
-				</label>
-			))}
-		</div>
-	);
+	const strValue = value === undefined ? "" : String(value);
+	const parsed = parseOptionValue(strValue, options);
+	return {
+		selectedOption: parsed.selectedOption,
+		otherText: parsed.otherText,
+		selectedOptions: [],
+	};
 }
 
-// --- Question field wrapper ---
+// --- Unified Question Field ---
 
 function QuestionField({
 	question,
@@ -145,48 +62,79 @@ function QuestionField({
 	onChange: (value: string | string[] | number) => void;
 	disabled: boolean;
 }) {
-	const stringValue = value === undefined ? "" : String(value);
+	const options = question.options ?? [];
+	const hasOptions = options.length > 0;
 
+	const [fieldState, setFieldState] = useState<FieldState>(() =>
+		getInitialFieldState(question, value),
+	);
+
+	// Backward compatibility: no options → plain text input
+	if (!hasOptions) {
+		const stringValue = value === undefined ? "" : String(value);
+		return (
+			<QuestionFieldWrapper question={question}>
+				<Input
+					id={question.id}
+					value={stringValue}
+					onChange={(e) => onChange(e.target.value)}
+					placeholder="Type your answer..."
+					disabled={disabled}
+				/>
+			</QuestionFieldWrapper>
+		);
+	}
+
+	// Multiselect: additive chips + other
+	if (question.type === "multiselect") {
+		return (
+			<QuestionFieldWrapper question={question}>
+				<MultiselectOptionField
+					question={question}
+					selectedOptions={fieldState.selectedOptions}
+					otherText={fieldState.otherText}
+					onToggleOption={(option) => {
+						setFieldState((prev) => {
+							const next = prev.selectedOptions.includes(option)
+								? prev.selectedOptions.filter((o) => o !== option)
+								: [...prev.selectedOptions, option];
+							const serialized = serializeMultiselectValue(next, prev.otherText);
+							onChange(serialized);
+							return { ...prev, selectedOptions: next };
+						});
+					}}
+					onOtherChange={(text) => {
+						setFieldState((prev) => {
+							const serialized = serializeMultiselectValue(prev.selectedOptions, text);
+							onChange(serialized);
+							return { ...prev, otherText: text };
+						});
+					}}
+					disabled={disabled}
+				/>
+			</QuestionFieldWrapper>
+		);
+	}
+
+	// Single-select (text, select, number): mutually exclusive chips + other
 	return (
-		<div className="space-y-2">
-			<Label htmlFor={question.id}>
-				{question.text}
-				{question.required && <span className="ml-1 text-destructive">*</span>}
-			</Label>
-			{question.type === "text" && (
-				<TextField
-					question={question}
-					value={stringValue}
-					onChange={onChange}
-					disabled={disabled}
-				/>
-			)}
-			{question.type === "number" && (
-				<NumberField
-					question={question}
-					value={stringValue}
-					onChange={(v) => onChange(v === "" ? "" : Number(v))}
-					disabled={disabled}
-				/>
-			)}
-			{question.type === "select" && (
-				<SelectField
-					question={question}
-					value={stringValue}
-					onChange={onChange}
-					disabled={disabled}
-				/>
-			)}
-			{question.type === "multiselect" && (
-				<MultiselectField
-					question={question}
-					value={Array.isArray(value) ? value : []}
-					onChange={onChange}
-					disabled={disabled}
-				/>
-			)}
-			{question.rationale && <p className="text-xs text-muted-foreground">{question.rationale}</p>}
-		</div>
+		<QuestionFieldWrapper question={question}>
+			<OptionField
+				question={question}
+				value={fieldState.selectedOption}
+				otherText={fieldState.otherText}
+				onSelectOption={(option) => {
+					setFieldState({ selectedOption: option, otherText: "", selectedOptions: [] });
+					onChange(option);
+				}}
+				onOtherChange={(text) => {
+					const serialized = serializeOptionValue("", text);
+					setFieldState({ selectedOption: "", otherText: text, selectedOptions: [] });
+					onChange(serialized);
+				}}
+				disabled={disabled}
+			/>
+		</QuestionFieldWrapper>
 	);
 }
 

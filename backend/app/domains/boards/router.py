@@ -546,7 +546,9 @@ async def generate_sub_board_endpoint(
             if db_task_id:
                 try:
                     enrichment = TaskEnrichmentOutput.model_validate(event_data)
-                    await update_task_with_enrichment(session, db_task_id, enrichment)
+                    await update_task_with_enrichment(
+                        session, db_task_id, enrichment, user_context=user_context
+                    )
                 except Exception as e:
                     logger.error(
                         "Sub-board enrichment failed for task '%s': %s",
