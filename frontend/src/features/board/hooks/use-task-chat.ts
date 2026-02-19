@@ -13,6 +13,7 @@ export interface ChatMessage {
 	content: string;
 	actions?: ToolAction[];
 	pendingActionId?: string | null;
+	usedMemoryIds?: string[];
 }
 
 interface UseTaskChatReturn {
@@ -52,6 +53,7 @@ export function useTaskChat(taskId: string, boardId: string) {
 						content: data.response,
 						actions: data.actions,
 						pendingActionId: data.pending_action_id,
+						usedMemoryIds: data.used_memory_ids,
 					};
 					setMessages((prev) => [...prev, assistantMsg]);
 

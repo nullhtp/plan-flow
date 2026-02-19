@@ -176,6 +176,7 @@ async def _find_duplicate(
         SELECT id FROM memory
         WHERE user_id = :user_id
           AND embedding IS NOT NULL
+          AND is_archived = false
           AND (embedding <=> CAST(:embedding AS vector)) < :max_distance
         ORDER BY embedding <=> CAST(:embedding AS vector)
         LIMIT 1
@@ -281,6 +282,76 @@ def extract_memories_from_board(
     ]
 
 
+# ── Memory Decay ─────────────────────────────────────────
+
+# In-memory throttle: user_id -> last decay check timestamp
+_decay_last_check: dict[str, float] = {}
+_DECAY_THROTTLE_SECONDS = 3600  # once per hour per user
+
+
+async def run_memory_decay(db: AsyncSession, user_id: str) -> int:
+    """Run memory decay for a user: time-based archival + hard cap pruning.
+
+    Called piggyback on retrieval. Throttled to once per hour per user.
+    Returns the number of archived memories.
+    """
+    import time
+
+    now_ts = time.monotonic()
+    last_check = _decay_last_check.get(user_id, 0.0)
+    if now_ts - last_check < _DECAY_THROTTLE_SECONDS:
+        return 0
+    _decay_last_check[user_id] = now_ts
+
+    archived = 0
+
+    # 1. Time-based archival: archive memories unused for > AI_MEMORY_DECAY_DAYS
+    cutoff = datetime.now(UTC) - __import__("datetime").timedelta(
+        days=settings.ai_memory_decay_days
+    )
+    time_sql = text(
+        """
+        UPDATE memory SET is_archived = true
+        WHERE user_id = :user_id
+          AND is_archived = false
+          AND (last_used_at IS NULL AND created_at < :cutoff
+               OR last_used_at IS NOT NULL AND last_used_at < :cutoff)
+        """
+    )
+    result = await db.execute(time_sql, {"user_id": user_id, "cutoff": cutoff})
+    archived += result.rowcount  # type: ignore[operator]
+
+    # 2. Hard cap pruning: if user exceeds AI_MEMORY_MAX_PER_USER, archive oldest
+    max_per_user = settings.ai_memory_max_per_user
+    count_sql = text(
+        "SELECT COUNT(*) FROM memory WHERE user_id = :user_id AND is_archived = false"
+    )
+    count_result = await db.execute(count_sql, {"user_id": user_id})
+    active_count = count_result.scalar_one()
+
+    if active_count > max_per_user:
+        excess = active_count - max_per_user
+        cap_sql = text(
+            """
+            UPDATE memory SET is_archived = true
+            WHERE id IN (
+                SELECT id FROM memory
+                WHERE user_id = :user_id AND is_archived = false
+                ORDER BY COALESCE(last_used_at, created_at) ASC
+                LIMIT :excess
+            )
+            """
+        )
+        cap_result = await db.execute(cap_sql, {"user_id": user_id, "excess": excess})
+        archived += cap_result.rowcount  # type: ignore[operator]
+
+    if archived > 0:
+        await db.commit()
+        logger.info("Memory decay archived %d memories for user %s", archived, user_id)
+
+    return archived
+
+
 # ── Memory Retrieval (Semantic Search) ───────────────────
 
 
@@ -293,8 +364,15 @@ async def retrieve_relevant_memories(
     """Retrieve the most relevant memories for a context query.
 
     Uses pgvector cosine similarity search. Updates last_used_at
-    on retrieved memories.
+    on retrieved memories. Runs decay check before retrieval.
+    Filters out archived memories.
     """
+    # Run decay check (throttled)
+    try:
+        await run_memory_decay(db, user_id)
+    except Exception:
+        logger.exception("Memory decay failed for user %s", user_id)
+
     if limit is None:
         limit = settings.ai_memory_retrieval_limit
 
@@ -304,11 +382,13 @@ async def retrieve_relevant_memories(
         return []
 
     # pgvector cosine distance ordering (lower = more similar)
+    # Filter out archived memories
     sql = text(
         """
         SELECT id FROM memory
         WHERE user_id = :user_id
           AND embedding IS NOT NULL
+          AND is_archived = false
         ORDER BY embedding <=> CAST(:embedding AS vector)
         LIMIT :limit
         """

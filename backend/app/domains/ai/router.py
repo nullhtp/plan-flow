@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from langchain_core.messages import HumanMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.db import get_session
 from app.domains.ai.schemas import (
     ActionConfirmResponse,
@@ -146,7 +145,10 @@ async def task_chat(
 
     # Retrieve memory context
     memory_context = ""
-    if settings.ai_memory_enabled:
+    memory_ids: list[str] = []
+    from app.domains.ai.memory_toggle import is_memory_enabled
+
+    if await is_memory_enabled(session, current_user.id):
         try:
             from app.domains.ai.memory import retrieve_relevant_memories
             from app.domains.ai.prompts.memory import format_memory_block
@@ -154,6 +156,7 @@ async def task_chat(
             query = f"{task.title} {task.description} {goal.original_input}"
             memories = await retrieve_relevant_memories(session, current_user.id, query)
             memory_context = format_memory_block(memories)
+            memory_ids = [m.id for m in memories]
         except Exception:
             logger.exception("Memory retrieval for task chat failed")
 
@@ -212,6 +215,7 @@ async def task_chat(
         thread_id=thread_id,
         actions=tool_actions,
         pending_action_id=pending_action_id,
+        used_memory_ids=memory_ids,
     )
 
 
@@ -245,7 +249,10 @@ async def board_chat(
 
     # Retrieve memory context
     memory_context = ""
-    if settings.ai_memory_enabled:
+    memory_ids: list[str] = []
+    from app.domains.ai.memory_toggle import is_memory_enabled
+
+    if await is_memory_enabled(session, current_user.id):
         try:
             from app.domains.ai.memory import retrieve_relevant_memories
             from app.domains.ai.prompts.memory import format_memory_block
@@ -253,6 +260,7 @@ async def board_chat(
             query = f"{board.title} {goal.original_input}"
             memories = await retrieve_relevant_memories(session, current_user.id, query)
             memory_context = format_memory_block(memories)
+            memory_ids = [m.id for m in memories]
         except Exception:
             logger.exception("Memory retrieval for board chat failed")
 
@@ -309,6 +317,7 @@ async def board_chat(
         thread_id=thread_id,
         actions=tool_actions,
         pending_action_id=pending_action_id,
+        used_memory_ids=memory_ids,
     )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -8,6 +9,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.domains.ai.memory_router import boards_memory_router
+from app.domains.ai.memory_router import router as memory_router
 from app.domains.ai.router import (
     actions_router as ai_actions_router,
 )
@@ -21,6 +24,19 @@ from app.domains.boards.router import router as boards_router
 from app.domains.boards.router import subtasks_router as boards_subtasks_router
 from app.domains.boards.router import tasks_router as boards_tasks_router
 from app.domains.goals.router import router as goals_router
+from app.domains.settings.router import router as settings_router
+
+# Suppress harmless Pydantic serialization warning from LangChain internals.
+# When using ChatOpenAI.with_structured_output(method="json_schema"), LangChain
+# stores the parsed Pydantic object in AIMessage.additional_kwargs["parsed"].
+# Pydantic cannot cleanly serialize it during internal callback/tracing, but
+# the actual data flow is unaffected.
+warnings.filterwarnings(
+    "ignore",
+    message=r"Pydantic serializer warnings",
+    category=UserWarning,
+    module=r"pydantic\.main",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +89,9 @@ app.include_router(boards_goals_router, prefix="/api")
 app.include_router(ai_router, prefix="/api")
 app.include_router(ai_actions_router, prefix="/api")
 app.include_router(ai_boards_chat_router, prefix="/api")
+app.include_router(settings_router, prefix="/api")
+app.include_router(memory_router, prefix="/api")
+app.include_router(boards_memory_router, prefix="/api")
 
 
 @app.get("/health")

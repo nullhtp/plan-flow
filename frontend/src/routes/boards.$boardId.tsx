@@ -1,6 +1,8 @@
 import { createRoute } from "@tanstack/react-router";
+import { Brain } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
 import { useUpdateBoardEndpointApiBoardsBoardIdPatch } from "@/api/generated/boards/boards";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BoardMetaInfo } from "@/features/board/components/BoardMetaInfo";
 import { BoardSkeleton } from "@/features/board/components/BoardSkeleton";
@@ -9,6 +11,7 @@ import { DagView } from "@/features/board/components/DagView";
 import { useBoard } from "@/features/board/hooks/use-board";
 import type { BoardResponse } from "@/features/board/types";
 import { ErrorDisplay } from "@/features/goals/components/error-display";
+import { BoardMemorySidebar } from "@/features/memory/components/BoardMemorySidebar";
 import { authenticatedRoute } from "./_authenticated";
 
 type BoardSearchParams = {
@@ -31,6 +34,7 @@ function BoardDetailPage() {
 
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 	const [editTitle, setEditTitle] = useState("");
+	const [showMemorySidebar, setShowMemorySidebar] = useState(false);
 
 	if (boardQuery.isLoading) {
 		return (
@@ -74,7 +78,7 @@ function BoardDetailPage() {
 		<div className="flex h-screen flex-col">
 			{/* Board Header with Breadcrumb */}
 			<div className="flex items-center gap-3 border-b px-4 py-3">
-				<div className="flex flex-col gap-1">
+				<div className="flex min-w-0 flex-1 flex-col gap-1">
 					<BreadcrumbNav boardTitle={board.title} parentBoard={board.parent_board} />
 					<div className="flex items-center gap-2">
 						{isEditingTitle ? (
@@ -100,12 +104,27 @@ function BoardDetailPage() {
 					</div>
 					{board.user_meta && <BoardMetaInfo userMeta={board.user_meta} />}
 				</div>
+				<Button
+					variant={showMemorySidebar ? "default" : "outline"}
+					size="sm"
+					className="gap-1.5 shrink-0"
+					onClick={() => setShowMemorySidebar((v) => !v)}
+					title="Board memories"
+				>
+					<Brain className="h-4 w-4" />
+					<span className="hidden sm:inline">Memories</span>
+				</Button>
 			</div>
 
 			{/* DAG Graph View */}
 			<div className="flex-1 overflow-hidden">
 				<DagView board={board} />
 			</div>
+
+			{/* Memory Sidebar */}
+			{showMemorySidebar && (
+				<BoardMemorySidebar boardId={board.id} onClose={() => setShowMemorySidebar(false)} />
+			)}
 		</div>
 	);
 }

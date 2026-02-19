@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pgvector.sqlalchemy import Vector  # pyright: ignore[reportMissingTypeStubs]
-from sqlalchemy import Column, DateTime, Index, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSON
 from sqlmodel import Field, SQLModel
 
@@ -37,7 +37,11 @@ class Memory(SQLModel, table=True):
         index=True,
     )
     source_stage: str = Field(
-        description="Pipeline stage: classification, questions, answers, board_generation",  # noqa: E501
+        description="Pipeline stage: classification, questions, answers, board_generation, manual",  # noqa: E501
+    )
+    is_archived: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="false"),
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),

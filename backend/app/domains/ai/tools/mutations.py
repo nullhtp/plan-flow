@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.ai.tools._pending import create_pending_action
 from app.domains.boards.models import Artifact, Subtask, Task
 from app.domains.boards.position_utils import generate_position_after
+from app.domains.boards.subtask_service import sync_task_status_from_subtasks
 from app.domains.boards.task_service import are_dependencies_met
 
 logger = logging.getLogger(__name__)
@@ -240,6 +241,10 @@ def make_toggle_subtask(
             subtask.completed = not subtask.completed
             subtask.updated_at = datetime.now(UTC)
             db.add(subtask)
+
+            # Auto-sync parent task status based on subtask completion
+            await sync_task_status_from_subtasks(db, task)
+
             await db.commit()
 
             status_text = "completed" if subtask.completed else "uncompleted"

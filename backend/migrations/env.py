@@ -15,6 +15,7 @@ import app.domains.ai.models as _ai  # pyright: ignore[reportUnusedImport]  # no
 import app.domains.auth.models as _  # pyright: ignore[reportUnusedImport]  # noqa: F401
 import app.domains.boards.models as _boards  # pyright: ignore[reportUnusedImport]  # noqa: F401
 import app.domains.goals.models as _goals  # pyright: ignore[reportUnusedImport]  # noqa: F401
+import app.domains.settings.models as _settings  # pyright: ignore[reportUnusedImport]  # noqa: F401
 from app.core.config import settings
 
 # Alembic Config object

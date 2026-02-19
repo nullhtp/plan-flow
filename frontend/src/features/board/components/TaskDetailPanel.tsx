@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowRight, ExternalLink, Layers, Lock, Trash2, X } from "lucide-react";
+import { ExternalLink, Layers, Lock, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -229,50 +229,6 @@ export function TaskDetailPanel({
 						className="mt-1"
 					/>
 				</div>
-
-				{/* Dependencies */}
-				{dependencyTasks.length > 0 && (
-					<div>
-						<Label>Dependencies (prerequisites)</Label>
-						<div className="mt-1 space-y-1">
-							{dependencyTasks.map((dep) => (
-								<div
-									key={dep.id}
-									className="flex items-center gap-2 text-sm rounded px-2 py-1 bg-muted/50"
-								>
-									<span
-										className={`h-2 w-2 rounded-full ${
-											dep.status === "done" ? "bg-green-500" : "bg-gray-400"
-										}`}
-									/>
-									<span
-										className={dep.status === "done" ? "text-muted-foreground line-through" : ""}
-									>
-										{dep.title}
-									</span>
-								</div>
-							))}
-						</div>
-					</div>
-				)}
-
-				{/* Unlocks */}
-				{dependentTasks.length > 0 && (
-					<div>
-						<Label>Unlocks</Label>
-						<div className="mt-1 space-y-1">
-							{dependentTasks.map((dep) => (
-								<div
-									key={dep.id}
-									className="flex items-center gap-2 text-sm rounded px-2 py-1 bg-muted/50"
-								>
-									<ArrowRight className="h-3 w-3 text-muted-foreground" />
-									<span>{dep.title}</span>
-								</div>
-							))}
-						</div>
-					</div>
-				)}
 
 				{/* Subtasks or Sub-Board section */}
 				{hasSubBoard ? (

@@ -550,10 +550,10 @@ async def generate_board(
     user_context = format_user_meta_block(ai_context.get("user_meta"))
 
     # Retrieve memory context for board generation
-    from app.core.config import settings as app_settings
+    from app.domains.ai.memory_toggle import is_memory_enabled
 
     memory_context = ""
-    if app_settings.ai_memory_enabled:
+    if await is_memory_enabled(session, user_id):
         from app.domains.ai.memory import retrieve_relevant_memories
         from app.domains.ai.prompts.memory import format_memory_block
 
@@ -635,7 +635,7 @@ async def generate_board(
                 await transition_goal_to_active(session, goal)
 
                 # Extract memories from board generation (best-effort)
-                if app_settings.ai_memory_enabled:
+                if await is_memory_enabled(session, user_id):
                     try:
                         from app.domains.ai.memory import (
                             extract_memories_from_board,
@@ -720,10 +720,10 @@ async def generate_board_with_streaming(
 
     user_context = format_user_meta_block(ai_context.get("user_meta"))
 
-    from app.core.config import settings as app_settings
+    from app.domains.ai.memory_toggle import is_memory_enabled as _mem_enabled
 
     memory_context = ""
-    if app_settings.ai_memory_enabled:
+    if await _mem_enabled(session, user_id):
         from app.domains.ai.memory import retrieve_relevant_memories
         from app.domains.ai.prompts.memory import format_memory_block
 
@@ -832,7 +832,7 @@ async def generate_board_with_streaming(
             if board is not None:
                 await transition_goal_to_active(session, goal)
 
-                if app_settings.ai_memory_enabled:
+                if await _mem_enabled(session, user_id):
                     try:
                         from app.domains.ai.memory import (
                             extract_memories_from_board,
@@ -899,7 +899,6 @@ async def generate_sub_board_with_streaming(
     """
     import json
 
-    from app.core.config import settings as app_settings
     from app.domains.ai.service import generate_sub_board_stream
     from app.domains.boards.dag_utils import (
         CyclicDependencyError,
@@ -931,8 +930,10 @@ async def generate_sub_board_with_streaming(
 
     user_context = format_user_meta_block(ai_context.get("user_meta")) or ""
 
+    from app.domains.ai.memory_toggle import is_memory_enabled as _mem_chk
+
     memory_context = ""
-    if app_settings.ai_memory_enabled:
+    if await _mem_chk(session, user_id):
         from app.domains.ai.memory import retrieve_relevant_memories
         from app.domains.ai.prompts.memory import format_memory_block
 

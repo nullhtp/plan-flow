@@ -11,6 +11,7 @@ import type { ToolAction } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MemoryBadges } from "@/features/memory/components/MemoryBadges";
 import { type ChatMessage, useTaskChat } from "../hooks/use-task-chat";
 
 interface TaskChatProps {
@@ -202,6 +203,7 @@ function ChatMessageBubble({
 						))}
 					</div>
 				)}
+				{!isUser && message.usedMemoryIds && <MemoryBadges memoryIds={message.usedMemoryIds} />}
 			</div>
 		</div>
 	);

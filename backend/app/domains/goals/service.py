@@ -6,7 +6,6 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.domains.ai.prompts.meta import format_user_meta_block, resolve_user_context
 from app.domains.ai.schemas import ClassificationOutput, QuestionItem
 from app.domains.ai.service import (
@@ -70,7 +69,9 @@ async def create_goal(
 
     # Retrieve memory context if memory is enabled
     memory_context = ""
-    if settings.ai_memory_enabled:
+    from app.domains.ai.memory_toggle import is_memory_enabled
+
+    if await is_memory_enabled(session, user_id):
         from app.domains.ai.memory import retrieve_relevant_memories
         from app.domains.ai.prompts.memory import format_memory_block
 
@@ -113,7 +114,7 @@ async def create_goal(
     await session.refresh(goal)
 
     # Extract memories from classification (non-blocking best-effort)
-    if settings.ai_memory_enabled:
+    if await is_memory_enabled(session, user_id):
         try:
             from app.domains.ai.memory import (
                 extract_memories_from_classification,
@@ -151,6 +152,8 @@ async def submit_answers(
         msg = f"Goal is in '{goal.status}' status, expected 'questioning'"
         raise GoalStatusError(msg)
 
+    from app.domains.ai.memory_toggle import is_memory_enabled
+
     ai_context: dict[str, Any] = dict(goal.ai_context)
 
     if round_num == 1:
@@ -168,7 +171,8 @@ async def submit_answers(
 
         # Retrieve memory context for follow-up questions
         memory_context_for_follow_up = ""
-        if settings.ai_memory_enabled:
+
+        if await is_memory_enabled(session, user_id):
             from app.domains.ai.memory import retrieve_relevant_memories
             from app.domains.ai.prompts.memory import format_memory_block
 
@@ -187,7 +191,7 @@ async def submit_answers(
         )
 
         # Extract memories from initial answers (best-effort)
-        if settings.ai_memory_enabled:
+        if await is_memory_enabled(session, user_id):
             try:
                 from app.domains.ai.memory import (
                     extract_memories_from_answers,
@@ -231,7 +235,7 @@ async def submit_answers(
     await session.refresh(goal)
 
     # Extract memories from follow-up answers (best-effort)
-    if settings.ai_memory_enabled:
+    if await is_memory_enabled(session, user_id):
         try:
             from app.domains.ai.memory import (
                 extract_memories_from_answers,

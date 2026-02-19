@@ -34,7 +34,7 @@ export function BoardGenerationProgress({
 	const streamOptions = useMemo(() => ({ url, body: sseBody }), [url, sseBody]);
 	const stream = useBoardGenerationStream(streamOptions);
 	const navigate = useNavigate();
-	const navTimerRef = useRef<ReturnType<typeof setTimeout>>();
+	const navTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
 	// Start the stream on mount, abort on unmount.
 	// Guard prevents the double-fire caused by React StrictMode's

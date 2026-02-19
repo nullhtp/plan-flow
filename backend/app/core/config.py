@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     ai_embedding_dimensions: int = 1536
     ai_memory_retrieval_limit: int = 15
     ai_memory_similarity_threshold: float = 0.95
+    ai_memory_decay_days: int = 90
+    ai_memory_max_per_user: int = 500
 
     # AI Chat & Tools
     ai_chat_model: str = ""  # defaults to ai_default_model when empty

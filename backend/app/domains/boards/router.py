@@ -361,10 +361,10 @@ async def sub_board_questions_endpoint(
     user_context = format_user_meta_block(ai_context.get("user_meta"))
 
     # Retrieve memory context
-    from app.core.config import settings as app_settings
+    from app.domains.ai.memory_toggle import is_memory_enabled
 
     memory_context = ""
-    if app_settings.ai_memory_enabled:
+    if await is_memory_enabled(session, current_user.id):
         from app.domains.ai.memory import retrieve_relevant_memories
         from app.domains.ai.prompts.memory import format_memory_block
 
@@ -401,7 +401,6 @@ async def generate_sub_board_endpoint(
     """
     import json
 
-    from app.core.config import settings as app_settings
     from app.core.types import BoardSkeletonOutput, TaskEnrichmentOutput
     from app.domains.boards.board_repository import BoardRepository
     from app.domains.boards.dag_utils import (
@@ -482,8 +481,10 @@ async def generate_sub_board_endpoint(
 
     user_context = format_user_meta_block(ai_context.get("user_meta")) or ""
 
+    from app.domains.ai.memory_toggle import is_memory_enabled
+
     memory_context = ""
-    if app_settings.ai_memory_enabled:
+    if await is_memory_enabled(session, current_user.id):
         from app.domains.ai.memory import retrieve_relevant_memories
         from app.domains.ai.prompts.memory import format_memory_block
 

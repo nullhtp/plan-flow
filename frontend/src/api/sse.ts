@@ -1,3 +1,5 @@
+import { refreshTokens } from "./fetcher";
+
 const API_BASE_URL = "http://localhost:8000";
 
 export interface SSEEvent {
@@ -51,6 +53,16 @@ export async function fetchSSE({
 	} catch (error) {
 		if (signal?.aborted) return;
 		onError?.(error instanceof Error ? error : new Error("Connection failed"));
+		return;
+	}
+
+	if (response.status === 401) {
+		const refreshed = await refreshTokens();
+		if (refreshed) {
+			// Retry the SSE request with the fresh access token cookie
+			return fetchSSE({ url, body, onEvent, onError, onClose, signal });
+		}
+		onError?.(new Error("Session expired"));
 		return;
 	}
 

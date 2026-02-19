@@ -1,8 +1,5 @@
-# ai-memory Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change add-ai-persistent-memory. Update Purpose after archive.
-## Requirements
 ### Requirement: Memory Data Model
 The system SHALL store user memories in a `memory` PostgreSQL table with the following columns: `id` (UUID primary key), `user_id` (foreign key to `user.id`, indexed), `content` (text — the human-readable memory fact), `category` (string — one of "preference", "fact", "pattern", "context"), `embedding` (vector(1536) — pgvector column for semantic search), `source_goal_id` (nullable foreign key to `goal.id` — which goal produced this memory), `source_stage` (string — which pipeline stage produced this memory: "classification", "questions", "answers", "board_generation", "manual"), `created_at` (datetime with timezone), `last_used_at` (nullable datetime with timezone — updated when memory is retrieved for prompt injection), and `is_archived` (boolean, default false — soft-delete flag for user deletion and decay). The table SHALL have a HNSW index on the `embedding` column for efficient similarity search. The `memory` table SHALL be defined as a SQLModel model in `app/domains/ai/models.py`. All queries that list or retrieve memories for prompt injection SHALL filter by `is_archived = false` unless explicitly requesting archived memories.
 
@@ -26,17 +23,6 @@ The system SHALL store user memories in a `memory` PostgreSQL table with the fol
 - **WHEN** a user edits a memory's content via the API
 - **THEN** the memory's `source_stage` is updated to "manual"
 
-### Requirement: pgvector Extension
-The system SHALL require the `pgvector` PostgreSQL extension. The Docker Compose PostgreSQL service SHALL use an image that includes pgvector (e.g., `pgvector/pgvector:pg16`). The Alembic migration that creates the `memory` table SHALL execute `CREATE EXTENSION IF NOT EXISTS vector` before creating the table. The application settings SHALL include an `ai_embedding_dimensions` setting (integer, default 1536) for configuring the vector column size.
-
-#### Scenario: pgvector extension created in migration
-- **WHEN** the memory table migration runs
-- **THEN** the `vector` extension is available in PostgreSQL and the `embedding` column uses the `vector(1536)` type
-
-#### Scenario: Docker Compose includes pgvector
-- **WHEN** the developer runs `docker compose up`
-- **THEN** the PostgreSQL service starts with pgvector support available
-
 ### Requirement: Memory Embedding Generation
 The system SHALL generate vector embeddings for each memory fact using an embedding model. The embedding model SHALL be configurable via the `AI_EMBEDDING_MODEL` environment variable (default: `openai/text-embedding-3-small`). The embedding generation function SHALL be implemented as an async utility in `app/domains/ai/memory.py`. Embedding generation SHALL use batching when multiple memories are created simultaneously (e.g., after Q&A stage extracts multiple facts). The system SHALL handle embedding API failures gracefully — if embedding generation fails, the memory SHALL be stored with a null embedding and flagged for retry. When a memory's content is edited, the system SHALL regenerate the embedding for the updated content to maintain semantic search accuracy.
 
@@ -55,47 +41,6 @@ The system SHALL generate vector embeddings for each memory fact using an embedd
 #### Scenario: Re-embedding on edit
 - **WHEN** a user edits a memory's content from "Budget: $3000" to "Budget: $5000-8000"
 - **THEN** the system generates a new embedding for "Budget: $5000-8000" and replaces the old embedding
-
-### Requirement: Memory Extraction After Classification
-The system SHALL extract memory facts from the classification output after the goal classification pipeline stage completes. Extracted facts SHALL include: the goal's domain (e.g., "User works on goals in domain: relocation"), the detected language (e.g., "User's preferred language: Russian"), and any notable dimensions. Extraction SHALL be rule-based (deterministic), not LLM-driven. The extraction function SHALL be implemented in `app/domains/ai/memory.py`.
-
-#### Scenario: Domain extracted as memory
-- **WHEN** classification produces domain "relocation" for a user's goal
-- **THEN** a memory fact is created with content "User has worked on a relocation goal", category "context", and source_stage "classification"
-
-#### Scenario: Language preference extracted
-- **WHEN** classification detects language "ru" for a user's first goal
-- **THEN** a memory fact is created with content "User's preferred language: Russian (ru)", category "preference", and source_stage "classification"
-
-#### Scenario: Duplicate domain not re-extracted
-- **WHEN** a user creates a second relocation goal and the system already has a memory "User has worked on a relocation goal"
-- **THEN** the system checks for semantic similarity (> 0.95) and updates the existing memory's `last_used_at` instead of creating a duplicate
-
-### Requirement: Memory Extraction After Q&A
-The system SHALL extract memory facts from user answers after each Q&A round (initial answers and follow-up answers). Each question-answer pair SHALL produce one memory fact combining the question context and the answer value (e.g., question "What is your budget?" + answer "$3000-5000" → memory "Budget for relocation: $3000-5000"). Extraction SHALL be rule-based. The extraction function SHALL deduplicate against existing memories using semantic similarity (threshold > 0.95 → update instead of insert).
-
-#### Scenario: Answer extracted as memory fact
-- **WHEN** a user answers question "What is your monthly budget?" with "$3000-5000"
-- **THEN** a memory fact is created with content "Monthly budget preference: $3000-5000", category "preference", source_stage "answers"
-
-#### Scenario: Multiple answers extracted in batch
-- **WHEN** a user submits answers to 5 questions
-- **THEN** up to 5 memory facts are created and their embeddings are generated in a batch
-
-#### Scenario: Follow-up answer extracted
-- **WHEN** a user submits follow-up answers
-- **THEN** memory facts are extracted from the follow-up Q&A pairs with source_stage "answers"
-
-#### Scenario: Duplicate answer updates existing memory
-- **WHEN** a user answers "What is your budget?" with "$5000-8000" but a memory "Budget for relocation: $3000-5000" already exists with similarity > 0.95
-- **THEN** the existing memory is updated with the new content and its `last_used_at` is refreshed
-
-### Requirement: Memory Extraction After Board Generation
-The system SHALL extract memory facts from the board generation output after board generation completes. Extracted facts SHALL include: the total task count and general board pattern (e.g., "Generated a 15-task plan for relocation with parallel housing and logistics tracks"). Extraction SHALL be rule-based. This extraction runs once per board generation, not per-task enrichment.
-
-#### Scenario: Board pattern extracted
-- **WHEN** board generation produces a 15-task DAG for a relocation goal
-- **THEN** a memory fact is created with content "Generated a 15-task relocation plan", category "pattern", source_stage "board_generation"
 
 ### Requirement: Semantic Memory Retrieval
 The system SHALL retrieve the top N most relevant memories for a given context using pgvector cosine similarity search. The retrieval function SHALL accept a query string (e.g., the goal's raw input text + classification dimensions), generate an embedding for the query, and return the top N memories ordered by cosine similarity. N SHALL be configurable via the `AI_MEMORY_RETRIEVAL_LIMIT` setting (default: 15). Only memories belonging to the requesting user with `is_archived = false` SHALL be returned. The retrieval function SHALL update `last_used_at` on all returned memories. The retrieval function SHALL return both the Memory objects and their IDs for downstream tracking. The function SHALL be implemented as an async method in `app/domains/ai/memory.py`. Before performing retrieval, the function SHALL trigger a decay check (see Memory Decay requirement).
@@ -119,26 +64,6 @@ The system SHALL retrieve the top N most relevant memories for a given context u
 #### Scenario: Archived memories excluded from retrieval
 - **WHEN** a user has 20 memories but 5 are archived
 - **THEN** the retrieval function only searches against the 15 non-archived memories
-
-### Requirement: Memory Prompt Formatting
-The system SHALL format retrieved memories into a prompt-injectable text block, following the same pattern as the existing "User context" block. The format SHALL be:
-
-```
-Relevant memories from past interactions:
-- {memory_1_content}
-- {memory_2_content}
-- ...
-```
-
-If no memories are available, the block SHALL be omitted entirely (not an empty section). The formatting function SHALL be implemented in `app/domains/ai/prompts/memory.py`.
-
-#### Scenario: Memories formatted for prompt injection
-- **WHEN** 5 memories are retrieved for prompt injection
-- **THEN** a text block is produced with the header "Relevant memories from past interactions:" followed by each memory as a bullet point
-
-#### Scenario: No memories produces no block
-- **WHEN** zero memories are retrieved
-- **THEN** the formatting function returns an empty string (no "Relevant memories" section in the prompt)
 
 ### Requirement: Memory Configuration
 The system SHALL add the following settings to the application configuration, read from environment variables:
@@ -165,60 +90,6 @@ The system SHALL add the following settings to the application configuration, re
 #### Scenario: Custom decay period
 - **WHEN** `AI_MEMORY_DECAY_DAYS` is set to "30"
 - **THEN** memories unused for more than 30 days are auto-archived during the decay check
-
-### Requirement: LangGraph PostgreSQL Checkpointer
-The system SHALL configure a LangGraph PostgreSQL checkpointer using the `langgraph-checkpoint-postgres` library. The checkpointer SHALL use the same PostgreSQL database as the application (connection string from `DATABASE_URL`). The checkpointer SHALL be initialized as a shared async instance at application startup and shut down gracefully on application shutdown. The checkpointer's internal tables SHALL be created via its own setup method (not Alembic-managed). The checkpointer instance SHALL be available as a dependency for LangGraph graphs that need conversation persistence.
-
-#### Scenario: Checkpointer initialized at startup
-- **WHEN** the application starts
-- **THEN** the LangGraph PostgreSQL checkpointer is initialized with the application's database connection and its internal tables are created
-
-#### Scenario: Checkpointer shared across graphs
-- **WHEN** a task chat graph needs conversation persistence
-- **THEN** it receives the shared checkpointer instance via dependency injection
-
-#### Scenario: Checkpointer shut down gracefully
-- **WHEN** the application shuts down
-- **THEN** the checkpointer's database connections are properly closed
-
-### Requirement: Task Chat Graph
-The system SHALL implement a LangGraph `StateGraph` for task-level AI chat, compiled with the PostgreSQL checkpointer. The chat graph state SHALL include: `messages` (list of chat messages), `task_id` (string), `board_id` (string), `user_id` (string), `task_context` (string — task title, description, subtasks, board context), `memory_context` (string — formatted memory block), `goal_context` (string — goal text and classification summary), and `user_context` (string — formatted user meta block from `resolve_user_context()`). The graph SHALL implement a ReAct agent loop: a `respond` node that produces an AI response (potentially including tool calls), a conditional edge that checks whether the response contains tool calls, a `tool_execute` node that runs the called tools via LangGraph's `ToolNode`, and a loop back to `respond` for the AI to process tool results. The LLM model SHALL be bound to the context-appropriate tool set via `model.bind_tools(tools)` using tools from the tool registry's `get_task_chat_tools`. The `respond` node's system prompt SHALL instruct the AI about available tools, when to use them, and the confirmation flow (that some actions will require user approval). The `respond` node SHALL inject the `user_context` state field into the system prompt via the `{user_context}` template placeholder. Each task's chat session SHALL use a thread ID of format `task-chat-{task_id}`, enabling conversation persistence across HTTP requests. The graph SHALL be defined in `app/domains/ai/graphs/chat.py`. The graph SHALL enforce a maximum of 10 tool-call iterations per turn to prevent infinite loops.
-
-#### Scenario: First message in task chat
-- **WHEN** a user sends the first chat message for task "t1" (thread "task-chat-t1")
-- **THEN** the graph creates a new thread, injects task context, user context, and memory context, and produces an AI response
-
-#### Scenario: Resuming task chat
-- **WHEN** a user sends a second message to task "t1" after a previous conversation
-- **THEN** the graph loads the existing thread state (including previous messages) from the checkpointer and continues the conversation
-
-#### Scenario: Task context included in chat
-- **WHEN** a user chats about task "Research neighborhoods in Lisbon"
-- **THEN** the AI response demonstrates awareness of the task's title, description, subtasks, and the parent goal's context
-
-#### Scenario: Memory context included in chat
-- **WHEN** a user with stored memories chats about a task
-- **THEN** the AI response MAY reference relevant memories (e.g., "Based on your previous preference for tight budgets...")
-
-#### Scenario: User context included in task chat
-- **WHEN** a user chats about a task and the goal has stored user_meta with timezone "Europe/Berlin"
-- **THEN** the system prompt includes a "User context" block with the current date (server-computed for Europe/Berlin timezone), day of week, locale, and other available fields
-
-#### Scenario: AI uses read-only tool in task chat
-- **WHEN** a user asks "What tasks are blocked right now?" in task chat
-- **THEN** the AI calls `get_blocked_tasks`, receives the result, and synthesizes it into a natural language response with the tool action included in the response
-
-#### Scenario: AI uses mutation tool requiring confirmation
-- **WHEN** a user says "Mark this task as done" in task chat
-- **THEN** the AI calls `update_task_status`, receives a pending_confirmation result, and responds explaining the proposed action with the pending_action_id in the response
-
-#### Scenario: AI uses web search in task chat
-- **WHEN** a user asks "Can you find apartment listings in Lisbon?" in task chat and Tavily is configured
-- **THEN** the AI calls `web_search`, receives structured results, and synthesizes them into a helpful response
-
-#### Scenario: Tool call loop limit enforced
-- **WHEN** the AI enters a loop making more than 10 consecutive tool calls in a single turn
-- **THEN** the graph breaks the loop and returns the AI's last response
 
 ### Requirement: Task Chat API Endpoint
 The system SHALL expose a `POST /api/tasks/{task_id}/chat` endpoint that accepts a JSON body with `message` (string). The endpoint SHALL: load the task and its board/goal context, check the user's memory enabled setting (per-user toggle AND global flag), resolve user context server-side from the goal's stored `user_meta` via `resolve_user_context()`, retrieve relevant memories for the user (if memory is enabled), obtain the task chat tool set from the tool registry, invoke the task chat graph with the appropriate thread ID, user_context, and memory IDs, collect tool actions from the graph execution, and return the enriched chat response. The response SHALL be a JSON object conforming to the ChatResponse schema: `response` (string — the AI's reply), `thread_id` (string), `actions` (list of ToolAction objects), `pending_action_id` (nullable string), and `used_memory_ids` (list of string — IDs of memories that were injected into the prompt context for this response). The endpoint SHALL require authentication. If the task does not belong to the authenticated user's board, the endpoint SHALL return 403.
@@ -250,6 +121,8 @@ The system SHALL expose a `POST /api/tasks/{task_id}/chat` endpoint that accepts
 #### Scenario: Chat with memory disabled returns empty memory IDs
 - **WHEN** a user with memory disabled (per-user toggle off) sends a chat message
 - **THEN** the endpoint returns `used_memory_ids: []` and no memories are retrieved or injected
+
+## ADDED Requirements
 
 ### Requirement: Memory CRUD API
 The system SHALL expose REST endpoints for managing user memories:
@@ -376,4 +249,3 @@ The system SHALL provide a `GET /api/boards/{board_id}/memories` endpoint that r
 #### Scenario: Unauthorized board access
 - **WHEN** a user sends GET /api/boards/{board_id}/memories for another user's board
 - **THEN** the endpoint returns 403
-

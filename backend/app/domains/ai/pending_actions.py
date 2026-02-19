@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.ai.models import PendingAction
 from app.domains.boards.models import Board, Subtask, Task, TaskDependency
+from app.domains.boards.subtask_service import sync_task_status_from_subtasks
 from app.domains.boards.task_service import are_dependencies_met
 
 logger = logging.getLogger(__name__)
@@ -176,7 +177,13 @@ async def _execute_delete_subtask(
 
     title = subtask.title
     task_id = subtask.task_id
+    task = await db.get(Task, task_id)
     await db.delete(subtask)
+
+    # Re-sync parent task status after subtask removal
+    if task is not None:
+        await sync_task_status_from_subtasks(db, task)
+
     await db.commit()
 
     return {"subtask_id": subtask_id, "title": title, "task_id": task_id}

@@ -8,6 +8,7 @@ import { goalsNewRoute } from "./goals.new";
 import { indexRoute } from "./index";
 import { loginRoute } from "./login";
 import { registerRoute } from "./register";
+import { settingsRoute } from "./settings";
 
 const routeTree = rootRoute.addChildren([
 	loginRoute,
@@ -18,6 +19,7 @@ const routeTree = rootRoute.addChildren([
 		goalDetailRoute,
 		boardDetailRoute,
 		boardExpandTaskRoute,
+		settingsRoute,
 	]),
 ]);
 

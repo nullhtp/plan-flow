@@ -4,6 +4,64 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+# ── Memory Management Schemas ────────────────────────────
+
+
+class MemoryResponse(BaseModel):
+    """Response schema for a single memory."""
+
+    id: str = Field(description="Memory ID")
+    content: str = Field(description="Memory content text")
+    category: str = Field(
+        description="Memory category: preference, fact, pattern, context"
+    )
+    source_stage: str = Field(description="Pipeline stage that created this memory")
+    created_at: str = Field(description="ISO timestamp of creation")
+    last_used_at: str | None = Field(
+        default=None, description="ISO timestamp of last retrieval"
+    )
+
+
+class MemoryListResponse(BaseModel):
+    """Paginated list of memories."""
+
+    items: list[MemoryResponse] = Field(description="List of memories")
+    total: int = Field(description="Total count of memories matching the filter")
+    page: int = Field(description="Current page number")
+    page_size: int = Field(description="Number of items per page")
+
+
+class MemoryUpdateRequest(BaseModel):
+    """Request schema for updating a memory."""
+
+    content: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="Updated memory content text",
+    )
+
+
+class MemoryBulkDeleteRequest(BaseModel):
+    """Request schema for bulk deleting memories."""
+
+    category: str | None = Field(
+        default=None,
+        description="If set, only delete memories in this category. "
+        "If None, delete all user memories.",
+    )
+
+
+class MemoryStatsResponse(BaseModel):
+    """Statistics about user's memories."""
+
+    total: int = Field(description="Total active memory count")
+    by_category: dict[str, int] = Field(
+        description="Count per category (preference, fact, pattern, context)"
+    )
+
+
+# ── AI Pipeline Schemas ─────────────────────────────────
+
 
 class ClassificationOutput(BaseModel):
     """Structured output from the goal classification LLM call."""
@@ -157,6 +215,10 @@ class ChatResponse(BaseModel):
     pending_action_id: str | None = Field(
         default=None,
         description="If a destructive action awaits confirmation, its ID",
+    )
+    used_memory_ids: list[str] = Field(
+        default_factory=list,
+        description="IDs of memories used to generate this response",
     )
 
 
