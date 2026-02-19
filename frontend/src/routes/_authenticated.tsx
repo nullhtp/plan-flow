@@ -21,7 +21,10 @@ function AuthenticatedLayout() {
 	}
 
 	if (!isAuthenticated) {
-		return <Navigate to="/login" search={{ returnTo: location.pathname }} />;
+		// Only set returnTo for actual protected pages, not for /login or /register
+		const returnTo =
+			location.pathname === "/login" || location.pathname === "/register" ? "/" : location.pathname;
+		return <Navigate to="/login" search={{ returnTo }} />;
 	}
 
 	return <Outlet />;

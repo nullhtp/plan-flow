@@ -1,4 +1,4 @@
-import { createRoute, useNavigate } from "@tanstack/react-router";
+import { createRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useRegister } from "@/features/auth/hooks/use-auth";
+import { useAuth, useRegister } from "@/features/auth/hooks/use-auth";
 import { rootRoute } from "./__root";
 
 export const registerRoute = createRoute({
@@ -22,6 +22,7 @@ export const registerRoute = createRoute({
 
 function RegisterPage() {
 	const navigate = useNavigate();
+	const { isAuthenticated } = useAuth();
 	const register = useRegister();
 
 	const [email, setEmail] = useState("");
@@ -29,6 +30,11 @@ function RegisterPage() {
 	const [confirmPassword, setConfirmPassword] = useState("");
 	const [error, setError] = useState("");
 	const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+
+	// Already logged in — redirect away
+	if (isAuthenticated) {
+		return <Navigate to="/" />;
+	}
 
 	function validate(): boolean {
 		const errors: Record<string, string> = {};
@@ -51,22 +57,17 @@ function RegisterPage() {
 
 		if (!validate()) return;
 
-		register.mutate(
-			{ data: { email, password } },
-			{
-				onSuccess: () => {
-					navigate({ to: "/" });
-				},
-				onError: (err: unknown) => {
-					const apiError = err as { status?: number };
-					if (apiError.status === 409) {
-						setError("An account with this email already exists");
-					} else {
-						setError("Registration failed. Please try again.");
-					}
-				},
-			},
-		);
+		try {
+			await register.mutateAsync({ data: { email, password } });
+			navigate({ to: "/" });
+		} catch (err: unknown) {
+			const apiError = err as { status?: number };
+			if (apiError.status === 409) {
+				setError("An account with this email already exists");
+			} else {
+				setError("Registration failed. Please try again.");
+			}
+		}
 	}
 
 	return (

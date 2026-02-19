@@ -1,4 +1,4 @@
-import { createRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { createRoute, Navigate, useNavigate, useSearch } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useLogin } from "@/features/auth/hooks/use-auth";
+import { useAuth, useLogin } from "@/features/auth/hooks/use-auth";
 import { rootRoute } from "./__root";
 
 export const loginRoute = createRoute({
@@ -26,12 +26,18 @@ export const loginRoute = createRoute({
 function LoginPage() {
 	const navigate = useNavigate();
 	const { returnTo } = useSearch({ from: "/login" });
+	const { isAuthenticated } = useAuth();
 	const login = useLogin();
 
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState("");
 	const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+
+	// Already logged in — redirect away
+	if (isAuthenticated) {
+		return <Navigate to={returnTo ?? "/"} />;
+	}
 
 	function validate(): boolean {
 		const errors: Record<string, string> = {};
@@ -51,17 +57,12 @@ function LoginPage() {
 
 		if (!validate()) return;
 
-		login.mutate(
-			{ data: { email, password } },
-			{
-				onSuccess: () => {
-					navigate({ to: returnTo ?? "/" });
-				},
-				onError: () => {
-					setError("Invalid email or password");
-				},
-			},
-		);
+		try {
+			await login.mutateAsync({ data: { email, password } });
+			navigate({ to: returnTo ?? "/" });
+		} catch {
+			setError("Invalid email or password");
+		}
 	}
 
 	return (
