@@ -133,6 +133,9 @@ jobs:
             # Start all services
             docker compose -f docker-compose.prod.yml up -d
 
+            # Force nginx to re-resolve upstream DNS after containers restart
+            docker compose -f docker-compose.prod.yml restart nginx
+
             # Cleanup old images
             docker image prune -f
 
