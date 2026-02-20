@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 
 logger = logging.getLogger(__name__)
 
-MAX_TOOL_ITERATIONS = 10
+MAX_TOOL_ITERATIONS = 15
 
 
 def should_continue(state: dict[str, Any]) -> str:

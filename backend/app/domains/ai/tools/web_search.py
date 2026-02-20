@@ -1,6 +1,7 @@
-"""Web search tool using Tavily Search API.
+"""Web search tool using Perplexity Sonar API.
 
-Optional — only registered when TAVILY_API_KEY is configured.
+Uses LangChain's ChatOpenAI with Perplexity's OpenAI-compatible endpoint.
+Optional — only registered when PERPLEXITY_API_KEY is configured.
 """
 
 from __future__ import annotations
@@ -14,50 +15,59 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+PERPLEXITY_BASE_URL = "https://api.perplexity.ai"
+
+
+def _get_perplexity_llm() -> Any:
+    """Create a ChatOpenAI instance configured for Perplexity Sonar."""
+    from langchain_openai import ChatOpenAI
+
+    return ChatOpenAI(
+        model=settings.perplexity_model,
+        api_key=settings.perplexity_api_key,  # pyright: ignore[reportArgumentType]
+        base_url=PERPLEXITY_BASE_URL,
+        timeout=30.0,
+    )
+
 
 def make_web_search() -> Any | None:
-    """Create a web_search tool. Returns None if Tavily is not configured."""
-    if not settings.tavily_api_key:
+    """Create a web_search tool. Returns None if Perplexity is not configured."""
+    if not settings.perplexity_api_key:
         return None
 
     @tool
-    async def web_search(query: str, max_results: int = 0) -> dict[str, Any]:
-        """Search the web for information to help with a task.
+    async def web_search(query: str) -> dict[str, Any]:
+        """Search the web for current information using Perplexity.
 
         Use when the user asks for research or when external
-        information is needed.
+        information is needed. Returns a synthesized answer
+        with source citations.
 
         Args:
             query: The search query.
-            max_results: Maximum number of results (0 = use default).
         """
         try:
-            from tavily import (
-                AsyncTavilyClient,  # pyright: ignore[reportMissingTypeStubs, reportUnknownVariableType]
+            llm = _get_perplexity_llm()
+
+            response = await llm.ainvoke(
+                [{"role": "user", "content": query}],
             )
 
-            client = AsyncTavilyClient(api_key=settings.tavily_api_key)  # pyright: ignore[reportUnknownMemberType]
-            limit = (
-                max_results if max_results > 0 else settings.ai_web_search_max_results
+            content = (
+                response.content if hasattr(response, "content") else str(response)
             )
 
-            response = await client.search(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-                query=query,
-                max_results=limit,
-            )
+            # Extract citations if available in response metadata
+            citations: list[str] = []
+            if hasattr(response, "response_metadata"):
+                citations = response.response_metadata.get("citations", [])
 
-            results = []
-            for item in response.get("results", []):  # pyright: ignore[reportUnknownMemberType]
-                results.append(  # pyright: ignore[reportUnknownMemberType]
-                    {
-                        "title": item.get("title", ""),  # pyright: ignore[reportUnknownMemberType]
-                        "url": item.get("url", ""),  # pyright: ignore[reportUnknownMemberType]
-                        "content": item.get("content", ""),  # pyright: ignore[reportUnknownMemberType]
-                        "score": item.get("score", 0),  # pyright: ignore[reportUnknownMemberType]
-                    }
-                )
-
-            return {"status": "executed", "results": results, "query": query}
+            return {
+                "status": "executed",
+                "answer": content,
+                "citations": citations,
+                "query": query,
+            }
         except Exception:
             logger.exception("Web search failed")
             return {

@@ -358,3 +358,116 @@ def make_save_artifact(
             }
 
     return save_artifact
+
+
+def make_update_artifact(
+    db: AsyncSession, board_id: str, user_id: str, thread_id: str
+) -> Any:
+    """Create an update_artifact tool (executes immediately).
+
+    Replaces the title and content of an existing artifact.
+    """
+
+    @tool
+    async def update_artifact(
+        artifact_id: str, title: str, content: str
+    ) -> dict[str, Any]:
+        """Update an existing artifact's title and content. Executes immediately.
+
+        Use this when the user asks to revise, improve, or regenerate an
+        existing artifact. The entire content is replaced with the new version.
+
+        Args:
+            artifact_id: The UUID of the artifact to update.
+            title: The new title for the artifact.
+            content: The new full content in Markdown format.
+        """
+        try:
+            artifact = await db.get(Artifact, artifact_id)
+            if artifact is None:
+                return {"status": "failed", "error": "Artifact not found"}
+
+            # Validate artifact belongs to a task on this board
+            task = await db.get(Task, artifact.task_id)
+            if task is None or task.board_id != board_id:
+                return {"status": "failed", "error": "Artifact not found"}
+
+            artifact.title = title
+            artifact.content = content
+            artifact.updated_at = datetime.now(UTC)
+            db.add(artifact)
+            await db.commit()
+
+            return {
+                "status": "executed",
+                "description": f"Updated artifact '{title}'",
+                "artifact_id": artifact.id,
+                "title": title,
+            }
+        except Exception:
+            await db.rollback()
+            logger.exception("Failed to update artifact")
+            return {
+                "status": "failed",
+                "error": "Unable to update artifact. Please try again.",
+            }
+
+    return update_artifact
+
+
+def make_board_save_artifact(
+    db: AsyncSession, board_id: str, user_id: str, thread_id: str
+) -> Any:
+    """Create a save_artifact tool for board chat (executes immediately).
+
+    Unlike the task-chat version, this requires a task_id parameter so the AI
+    can specify which task to save the artifact on.
+    """
+
+    @tool
+    async def save_artifact(task_id: str, title: str, content: str) -> dict[str, Any]:
+        """Save content as a named artifact on a specific task. Executes immediately.
+
+        Use this when you generate substantial, reusable content that the user
+        will want to keep — such as a drafted agreement, a research summary,
+        an action plan, a comparison table, or any other document.
+
+        Do NOT use this for short answers or conversational responses.
+
+        Args:
+            task_id: The UUID of the task to save the artifact on.
+                Use list_all_tasks first to find the right task ID.
+            title: A short descriptive title for the artifact.
+            content: The full content in Markdown format.
+        """
+        try:
+            task = await db.get(Task, task_id)
+            if task is None or task.board_id != board_id:
+                return {"status": "failed", "error": "Task not found on this board"}
+
+            artifact = Artifact(
+                task_id=task_id,
+                title=title,
+                content=content,
+                content_type="text/markdown",
+                created_by="ai",
+            )
+            db.add(artifact)
+            await db.commit()
+            await db.refresh(artifact)
+
+            return {
+                "status": "executed",
+                "description": f"Saved artifact '{title}' on task '{task.title}'",
+                "artifact_id": artifact.id,
+                "title": title,
+            }
+        except Exception:
+            await db.rollback()
+            logger.exception("Failed to save artifact")
+            return {
+                "status": "failed",
+                "error": "Unable to save artifact. Please try again.",
+            }
+
+    return save_artifact

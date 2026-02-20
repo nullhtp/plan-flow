@@ -186,6 +186,7 @@ class ArtifactResponse(BaseModel):
     content_type: str
     created_by: str
     created_at: datetime
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

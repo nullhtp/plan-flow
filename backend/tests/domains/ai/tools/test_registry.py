@@ -1,6 +1,6 @@
 """Unit tests for tool registry.
 
-Tests verify correct tool sets per context and Tavily exclusion.
+Tests verify correct tool sets per context and Perplexity exclusion.
 """
 
 from __future__ import annotations
@@ -28,11 +28,11 @@ async def board_with_tasks(
 
 
 @patch("app.domains.ai.tools.registry.make_web_search", return_value=None)
-def test_task_chat_tools_without_tavily(
+def test_task_chat_tools_without_perplexity(
     mock_ws: MagicMock,
     session: AsyncSession,
 ) -> None:
-    """Task chat returns tools without web_search when Tavily is not configured."""
+    """Task chat returns tools without web_search when Perplexity is not configured."""
     tools = get_task_chat_tools(
         db=session,
         board_id="board-1",
@@ -54,11 +54,11 @@ def test_task_chat_tools_without_tavily(
 
 
 @patch("app.domains.ai.tools.registry.make_web_search")
-def test_task_chat_tools_with_tavily(
+def test_task_chat_tools_with_perplexity(
     mock_ws: MagicMock,
     session: AsyncSession,
 ) -> None:
-    """Task chat includes web_search when Tavily is configured."""
+    """Task chat includes web_search when Perplexity is configured."""
     fake_tool = MagicMock()
     fake_tool.name = "web_search"
     mock_ws.return_value = fake_tool

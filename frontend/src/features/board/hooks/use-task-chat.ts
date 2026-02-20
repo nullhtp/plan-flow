@@ -64,11 +64,13 @@ export function useTaskChat(taskId: string, boardId: string) {
 						queryClient.invalidateQueries({ queryKey: boardQueryKey });
 					}
 
-					// Invalidate artifacts if save_artifact was called
-					const hasSaveArtifact = data.actions?.some(
-						(a) => a.tool_name === "save_artifact" && a.status === "executed",
+					// Invalidate artifacts if save_artifact or update_artifact was called
+					const hasArtifactChange = data.actions?.some(
+						(a) =>
+							(a.tool_name === "save_artifact" || a.tool_name === "update_artifact") &&
+							a.status === "executed",
 					);
-					if (hasSaveArtifact) {
+					if (hasArtifactChange) {
 						const artifactsQueryKey =
 							getListArtifactsEndpointApiTasksTaskIdArtifactsGetQueryKey(taskId);
 						queryClient.invalidateQueries({ queryKey: artifactsQueryKey });

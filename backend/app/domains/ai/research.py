@@ -1,5 +1,6 @@
 """Shared research utilities for the AI pipeline.
 
+Uses Perplexity Sonar (via LangChain ChatOpenAI) for web-grounded search.
 Provides reusable search and URL fetch functions that can be called
 directly from pipeline nodes (not LangChain tools).
 """
@@ -36,37 +37,72 @@ class ResearchContext:
     """URL -> extracted full-page content."""
 
 
+def _get_perplexity_llm() -> ChatOpenAI:  # noqa: F821
+    """Create a ChatOpenAI instance configured for Perplexity Sonar."""
+    from langchain_openai import ChatOpenAI
+
+    return ChatOpenAI(
+        model=settings.perplexity_model,
+        api_key=settings.perplexity_api_key,  # pyright: ignore[reportArgumentType]
+        base_url="https://api.perplexity.ai",
+        timeout=30.0,
+    )
+
+
 async def execute_search(
     query: str,
     max_results: int = 5,
 ) -> list[SearchResult]:
-    """Execute a single web search via Tavily.
+    """Execute a single web search via Perplexity Sonar.
 
-    Returns an empty list if Tavily is not configured or the search fails.
+    Perplexity returns a synthesized answer with citations rather than
+    a list of ranked results. We convert the response into SearchResult
+    objects: one for the synthesized answer, plus one per citation URL.
+
+    Returns an empty list if Perplexity is not configured or the search fails.
     This is a standalone utility — not a LangChain tool.
     """
-    if not settings.tavily_api_key:
+    if not settings.perplexity_api_key:
         return []
 
     try:
-        from tavily import AsyncTavilyClient
-
-        client = AsyncTavilyClient(api_key=settings.tavily_api_key)
-        response = await client.search(
-            query=query,
-            max_results=max_results,
+        llm = _get_perplexity_llm()
+        response = await llm.ainvoke(
+            [{"role": "user", "content": query}],
         )
 
+        content = response.content if hasattr(response, "content") else str(response)
+
+        # Extract citations from response metadata if available
+        citations: list[str] = []
+        if hasattr(response, "response_metadata"):
+            citations = response.response_metadata.get("citations", [])
+
         results: list[SearchResult] = []
-        for item in response.get("results", []):
+
+        # Primary result: the synthesized answer
+        results.append(
+            SearchResult(
+                title=query,
+                url=citations[0] if citations else "",
+                content=str(content),
+                score=1.0,
+            )
+        )
+
+        # Additional results from citations (so downstream can fetch URLs)
+        for i, url in enumerate(citations[:max_results]):
+            if i == 0:
+                continue  # Already used as primary result URL
             results.append(
                 SearchResult(
-                    title=item.get("title", ""),
-                    url=item.get("url", ""),
-                    content=item.get("content", ""),
-                    score=item.get("score", 0.0),
+                    title=f"Source: {url}",
+                    url=url,
+                    content="",  # Content available via fetch_top_urls
+                    score=0.9 - (i * 0.1),
                 )
             )
+
         return results
 
     except Exception:
@@ -98,8 +134,11 @@ async def execute_searches_parallel(
             logger.warning("Search task failed: %s", result_or_error)
             continue
         for r in result_or_error:
-            if r.url not in seen_urls:
+            if r.url and r.url not in seen_urls:
                 seen_urls.add(r.url)
+                deduped.append(r)
+            elif not r.url:
+                # Keep results without URLs (synthesized answers)
                 deduped.append(r)
 
     # Sort by relevance score descending
@@ -121,7 +160,7 @@ async def fetch_top_urls(
     from app.domains.ai.tools.url_fetch import fetch_url_content
 
     limit = max_urls if max_urls is not None else settings.ai_max_fetch_urls
-    urls_to_fetch = [r.url for r in results[:limit]]
+    urls_to_fetch = [r.url for r in results[:limit] if r.url]
 
     if not urls_to_fetch:
         return {}
@@ -144,5 +183,5 @@ async def fetch_top_urls(
 
 
 def is_research_available() -> bool:
-    """Check if web research is available (Tavily configured)."""
-    return bool(settings.tavily_api_key)
+    """Check if web research is available (Perplexity configured)."""
+    return bool(settings.perplexity_api_key)
