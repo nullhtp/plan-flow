@@ -40,9 +40,10 @@ async def setup_database() -> AsyncGenerator[None, None]:
     yield
     async with _engine.begin() as conn:
         # Use raw DROP CASCADE to handle circular FK dependencies (board <-> task)
-        await conn.exec_driver_sql("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+        await conn.exec_driver_sql("DROP SCHEMA public CASCADE")
+        await conn.exec_driver_sql("CREATE SCHEMA public")
         # Re-enable pgvector extension after schema recreation
-        await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector;")
+        await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
 
 
 @pytest.fixture
