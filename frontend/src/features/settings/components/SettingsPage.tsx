@@ -65,11 +65,13 @@ export function SettingsPage() {
 	const deleteMemory = useDeleteMemoryByIdApiMemoriesMemoryIdDelete();
 	const bulkDelete = useBulkDeleteApiMemoriesDelete();
 
-	const memoryEnabled = settingsQuery.data?.data.memory_enabled ?? true;
-	const memories = (memoriesQuery.data?.data.items ?? []) as MemoryResponse[];
-	const totalMemories = memoriesQuery.data?.data.total ?? 0;
+	const settingsData = settingsQuery.data?.data as Record<string, unknown> | undefined;
+	const memoriesData = memoriesQuery.data?.data as Record<string, unknown> | undefined;
+	const memoryEnabled = (settingsData?.memory_enabled as boolean) ?? true;
+	const memories = (memoriesData?.items ?? []) as MemoryResponse[];
+	const totalMemories = (memoriesData?.total as number) ?? 0;
 	const totalPages = Math.ceil(totalMemories / 20);
-	const stats = statsQuery.data?.data;
+	const stats = statsQuery.data?.data as Record<string, unknown> | undefined;
 
 	const invalidateMemories = () => {
 		queryClient.invalidateQueries({ queryKey: getGetMemoriesApiMemoriesGetQueryKey() });
@@ -156,18 +158,20 @@ export function SettingsPage() {
 						<div className="flex gap-6 text-sm">
 							<div title="Total number of memories stored by the AI across all categories">
 								<span className="text-muted-foreground">Total: </span>
-								<span className="font-medium">{stats.total}</span>
+								<span className="font-medium">{stats.total as number}</span>
 							</div>
-							{Object.entries(stats.by_category).map(([cat, count]) => (
-								<div
-									key={cat}
-									title={CATEGORY_TOOLTIPS[cat] ?? cat}
-									className="cursor-help border-b border-dotted border-muted-foreground/40"
-								>
-									<span className="text-muted-foreground">{cat}: </span>
-									<span className="font-medium">{count as number}</span>
-								</div>
-							))}
+							{Object.entries((stats.by_category ?? {}) as Record<string, number>).map(
+								([cat, count]) => (
+									<div
+										key={cat}
+										title={CATEGORY_TOOLTIPS[cat] ?? cat}
+										className="cursor-help border-b border-dotted border-muted-foreground/40"
+									>
+										<span className="text-muted-foreground">{cat}: </span>
+										<span className="font-medium">{count as number}</span>
+									</div>
+								),
+							)}
 						</div>
 					</Card>
 				)}
