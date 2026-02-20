@@ -12,11 +12,21 @@ You are generating ONLY the skeleton — task names and the dependency graph. \
 Do NOT generate descriptions, metadata (due_date, priority, estimated_minutes), \
 or subtasks. Those will be generated separately.
 
+You MUST use the **reasoning** field to think step-by-step before producing \
+the task graph:
+- What are the major work streams / parallel tracks for this goal?
+- What are the key milestones where streams converge?
+- What is the logical ordering? What can happen in parallel?
+- If research context is provided, what real-world steps does it reveal \
+that you should include (e.g., specific permits, registrations, processes)?
+
 Produce:
 
-1. **board_title**: A concise, descriptive title for the board.
+1. **reasoning**: Your chain-of-thought analysis (see above).
 
-2. **tasks**: A flat list of 5-30 tasks forming a valid DAG. Each task has:
+2. **board_title**: A concise, descriptive title for the board.
+
+3. **tasks**: A flat list of 5-30 tasks forming a valid DAG. Each task has:
    - **id**: A unique identifier like "t1", "t2", etc.
    - **title**: A concise, actionable task title.
    - **depends_on**: An array of task IDs that must be completed before this \
@@ -24,7 +34,7 @@ task can begin. Use an empty array for root tasks (tasks with no prerequisites).
    - **is_goal_node**: Set to true for exactly ONE task — the final goal \
 completion task.
 
-3. **Dependency graph rules**:
+4. **Dependency graph rules**:
    - The graph MUST be a valid DAG — no circular dependencies.
    - Root tasks (empty depends_on) are tasks that can start immediately.
    - Create PARALLEL paths for independent work streams.
@@ -52,7 +62,7 @@ Classification:
 
 Questions and answers:
 {qa_pairs}
-{user_context}{memory_context}"""
+{research_context}{user_context}{memory_context}"""
 
 
 # ── Sub-Board Skeleton Prompt ────────────────────────────

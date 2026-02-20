@@ -4,6 +4,7 @@ import { fetchSSE } from "@/api/sse";
 export type GenerationPhase =
 	| "idle"
 	| "connecting"
+	| "researching"
 	| "skeleton"
 	| "enriching"
 	| "complete"
@@ -16,6 +17,14 @@ export interface LogEntry {
 	timestamp: number;
 }
 
+export interface ResearchProgress {
+	queriesCompleted: number;
+	totalQueries: number;
+	currentQuery: string | null;
+	totalResults: number;
+	urlsFetched: number;
+}
+
 interface GenerationState {
 	phase: GenerationPhase;
 	boardTitle: string | null;
@@ -24,6 +33,7 @@ interface GenerationState {
 	totalCount: number;
 	boardId: string | null;
 	error: string | null;
+	researchProgress: ResearchProgress | null;
 }
 
 const initialState: GenerationState = {
@@ -34,6 +44,7 @@ const initialState: GenerationState = {
 	totalCount: 0,
 	boardId: null,
 	error: null,
+	researchProgress: null,
 };
 
 let logIdCounter = 0;
@@ -47,6 +58,22 @@ function addLog(
 	type: LogEntry["type"] = "info",
 ): LogEntry[] {
 	return [{ id: nextLogId(), message, type, timestamp: Date.now() }, ...prev.log];
+}
+
+interface ResearchStartedData {
+	query_count: number;
+}
+
+interface ResearchProgressData {
+	query: string;
+	results_count: number;
+	queries_completed: number;
+}
+
+interface ResearchCompleteData {
+	total_results: number;
+	total_queries: number;
+	urls_fetched: number;
 }
 
 interface SkeletonReadyData {
@@ -117,6 +144,60 @@ export function useBoardGenerationStream({ url, body }: UseBoardGenerationStream
 			signal: controller.signal,
 			onEvent: (event) => {
 				switch (event.event) {
+					case "research_started": {
+						const data = event.data as ResearchStartedData;
+						setState((prev) => ({
+							...prev,
+							phase: "researching",
+							researchProgress: {
+								queriesCompleted: 0,
+								totalQueries: data.query_count,
+								currentQuery: null,
+								totalResults: 0,
+								urlsFetched: 0,
+							},
+							log: addLog(prev, `Researching your goal (${data.query_count} searches)...`, "info"),
+						}));
+						break;
+					}
+					case "research_progress": {
+						const data = event.data as ResearchProgressData;
+						setState((prev) => ({
+							...prev,
+							researchProgress: prev.researchProgress
+								? {
+										...prev.researchProgress,
+										queriesCompleted: data.queries_completed,
+										currentQuery: data.query,
+										totalResults: prev.researchProgress.totalResults + data.results_count,
+									}
+								: null,
+							log: addLog(prev, `Searching: ${data.query}`, "info"),
+						}));
+						break;
+					}
+					case "research_complete": {
+						const data = event.data as ResearchCompleteData;
+						setState((prev) => ({
+							...prev,
+							phase: "skeleton",
+							researchProgress: prev.researchProgress
+								? {
+										...prev.researchProgress,
+										queriesCompleted: data.total_queries,
+										totalResults: data.total_results,
+										urlsFetched: data.urls_fetched,
+										currentQuery: null,
+									}
+								: null,
+							log: addLog(
+								prev,
+								`Research complete: ${data.total_results} results from ${data.total_queries} searches`,
+								"success",
+							),
+						}));
+						break;
+					}
 					case "skeleton_ready": {
 						const data = event.data as SkeletonReadyData;
 						// Store task map for resolving titles later

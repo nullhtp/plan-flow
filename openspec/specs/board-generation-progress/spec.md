@@ -5,16 +5,23 @@ TBD - created by archiving change add-board-generation-progress. Update Purpose 
 ## Requirements
 ### Requirement: Board Generation SSE Endpoint
 The system SHALL expose `POST /api/goals/{goal_id}/generate-board/stream` as an authenticated SSE endpoint that returns `Content-Type: text/event-stream`. The endpoint SHALL validate goal ownership and generation eligibility (same checks as the existing JSON endpoint). The endpoint SHALL pipe the internal `generate_board_stream()` async generator directly to the client as SSE events. Each event SHALL have a `event:` field (event type) and a `data:` field (JSON payload). The endpoint SHALL emit the following event types:
+- `research_started` — contains `query_count` (integer — number of search queries being executed)
+- `research_progress` — contains `query` (string — the search query being executed), `results_count` (integer — number of results found for this query), and `queries_completed` (integer — total queries completed so far)
+- `research_complete` — contains `total_results` (integer — total unique results gathered), `total_queries` (integer — queries executed), and `urls_fetched` (integer — number of full-page extractions performed)
 - `skeleton_ready` — contains `board_id` (string), `board_title` (string), and `tasks` (array of objects with `id`, `title`, `is_goal_node`)
 - `task_enriched` — contains `task_id` (string), `title` (string), indicating enrichment is complete for this task
 - `generation_complete` — contains `board_id` (string) and `failed_tasks` (array of task IDs that failed enrichment, may be empty)
 - `generation_error` — contains `error` (string with a user-friendly error message)
 
-The endpoint SHALL keep the connection open until `generation_complete` or `generation_error` is emitted, then close. The endpoint SHALL return 404 if the goal does not belong to the authenticated user. The endpoint SHALL return 409 if the goal already has a board or is not in `answered` status.
+When Tavily is not configured, the research events (`research_started`, `research_progress`, `research_complete`) SHALL NOT be emitted and generation proceeds directly to skeleton generation. The endpoint SHALL keep the connection open until `generation_complete` or `generation_error` is emitted, then close. The endpoint SHALL return 404 if the goal does not belong to the authenticated user. The endpoint SHALL return 409 if the goal already has a board or is not in `answered` status.
 
-#### Scenario: Successful board generation stream
-- **WHEN** an authenticated user sends POST to `/api/goals/{goal_id}/generate-board/stream` for a goal in `answered` status
-- **THEN** the response has `Content-Type: text/event-stream`, emits `skeleton_ready` with the board title and task titles, then multiple `task_enriched` events (one per task), then `generation_complete` with the board ID
+#### Scenario: Successful board generation stream with research
+- **WHEN** an authenticated user sends POST to `/api/goals/{goal_id}/generate-board/stream` for a goal in `answered` status and Tavily is configured
+- **THEN** the response has `Content-Type: text/event-stream`, emits `research_started`, one or more `research_progress` events, `research_complete`, `skeleton_ready` with the board title and task titles, then multiple `task_enriched` events (one per task), then `generation_complete` with the board ID
+
+#### Scenario: Successful board generation stream without research
+- **WHEN** an authenticated user sends POST to `/api/goals/{goal_id}/generate-board/stream` for a goal in `answered` status and Tavily is NOT configured
+- **THEN** the response emits `skeleton_ready`, then `task_enriched` events, then `generation_complete` (no research events)
 
 #### Scenario: Generation error streamed to client
 - **WHEN** the skeleton generation fails after all retries
@@ -45,17 +52,32 @@ The system SHALL display a full-screen progress view on the goal creation page w
 
 ### Requirement: Generation Phase Text Indicator
 The system SHALL display a phase text indicator that reflects the current stage of board generation. The phase text SHALL update through the following stages:
-- Initial (before any SSE events): "Creating board structure..."
+- Initial (before any SSE events): "Analyzing your goal..."
+- After `research_started`: "Researching (0/N)..." where N is the query count from the event
+- After each `research_progress`: "Researching (X/N)..." where X is `queries_completed` from the event, with the current query text displayed as a subtitle (e.g., "Searching: apartment rental prices Lisbon 2026")
+- After `research_complete`: "Creating board structure..."
 - After `skeleton_ready`: "Adding details (0/N)..." where N is the total task count from the skeleton
 - After each `task_enriched`: "Adding details (X/N)..." where X increments
 - After `generation_complete`: "Board ready!"
 - After `generation_error`: "Generation failed"
 
-The counter SHALL update in real-time as `task_enriched` events arrive.
+The counter SHALL update in real-time as events arrive.
 
-#### Scenario: Phase shows skeleton creation
-- **WHEN** the user clicks "Generate Board" and the SSE connection is established
+#### Scenario: Phase shows research in progress
+- **WHEN** the user clicks "Generate Board" and `research_started` arrives with `query_count: 6`
+- **THEN** the phase text reads "Researching (0/6)..."
+
+#### Scenario: Phase shows research progress with query text
+- **WHEN** `research_progress` arrives with `query: "Portugal visa requirements EU citizens"` and `queries_completed: 3`
+- **THEN** the phase text reads "Researching (3/6)..." with subtitle "Searching: Portugal visa requirements EU citizens"
+
+#### Scenario: Phase transitions from research to skeleton
+- **WHEN** `research_complete` arrives
 - **THEN** the phase text reads "Creating board structure..."
+
+#### Scenario: Phase shows skeleton creation (no research)
+- **WHEN** the user clicks "Generate Board" and no research events arrive (Tavily not configured), then receives `skeleton_ready`
+- **THEN** the phase text transitions from "Analyzing your goal..." directly to "Adding details (0/N)..."
 
 #### Scenario: Phase shows enrichment progress
 - **WHEN** `skeleton_ready` has arrived with 15 tasks and 5 `task_enriched` events have been received
@@ -130,11 +152,15 @@ The system SHALL handle generation errors and SSE connection failures gracefully
 - **THEN** the progress view resets and a new SSE connection is established
 
 ### Requirement: SSE Client Hook
-The system SHALL provide a React hook `useBoardGenerationStream` that manages the SSE connection lifecycle for board generation. The hook SHALL accept a `goalId` parameter and return the current generation state including: `phase` (string: "connecting" | "skeleton" | "enriching" | "complete" | "error"), `boardTitle` (string | null), `tasks` (array of task objects with id, title, and isEnriched boolean), `enrichedCount` (number), `totalCount` (number), `boardId` (string | null), `error` (string | null), and a `start()` function to initiate the connection. The hook SHALL handle connection cleanup on component unmount. The hook SHALL use a fetch-based SSE approach (not native `EventSource`) to support POST method and Authorization headers.
+The system SHALL provide a React hook `useBoardGenerationStream` that manages the SSE connection lifecycle for board generation. The hook SHALL accept a `goalId` parameter and return the current generation state including: `phase` (string: "connecting" | "researching" | "skeleton" | "enriching" | "complete" | "error"), `boardTitle` (string | null), `tasks` (array of task objects with id, title, and isEnriched boolean), `enrichedCount` (number), `totalCount` (number), `boardId` (string | null), `error` (string | null), `researchProgress` (object | null with `queriesCompleted`, `totalQueries`, `currentQuery`, `totalResults` fields), and a `start()` function to initiate the connection. The hook SHALL handle connection cleanup on component unmount. The hook SHALL use a fetch-based SSE approach (not native `EventSource`) to support POST method and Authorization headers.
 
 #### Scenario: Hook starts SSE connection
 - **WHEN** `start()` is called on the hook
 - **THEN** a POST fetch request with `Accept: text/event-stream` is made to `/api/goals/{goalId}/generate-board/stream` with the auth token
+
+#### Scenario: Hook processes research events
+- **WHEN** a `research_started` event is received followed by `research_progress` events
+- **THEN** the hook updates `phase` to "researching" and populates `researchProgress` with query counts and current query text
 
 #### Scenario: Hook processes skeleton event
 - **WHEN** a `skeleton_ready` event is received
@@ -147,6 +173,10 @@ The system SHALL provide a React hook `useBoardGenerationStream` that manages th
 #### Scenario: Hook cleans up on unmount
 - **WHEN** the component using the hook unmounts
 - **THEN** the SSE connection is aborted via `AbortController`
+
+#### Scenario: Hook handles generation without research
+- **WHEN** no research events are received and `skeleton_ready` arrives directly
+- **THEN** the hook transitions from "connecting" to "enriching" phase (skipping "researching")
 
 ### Requirement: Sub-Board Generation SSE Endpoint
 The system SHALL expose `POST /api/tasks/{task_id}/generate-sub-board/stream` as an authenticated SSE endpoint that returns `Content-Type: text/event-stream`. The endpoint SHALL validate task ownership, nesting depth (reject sub-boards of sub-boards), and that no sub-board already exists for the task. The endpoint SHALL accept the same request body as the existing JSON endpoint (`SubBoardGenerateRequest` with answers array). The endpoint SHALL resolve goal context, delete existing subtasks, auto-start the parent task, then pipe the internal `generate_sub_board_stream()` async generator through a persistence layer and forward SSE events to the client. Each event SHALL have an `event:` field (event type) and a `data:` field (JSON payload). The endpoint SHALL emit the same event types as the main board generation SSE endpoint:

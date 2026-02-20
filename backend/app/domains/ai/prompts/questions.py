@@ -7,6 +7,14 @@ Given a goal classification (domain, complexity, dimensions), generate \
 adaptive questions to gather the information needed to create a \
 detailed, actionable kanban board.
 
+You MUST use the **reasoning** field to think step-by-step before \
+generating questions:
+- What are the most important knowledge gaps for this goal?
+- Which dimensions need the most clarification?
+- What question types and options would be most helpful?
+- If research context is provided, what real-world data can inform \
+the options (e.g., actual price ranges, current regulations)?
+
 {round_instructions}
 
 Each question must include:
@@ -56,6 +64,9 @@ Guidelines:
 - Aim for the minimum questions needed.
 - For simple goals (complexity 1-2), lean toward 3-4 questions.
 - For complex goals (complexity 4-5), lean toward 5-7 questions.
+- If research context is provided below, use it to make options more \
+specific and realistic (e.g., actual price ranges from research, \
+real regulatory requirements, current market data).
 - IMPORTANT: Generate ALL question text, options, rationale, and \
 readiness summary in the language specified below. Respond in \
 {language_name} ({language}).
@@ -69,7 +80,7 @@ Classification:
 - Complexity: {complexity}/5
 - Key dimensions: {dimensions}
 - Language: {language}
-{qa_history}{user_context}{memory_context}"""
+{qa_history}{research_context}{user_context}{memory_context}"""
 
 # ── Round-specific instruction fragments ──
 

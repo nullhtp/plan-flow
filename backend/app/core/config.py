@@ -61,5 +61,10 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""  # Tavily Search API key; empty = web search disabled
     ai_web_search_max_results: int = 5
 
+    # AI Research (generation pipeline)
+    ai_max_research_queries: int = 15  # hard ceiling per board generation
+    ai_max_fetch_urls: int = 5  # max URLs to fetch full content from
+    ai_research_context_max_chars: int = 8000  # max chars for research block in prompts
+
 
 settings = Settings()

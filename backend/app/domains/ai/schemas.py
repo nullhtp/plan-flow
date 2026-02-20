@@ -60,12 +60,59 @@ class MemoryStatsResponse(BaseModel):
     )
 
 
+# ── Research Schemas ──────────────────────────────────────
+
+
+class ResearchQueriesOutput(BaseModel):
+    """Structured output: LLM-generated search queries for research."""
+
+    reasoning: str = Field(
+        default="",
+        description="Chain-of-thought explanation of the research strategy",
+    )
+    queries: list[str] = Field(
+        min_length=1,
+        max_length=8,
+        description="3-8 diverse search queries to gather information for planning",
+    )
+
+
+class SkeletonReviewOutput(BaseModel):
+    """Structured output from the skeleton review/revision step."""
+
+    reasoning: str = Field(
+        default="",
+        description="Chain-of-thought analysis of the skeleton quality",
+    )
+    issues: list[str] = Field(
+        default_factory=list,
+        description="List of problems found in the skeleton",
+    )
+    has_issues: bool = Field(
+        default=False,
+        description="True if significant issues were found that warrant revision",
+    )
+    revised_board_title: str | None = Field(
+        default=None,
+        description="Revised board title, or null if no revision needed",
+    )
+    revised_tasks: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Revised task list (same schema as BoardSkeletonOutput.tasks), "
+        "or null if no revision needed. Each dict has id, title, depends_on, is_goal_node.",  # noqa: E501
+    )
+
+
 # ── AI Pipeline Schemas ─────────────────────────────────
 
 
 class ClassificationOutput(BaseModel):
     """Structured output from the goal classification LLM call."""
 
+    reasoning: str = Field(
+        default="",
+        description="Chain-of-thought analysis of the goal",
+    )
     domain: str = Field(
         description="Goal domain category, e.g. 'relocation'",
     )
@@ -142,6 +189,10 @@ class ReadinessAssessment(BaseModel):
 class QuestionsOutput(BaseModel):
     """Structured output from the question generation LLM call."""
 
+    reasoning: str = Field(
+        default="",
+        description="Chain-of-thought reasoning about what to ask and why",
+    )
     questions: list[QuestionItem] = Field(
         description="2-7 adaptive questions for the user "
         "(3-7 for initial round, 2-4 for follow-up rounds)",

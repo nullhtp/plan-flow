@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Check, CircleAlert, CircleDot, Loader2 } from "lucide-react";
+import { Check, CircleAlert, CircleDot, Loader2, Search } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +21,35 @@ interface BoardGenerationProgressProps {
 	onAbort?: () => void;
 	/** Called when generation completes. If provided, overrides default auto-navigation. */
 	onComplete?: (boardId: string) => void;
+}
+
+function getPhaseText(stream: ReturnType<typeof useBoardGenerationStream>): string {
+	switch (stream.phase) {
+		case "idle":
+		case "connecting":
+			return "Analyzing your goal...";
+		case "researching": {
+			const rp = stream.researchProgress;
+			if (rp) {
+				return `Researching (${rp.queriesCompleted}/${rp.totalQueries})...`;
+			}
+			return "Researching...";
+		}
+		case "skeleton":
+			return "Creating board structure...";
+		case "enriching": {
+			if (stream.totalCount > 0) {
+				return `Adding details (${stream.enrichedCount}/${stream.totalCount})...`;
+			}
+			return "Adding details...";
+		}
+		case "complete":
+			return "Board ready!";
+		case "error":
+			return "Generation failed";
+		default:
+			return "Generating board...";
+	}
 }
 
 export function BoardGenerationProgress({
@@ -84,8 +113,29 @@ export function BoardGenerationProgress({
 	const visibleLog = stream.log.slice(0, MAX_VISIBLE_ENTRIES);
 	const hasOverflow = stream.log.length > MAX_VISIBLE_ENTRIES;
 
-	const isActive = stream.phase === "connecting" || stream.phase === "enriching";
-	const showProgress = stream.phase === "enriching" && stream.totalCount > 0;
+	const isActive =
+		stream.phase === "connecting" ||
+		stream.phase === "researching" ||
+		stream.phase === "skeleton" ||
+		stream.phase === "enriching";
+	const showEnrichmentProgress = stream.phase === "enriching" && stream.totalCount > 0;
+	const showResearchProgress = stream.phase === "researching" && stream.researchProgress !== null;
+
+	const phaseText = getPhaseText(stream);
+
+	// Compute progress bar percentage across all phases
+	const progressPercent = (() => {
+		if (showResearchProgress && stream.researchProgress) {
+			const rp = stream.researchProgress;
+			return rp.totalQueries > 0 ? (rp.queriesCompleted / rp.totalQueries) * 100 : 0;
+		}
+		if (showEnrichmentProgress) {
+			return (stream.enrichedCount / stream.totalCount) * 100;
+		}
+		return 0;
+	})();
+
+	const showProgressBar = showResearchProgress || showEnrichmentProgress;
 
 	return (
 		<div className="flex min-h-screen w-full flex-col items-center justify-center p-4">
@@ -96,29 +146,34 @@ export function BoardGenerationProgress({
 						<h1 className="text-xl font-semibold tracking-tight">{stream.boardTitle}</h1>
 					) : (
 						<h1 className="text-xl font-semibold tracking-tight text-muted-foreground">
-							Generating board...
+							{phaseText}
 						</h1>
 					)}
 
-					{/* Progress counter */}
-					{showProgress && (
-						<p className="text-sm text-muted-foreground">
-							{stream.enrichedCount} / {stream.totalCount} tasks enriched
+					{/* Phase text (shown below title when board title is visible) */}
+					{stream.boardTitle && stream.phase !== "complete" && stream.phase !== "error" && (
+						<p className="text-sm text-muted-foreground">{phaseText}</p>
+					)}
+
+					{/* Research subtitle: current query */}
+					{showResearchProgress && stream.researchProgress?.currentQuery && (
+						<p className="text-xs text-muted-foreground/70 truncate max-w-sm mx-auto">
+							<Search className="inline-block h-3 w-3 mr-1 -mt-0.5" />
+							{stream.researchProgress.currentQuery}
 						</p>
 					)}
+
 					{stream.phase === "complete" && (
 						<p className="text-sm text-green-500 font-medium">Board ready — redirecting...</p>
 					)}
 				</div>
 
 				{/* Progress bar */}
-				{showProgress && (
+				{showProgressBar && (
 					<div className="h-1 w-full rounded-full bg-muted overflow-hidden">
 						<div
 							className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
-							style={{
-								width: `${(stream.enrichedCount / stream.totalCount) * 100}%`,
-							}}
+							style={{ width: `${progressPercent}%` }}
 						/>
 					</div>
 				)}

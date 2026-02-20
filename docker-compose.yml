@@ -29,8 +29,12 @@ services:
       COOKIE_SECURE: "false"
       # Optional: AI chat model (defaults to AI_DEFAULT_MODEL)
       # AI_CHAT_MODEL: openai/gpt-4o
-      # Optional: Tavily API key for web search tool in AI chat
+      # Optional: Tavily API key for web search in AI chat and board generation research
       # TAVILY_API_KEY: tvly-xxxxx
+      # AI Research settings (only used when TAVILY_API_KEY is set)
+      # AI_MAX_RESEARCH_QUERIES: "15"
+      # AI_MAX_FETCH_URLS: "5"
+      # AI_RESEARCH_CONTEXT_MAX_CHARS: "8000"
     volumes:
       - ./backend:/app
       - /app/.venv

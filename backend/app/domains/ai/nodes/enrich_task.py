@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.core.types import TaskEnrichmentOutput
@@ -9,6 +10,8 @@ from app.domains.ai.prompts.enrich_task import (
     ENRICHMENT_SYSTEM_PROMPT,
     ENRICHMENT_USER_PROMPT,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def enrich_task(
@@ -21,6 +24,7 @@ async def enrich_task(
     language: str = "en",
     user_context: str = "",
     memory_context: str = "",
+    research_context: str = "",
 ) -> TaskEnrichmentOutput:
     """Enrich a single task with description, metadata, and subtasks."""
     llm = get_llm()
@@ -45,6 +49,7 @@ async def enrich_task(
         dependent_titles=", ".join(dependent_titles)
         if dependent_titles
         else "None (leaf task)",
+        research_context=research_context,
         user_context=user_context,
         memory_context=memory_context,
     )
@@ -59,5 +64,8 @@ async def enrich_task(
     if not isinstance(result, TaskEnrichmentOutput):
         msg = f"Expected TaskEnrichmentOutput, got {type(result)}"  # pyright: ignore[reportUnknownArgumentType]
         raise TypeError(msg)
+
+    if result.reasoning:
+        logger.debug("Enrichment reasoning for '%s': %s", task_title, result.reasoning)
 
     return result

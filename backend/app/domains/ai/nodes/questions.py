@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.domains.ai.lang_utils import get_language_name
@@ -11,12 +12,15 @@ from app.domains.ai.prompts.questions import (
 )
 from app.domains.ai.schemas import ClassificationOutput, QuestionsOutput
 
+logger = logging.getLogger(__name__)
+
 
 async def generate_questions(
     raw_input: str,
     classification: ClassificationOutput,
     user_context: str = "",
     memory_context: str = "",
+    research_context: str = "",
 ) -> QuestionsOutput:
     """Generate initial questions based on goal classification.
 
@@ -35,6 +39,7 @@ async def generate_questions(
         dimensions=", ".join(classification.dimensions),
         language=language,
         qa_history="",
+        research_context=research_context,
         user_context=user_context,
         memory_context=memory_context,
     )
@@ -56,6 +61,9 @@ async def generate_questions(
         msg = f"Expected QuestionsOutput, got {type(result)}"  # pyright: ignore[reportUnknownArgumentType]
         raise TypeError(msg)
 
+    if result.reasoning:
+        logger.debug("Questions reasoning: %s", result.reasoning)
+
     return result
 
 
@@ -66,6 +74,7 @@ async def generate_follow_up_questions(
     round_num: int,
     user_context: str = "",
     memory_context: str = "",
+    research_context: str = "",
 ) -> QuestionsOutput:
     """Generate follow-up questions based on accumulated Q&A history.
 
@@ -76,6 +85,7 @@ async def generate_follow_up_questions(
         round_num: The round number being generated (next round).
         user_context: Formatted user meta block.
         memory_context: Formatted memory block.
+        research_context: Formatted research context block.
 
     Returns QuestionsOutput with questions and updated readiness assessment.
     """
@@ -94,6 +104,7 @@ async def generate_follow_up_questions(
         dimensions=", ".join(classification.dimensions),
         language=language,
         qa_history=qa_history,
+        research_context=research_context,
         user_context=user_context,
         memory_context=memory_context,
     )
@@ -114,5 +125,8 @@ async def generate_follow_up_questions(
     if not isinstance(result, QuestionsOutput):
         msg = f"Expected QuestionsOutput, got {type(result)}"  # pyright: ignore[reportUnknownArgumentType]
         raise TypeError(msg)
+
+    if result.reasoning:
+        logger.debug("Follow-up questions reasoning: %s", result.reasoning)
 
     return result

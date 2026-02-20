@@ -31,6 +31,10 @@ class BoardSkeletonTaskOutput(BaseModel):
 class BoardSkeletonOutput(BaseModel):
     """Structured output from the skeleton generation step."""
 
+    reasoning: str = Field(
+        default="",
+        description="Chain-of-thought reasoning about task decomposition strategy",
+    )
     board_title: str = Field(description="A concise title for the board")
     tasks: list[BoardSkeletonTaskOutput] = Field(
         description="Flat list of tasks forming a DAG (5-30 tasks). "
@@ -62,6 +66,10 @@ class SubtaskOutput(BaseModel):
 class TaskEnrichmentOutput(BaseModel):
     """Structured output from the per-task enrichment step."""
 
+    reasoning: str = Field(
+        default="",
+        description="Chain-of-thought reasoning about this task's details",
+    )
     description: str = Field(
         description="Clear description of what this task involves",
     )

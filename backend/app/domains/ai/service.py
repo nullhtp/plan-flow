@@ -19,12 +19,22 @@ from app.domains.ai.nodes.generate_board import (
 from app.domains.ai.nodes.generate_board import (
     generate_sub_board_skeleton as _generate_sub_board_skeleton,
 )
+from app.domains.ai.nodes.generate_board import (
+    review_skeleton as _review_skeleton,
+)
 from app.domains.ai.nodes.questions import (
     generate_follow_up_questions as _generate_follow_ups,
 )
 from app.domains.ai.nodes.questions import (
     generate_questions as _generate_questions,
 )
+from app.domains.ai.nodes.research import (
+    ResearchEvent,
+    run_pre_research,
+    run_research,
+)
+from app.domains.ai.prompts.research import format_research_context
+from app.domains.ai.research import ResearchContext
 from app.domains.ai.schemas import (
     ClassificationOutput,
     QuestionItem,
@@ -86,7 +96,12 @@ async def classify_and_generate_questions(
     user_context: str = "",
     memory_context: str = "",
 ) -> ClassifyAndGenerateResult:
-    """Run the full classify -> generate questions pipeline with retries."""
+    """Run the full classify -> generate questions pipeline with retries.
+
+    When Tavily is configured, runs a lightweight pre-research step (1-2 queries)
+    to gather context before generating questions. Pre-research does NOT count
+    against the main generation research budget.
+    """
     classification: ClassificationOutput = await _retry_async(
         classify_goal, raw_input, user_context
     )
@@ -101,8 +116,33 @@ async def classify_and_generate_questions(
             refinement_suggestions=classification.refinement_suggestions,
         )
 
+    # Run lightweight pre-research for better question quality
+    pre_research_text = ""
+    try:
+        pre_research_ctx = await run_pre_research(
+            raw_input=raw_input,
+            domain=classification.domain,
+            dimensions=classification.dimensions,
+            language=classification.language,
+        )
+        pre_research_text = format_research_context(pre_research_ctx)
+        if pre_research_text:
+            logger.info(
+                "Pre-research completed: %d results for question generation",
+                len(pre_research_ctx.results),
+            )
+    except Exception:
+        logger.warning(
+            "Pre-research failed, generating questions without it", exc_info=True
+        )
+
     questions_output: QuestionsOutput = await _retry_async(
-        _generate_questions, raw_input, classification, user_context, memory_context
+        _generate_questions,
+        raw_input,
+        classification,
+        user_context,
+        memory_context,
+        pre_research_text,
     )
 
     return ClassifyAndGenerateResult(
@@ -323,13 +363,50 @@ async def generate_board_stream(
     """Async generator that yields SSE-formatted events for board generation.
 
     Events yielded:
+    - research_started: Research phase beginning (query count)
+    - research_progress: Per-query search progress
+    - research_complete: Research phase done (result summary)
     - skeleton_ready: Board skeleton with task IDs, titles, edges
     - task_enriched: Per-task enrichment (description, metadata, subtasks)
     - generation_complete: All done, with list of any failed task IDs
     - generation_error: Unrecoverable error
     """
-    # ── Step 1: Generate skeleton with retries ──
     max_retries = settings.ai_max_retries
+
+    # ── Step 0: Run research (if Tavily configured) ──
+    research_ctx = ResearchContext()
+    research_text = ""
+
+    try:
+        async for item in run_research(
+            raw_input=raw_input,
+            domain=domain,
+            complexity=complexity,
+            dimensions=dimensions,
+            qa_pairs=qa_pairs,
+            language=language,
+            user_context=user_context,
+            memory_context=memory_context,
+        ):
+            if isinstance(item, ResearchEvent):
+                yield _format_sse_event(item.type, item.data)
+            elif isinstance(item, ResearchContext):
+                research_ctx = item
+    except Exception:
+        logger.warning(
+            "Research phase failed, proceeding without research", exc_info=True
+        )
+
+    research_text = format_research_context(research_ctx)
+    if research_text:
+        logger.info(
+            "Research completed: %d results from %d queries, %d URLs fetched",
+            len(research_ctx.results),
+            research_ctx.queries_used,
+            len(research_ctx.fetched_contents),
+        )
+
+    # ── Step 1: Generate skeleton with retries ──
     skeleton: BoardSkeletonOutput | None = None
     last_error: Exception | None = None
 
@@ -344,6 +421,7 @@ async def generate_board_stream(
                 language,
                 user_context,
                 memory_context,
+                research_context=research_text,
             )
             _validate_skeleton_dag(skeleton)
             break
@@ -374,6 +452,34 @@ async def generate_board_stream(
             },
         )
         return
+
+    # ── Step 1b: Review skeleton against research context ──
+    if research_text:
+        try:
+            reviewed = await _review_skeleton(
+                skeleton=skeleton,
+                raw_input=raw_input,
+                domain=domain,
+                complexity=complexity,
+                dimensions=dimensions,
+                qa_pairs=qa_pairs,
+                language=language,
+                user_context=user_context,
+                memory_context=memory_context,
+                research_context=research_text,
+            )
+            # Validate revised skeleton if it changed
+            if reviewed is not skeleton:
+                try:
+                    _validate_skeleton_dag(reviewed)
+                    skeleton = reviewed
+                except (CyclicDependencyError, GoalNodeValidationError) as e:
+                    logger.warning(
+                        "Revised skeleton failed DAG validation, keeping original: %s",
+                        str(e),
+                    )
+        except Exception:
+            logger.warning("Skeleton review failed, keeping original", exc_info=True)
 
     # Build task ID -> title map and dependency info for enrichment context
     task_map = {t.id: t for t in skeleton.tasks}
@@ -431,6 +537,7 @@ async def generate_board_stream(
                         language=language,
                         user_context=user_context,
                         memory_context=memory_context,
+                        research_context=research_text,
                     )
                     return ai_task_id, result
                 except (ValidationError, TypeError) as e:
