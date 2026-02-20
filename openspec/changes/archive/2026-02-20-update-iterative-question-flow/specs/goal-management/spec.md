@@ -1,8 +1,4 @@
-# goal-management Specification
-
-## Purpose
-Goal lifecycle management. Covers the goal data model, status state machine (input through active/completed/archived), create/get/answer endpoints, and the adaptive questioning flow including follow-up question rounds.
-## Requirements
+## MODIFIED Requirements
 ### Requirement: Goal Data Model
 The system SHALL store goals as database records with the following fields: `id` (UUID primary key), `user_id` (FK to User), `title` (AI-generated or user-provided), `original_input` (raw user text), `status` (pipeline state enum), `ai_context` (JSON), `created_at`, and `updated_at`. The `ai_context` JSON field SHALL store classification output, question-answer rounds as an ordered array, and `user_meta` (user environment context). The `ai_context.rounds` field SHALL be an array of round objects, each containing: `round` (integer, 1-indexed), `questions` (array of question schemas), `answers` (dict mapping question ID to value), and `readiness` (readiness assessment object with `score`, `covered_dimensions`, `uncovered_dimensions`, `summary`). Round 1 SHALL contain the initial questions; subsequent rounds contain follow-up questions. The `user_meta` object within `ai_context` SHALL conform to the `UserMeta` schema: `timezone` (string, IANA), `locale` (string, BCP 47), `current_datetime` (string, ISO 8601 UTC), `location` (nullable object with optional `city` and `country`), and `device_type` (string). The `user_meta` is stored at goal creation time and used by the AI during question generation and board generation. Questions stored in `ai_context` SHALL always include a non-null `options` list (minimum 3 items) and an `allow_other` boolean field.
 
@@ -53,6 +49,29 @@ The Goal model SHALL have a `status` field tracking pipeline progress through or
 - **WHEN** the boards domain needs to transition a goal to `generating` status during board generation
 - **THEN** it calls `goals/service.transition_to_generating()` instead of modifying the goal model directly
 
+### Requirement: Submit Answers Endpoint
+The system SHALL expose `POST /api/goals/:id/answers` as an authenticated endpoint that accepts `{ "answers": { [question_id]: value }, "round": number }`. The endpoint SHALL store answers for the specified round in `ai_context.rounds[round-1].answers`, then call the AI to generate the next batch of follow-up questions with a readiness assessment. The response SHALL always include `next_questions` (array of 2-4 question objects for the next round), `readiness` (readiness assessment object), and `next_round` (integer, the round number for the newly generated questions). When the submitted `round` is less than the current maximum round stored in `ai_context`, the endpoint SHALL truncate all rounds after the submitted round before storing answers and generating new follow-ups (supporting the edit-and-regenerate flow). The endpoint SHALL NOT transition the goal out of `questioning` status — the goal remains in `questioning` until the user triggers board generation.
+
+#### Scenario: Round 1 answers submitted with follow-up generation
+- **WHEN** a user submits round 1 answers for a goal in `questioning` status
+- **THEN** the response contains `next_questions` (2-4 follow-up questions), `readiness` (assessment with initial coverage), and `next_round` (2)
+
+#### Scenario: Round N answers submitted with progressive follow-up
+- **WHEN** a user submits round 4 answers for a goal in `questioning` status
+- **THEN** the response contains `next_questions` (2-4 deeper questions), `readiness` (updated assessment reflecting all 4 rounds of answers), and `next_round` (5)
+
+#### Scenario: Earlier round re-submitted truncates later rounds
+- **WHEN** a user re-submits edited answers for round 2 and rounds 3-5 exist in `ai_context`
+- **THEN** rounds 3-5 are deleted from `ai_context.rounds`, round 2 answers are updated, and new follow-up questions are generated as round 3
+
+#### Scenario: Answers submitted for wrong goal status
+- **WHEN** a user submits answers for a goal not in `questioning` status
+- **THEN** the response status is 409 (Conflict) with an error message indicating the goal is not in the questioning phase
+
+#### Scenario: User can only submit answers to own goals
+- **WHEN** user A tries to submit answers to user B's goal
+- **THEN** the response status is 404
+
 ### Requirement: Create Goal Endpoint
 The system SHALL expose `POST /api/goals` as an authenticated endpoint that accepts `{ "original_input": string, "user_meta"?: UserMeta }` in the request body. The `user_meta` field is optional. When provided, the system SHALL store it in `Goal.ai_context["user_meta"]` before running the AI pipeline. The backend SHALL also capture the client IP address from request headers (`X-Forwarded-For` or `request.client.host`) and store it in `ai_context["user_meta"]["client_ip"]` for potential future geolocation fallback. The `current_datetime` field in `user_meta` SHALL be set or overridden server-side to the current UTC time to prevent client clock manipulation. The endpoint SHALL create a Goal record, run the AI classification and question generation pipeline synchronously (passing `user_meta` to the question generation prompts when available), and return the result. On success, the response SHALL include the goal ID, suggested title, generated questions for round 1, and the initial readiness assessment. On rejection (goal too vague), the response SHALL include the rejection reason and refinement suggestions with HTTP 422.
 
@@ -81,45 +100,4 @@ The system SHALL expose `POST /api/goals` as an authenticated endpoint that acce
 - **WHEN** an unauthenticated user sends `POST /api/goals`
 - **THEN** the response status is 401
 
-### Requirement: Submit Answers Endpoint
-The system SHALL expose `POST /api/goals/:id/answers` as an authenticated endpoint that accepts `{ "answers": { [question_id]: value }, "round": number }`. The endpoint SHALL store answers for the specified round in `ai_context.rounds[round-1].answers`, then call the AI to generate the next batch of follow-up questions with a readiness assessment. The response SHALL always include `next_questions` (array of 2-4 question objects for the next round), `readiness` (readiness assessment object), and `next_round` (integer, the round number for the newly generated questions). When the submitted `round` is less than the current maximum round stored in `ai_context`, the endpoint SHALL truncate all rounds after the submitted round before storing answers and generating new follow-ups (supporting the edit-and-regenerate flow). The endpoint SHALL NOT transition the goal out of `questioning` status — the goal remains in `questioning` until the user triggers board generation.
-
-#### Scenario: Round 1 answers submitted with follow-up generation
-- **WHEN** a user submits round 1 answers for a goal in `questioning` status
-- **THEN** the response contains `next_questions` (2-4 follow-up questions), `readiness` (assessment with initial coverage), and `next_round` (2)
-
-#### Scenario: Round N answers submitted with progressive follow-up
-- **WHEN** a user submits round 4 answers for a goal in `questioning` status
-- **THEN** the response contains `next_questions` (2-4 deeper questions), `readiness` (updated assessment reflecting all 4 rounds of answers), and `next_round` (5)
-
-#### Scenario: Earlier round re-submitted truncates later rounds
-- **WHEN** a user re-submits edited answers for round 2 and rounds 3-5 exist in `ai_context`
-- **THEN** rounds 3-5 are deleted from `ai_context.rounds`, round 2 answers are updated, and new follow-up questions are generated as round 3
-
-#### Scenario: Answers submitted for wrong goal status
-- **WHEN** a user submits answers for a goal not in `questioning` status
-- **THEN** the response status is 409 (Conflict) with an error message indicating the goal is not in the questioning phase
-
-#### Scenario: User can only submit answers to own goals
-- **WHEN** user A tries to submit answers to user B's goal
-- **THEN** the response status is 404
-
-### Requirement: Get Goal Endpoint
-The system SHALL expose `GET /api/goals/:id` as an authenticated endpoint that returns the goal's current state including `id`, `title`, `original_input`, `status`, and relevant `ai_context` data (classification, questions, answers). Users SHALL only be able to retrieve their own goals.
-
-#### Scenario: Retrieve goal in questioning status
-- **WHEN** an authenticated user requests `GET /api/goals/:id` for their own goal in `questioning` status
-- **THEN** the response includes the goal fields, classification summary, and current questions
-
-#### Scenario: Retrieve another user's goal
-- **WHEN** user A requests `GET /api/goals/:id` for user B's goal
-- **THEN** the response status is 404
-
-### Requirement: Goal Alembic Migration
-The system SHALL include an Alembic migration that creates the `goal` table with all required columns, a foreign key to the `user` table, and an index on `user_id`.
-
-#### Scenario: Migration creates goal table
-- **WHEN** `alembic upgrade head` is run
-- **THEN** the `goal` table exists with columns: `id` (UUID PK), `user_id` (UUID FK to user), `title` (varchar), `original_input` (text), `status` (varchar), `ai_context` (JSON), `created_at` (timestamptz), `updated_at` (timestamptz)
-- **AND** an index exists on `user_id`
 

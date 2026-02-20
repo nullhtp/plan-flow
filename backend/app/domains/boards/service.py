@@ -62,6 +62,7 @@ from app.domains.boards.task_service import (  # noqa: F401
 # ── Re-exports from goal transitions (now in goals/service) ──
 from app.domains.goals.service import (  # noqa: F401
     revert_goal_to_answered,
+    revert_goal_to_questioning,
     transition_goal_to_active,
     transition_goal_to_generating,
 )

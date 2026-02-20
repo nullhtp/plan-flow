@@ -5,12 +5,12 @@ import type {
 	GoalQuestionsResponse,
 	GoalRejectionResponse,
 	QuestionSchema,
+	ReadinessSchema,
 } from "@/api/generated/model";
 import { BoardGenerationProgress } from "@/features/goals/components/board-generation-progress";
-import { DynamicQuestionForm } from "@/features/goals/components/dynamic-question-form";
+import { DynamicQuestionForm, type Round } from "@/features/goals/components/dynamic-question-form";
 import { ErrorDisplay } from "@/features/goals/components/error-display";
 import { GoalInput } from "@/features/goals/components/goal-input";
-import { GoalSummary } from "@/features/goals/components/goal-summary";
 import { LoadingState } from "@/features/goals/components/loading-state";
 import { VagueGoalRejection } from "@/features/goals/components/vague-goal-rejection";
 import { useCreateGoal, useSubmitAnswers } from "@/features/goals/hooks/use-goals";
@@ -27,18 +27,17 @@ type PageState =
 			step: "questions";
 			goalId: string;
 			title: string;
-			questions: QuestionSchema[];
-			followUpQuestions?: QuestionSchema[];
-			round1Answers?: AnswerValues;
+			rounds: Round[];
+			activeQuestions: QuestionSchema[];
+			currentRound: number;
+			readiness: ReadinessSchema | null;
 	  }
-	| { step: "answersLoading"; goalId: string; title: string }
 	| {
-			step: "summary";
+			step: "answersLoading";
 			goalId: string;
 			title: string;
-			originalInput: string;
-			allQuestions: QuestionSchema[];
-			allAnswers: AnswerValues;
+			rounds: Round[];
+			readiness: ReadinessSchema | null;
 	  }
 	| { step: "generating"; goalId: string }
 	| { step: "error"; message: string; retryAction: () => void };
@@ -78,11 +77,20 @@ function GoalsNewPage() {
 				onSuccess: (response) => {
 					if (response.status === 201) {
 						const data = response.data as GoalQuestionsResponse;
+						const initialRound: Round = {
+							round: 1,
+							questions: data.questions,
+							answers: {},
+							readiness: data.readiness ?? null,
+						};
 						setPageState({
 							step: "questions",
 							goalId: data.goal_id,
 							title: data.title,
-							questions: data.questions,
+							rounds: [initialRound],
+							activeQuestions: data.questions,
+							currentRound: 1,
+							readiness: data.readiness ?? null,
 						});
 					}
 				},
@@ -109,13 +117,22 @@ function GoalsNewPage() {
 	function handleSubmitAnswers(
 		goalId: string,
 		title: string,
-		questions: QuestionSchema[],
+		rounds: Round[],
+		currentRound: number,
+		currentReadiness: ReadinessSchema | null,
 		answers: AnswerValues,
 		round: number,
-		previousQuestions?: QuestionSchema[],
-		previousAnswers?: AnswerValues,
 	) {
-		setPageState({ step: "answersLoading", goalId, title });
+		// Update the current round with answers
+		const updatedRounds = rounds.map((r) => (r.round === round ? { ...r, answers } : r));
+
+		setPageState({
+			step: "answersLoading",
+			goalId,
+			title,
+			rounds: updatedRounds,
+			readiness: currentReadiness,
+		});
 
 		submitAnswers.mutate(
 			{ goalId, data: { answers, round } },
@@ -123,37 +140,42 @@ function GoalsNewPage() {
 				onSuccess: (response) => {
 					if (response.status === 200) {
 						const data = response.data;
-						if (data.is_complete) {
-							const allQuestions = [...(previousQuestions ?? []), ...questions];
-							const allAnswers = {
-								...(previousAnswers ?? {}),
-								...answers,
+						const newReadiness = data.readiness ?? currentReadiness;
+
+						// Update current round's readiness
+						const roundsWithReadiness = updatedRounds.map((r) =>
+							r.round === round ? { ...r, readiness: newReadiness } : r,
+						);
+
+						if (data.next_questions && data.next_questions.length > 0) {
+							// New follow-up questions arrived - add as new round
+							const nextRound = data.next_round;
+							const newRound: Round = {
+								round: nextRound,
+								questions: data.next_questions,
+								answers: {},
+								readiness: null,
 							};
-							setPageState({
-								step: "summary",
-								goalId,
-								title,
-								originalInput: lastInput,
-								allQuestions,
-								allAnswers,
-							});
-						} else if (data.follow_up_questions && data.follow_up_questions.length > 0) {
 							setPageState({
 								step: "questions",
 								goalId,
 								title,
-								questions,
-								followUpQuestions: data.follow_up_questions,
-								round1Answers: answers,
+								rounds: [...roundsWithReadiness, newRound],
+								activeQuestions: data.next_questions,
+								currentRound: nextRound,
+								readiness: newReadiness,
 							});
 						} else {
+							// No more questions - stay on current view
+							// User can generate from the footer
 							setPageState({
-								step: "summary",
+								step: "questions",
 								goalId,
 								title,
-								originalInput: lastInput,
-								allQuestions: questions,
-								allAnswers: answers,
+								rounds: roundsWithReadiness,
+								activeQuestions: [],
+								currentRound: round,
+								readiness: newReadiness,
 							});
 						}
 					}
@@ -167,16 +189,37 @@ function GoalsNewPage() {
 							handleSubmitAnswers(
 								goalId,
 								title,
-								questions,
+								rounds,
+								currentRound,
+								currentReadiness,
 								answers,
 								round,
-								previousQuestions,
-								previousAnswers,
 							),
 					});
 				},
 			},
 		);
+	}
+
+	function handleEditRound(goalId: string, title: string, rounds: Round[], roundNum: number) {
+		// Truncate all rounds after roundNum, make roundNum editable
+		const keptRounds = rounds.filter((r) => r.round <= roundNum);
+		const editRound = keptRounds.find((r) => r.round === roundNum);
+		if (!editRound) return;
+
+		// Find readiness from the round before the one being edited
+		const previousRound = keptRounds.find((r) => r.round === roundNum - 1);
+		const previousReadiness = previousRound?.readiness ?? null;
+
+		setPageState({
+			step: "questions",
+			goalId,
+			title,
+			rounds: keptRounds,
+			activeQuestions: editRound.questions,
+			currentRound: roundNum,
+			readiness: previousReadiness,
+		});
 	}
 
 	if (pageState.step === "input") {
@@ -215,62 +258,49 @@ function GoalsNewPage() {
 	}
 
 	if (pageState.step === "questions") {
-		const { goalId, title, questions, followUpQuestions, round1Answers } = pageState;
+		const { goalId, title, rounds, activeQuestions, currentRound, readiness } = pageState;
+		const hasCompletedRounds = rounds.some(
+			(r) => r.round < currentRound && Object.keys(r.answers).length > 0,
+		);
 		return (
-			<div className="flex min-h-screen items-center justify-center p-4">
+			<div className="mx-auto min-h-screen max-w-2xl px-4 py-8">
 				<DynamicQuestionForm
 					goalTitle={title}
-					initialQuestions={questions}
-					followUpQuestions={followUpQuestions}
-					initialAnswers={round1Answers}
-					isRound1Submitted={!!round1Answers}
+					rounds={rounds}
+					activeQuestions={activeQuestions}
+					currentRound={currentRound}
+					readiness={readiness}
+					hasCompletedRounds={hasCompletedRounds}
 					onSubmitAnswers={(answers, round) =>
-						handleSubmitAnswers(
-							goalId,
-							title,
-							round === 2 ? (followUpQuestions ?? []) : questions,
-							answers,
-							round,
-							round === 2 ? questions : undefined,
-							round === 2 ? round1Answers : undefined,
-						)
+						handleSubmitAnswers(goalId, title, rounds, currentRound, readiness, answers, round)
 					}
+					onEditRound={(roundNum) => handleEditRound(goalId, title, rounds, roundNum)}
+					onGenerate={() => setPageState({ step: "generating", goalId })}
 					isPending={false}
-					onEdit={() => {
-						setPageState({
-							step: "questions",
-							goalId,
-							title,
-							questions,
-						});
-					}}
+					isLoadingFollowUp={false}
 				/>
 			</div>
 		);
 	}
 
 	if (pageState.step === "answersLoading") {
+		const { goalId, title, rounds, readiness } = pageState;
+		const currentRound = rounds.length > 0 ? rounds[rounds.length - 1].round : 1;
+		const hasCompletedRounds = rounds.some((r) => Object.keys(r.answers).length > 0);
 		return (
-			<div className="flex min-h-screen items-center justify-center p-4">
-				<LoadingState message="Processing your answers..." />
-			</div>
-		);
-	}
-
-	if (pageState.step === "summary") {
-		const { goalId, title, originalInput, allQuestions, allAnswers } = pageState;
-		const qaPairs = allQuestions.map((q) => ({
-			question: q,
-			answer: allAnswers[q.id] ?? "",
-		}));
-		return (
-			<div className="flex min-h-screen items-center justify-center p-4">
-				<GoalSummary
-					goalId={goalId}
-					title={title}
-					originalInput={originalInput}
-					qaPairs={qaPairs}
-					onGenerateBoard={() => setPageState({ step: "generating", goalId })}
+			<div className="mx-auto min-h-screen max-w-2xl px-4 py-8">
+				<DynamicQuestionForm
+					goalTitle={title}
+					rounds={rounds}
+					activeQuestions={[]}
+					currentRound={currentRound + 1}
+					readiness={readiness}
+					hasCompletedRounds={hasCompletedRounds}
+					onSubmitAnswers={() => {}}
+					onEditRound={() => {}}
+					onGenerate={() => setPageState({ step: "generating", goalId })}
+					isPending={true}
+					isLoadingFollowUp={true}
 				/>
 			</div>
 		);

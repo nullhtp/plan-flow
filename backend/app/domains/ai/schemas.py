@@ -119,11 +119,36 @@ class QuestionItem(BaseModel):
     )
 
 
+class ReadinessAssessment(BaseModel):
+    """Assessment of how ready the collected information is for board generation."""
+
+    score: float = Field(
+        description="Overall readiness score from 0.0 (no info) to 1.0 (fully ready). "
+        "0.8+ means enough context for a high-quality board.",
+    )
+    covered_dimensions: list[str] = Field(
+        description="Dimensions from classification that are sufficiently covered "
+        "by collected answers.",
+    )
+    uncovered_dimensions: list[str] = Field(
+        description="Dimensions that still lack information.",
+    )
+    summary: str = Field(
+        description="One sentence describing the current readiness state, "
+        "in the same language as the goal.",
+    )
+
+
 class QuestionsOutput(BaseModel):
     """Structured output from the question generation LLM call."""
 
     questions: list[QuestionItem] = Field(
-        description="3-7 adaptive questions for the user",
+        description="2-7 adaptive questions for the user "
+        "(3-7 for initial round, 2-4 for follow-up rounds)",
+    )
+    readiness: ReadinessAssessment = Field(
+        description="Assessment of board generation readiness "
+        "based on information collected so far.",
     )
 
 

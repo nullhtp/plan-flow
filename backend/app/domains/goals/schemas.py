@@ -30,6 +30,15 @@ class QuestionSchema(BaseModel):
     )
 
 
+class ReadinessSchema(BaseModel):
+    """Readiness assessment for board generation."""
+
+    score: float = Field(description="0.0-1.0 readiness score")
+    covered_dimensions: list[str] = Field(default_factory=list)
+    uncovered_dimensions: list[str] = Field(default_factory=list)
+    summary: str = Field(default="")
+
+
 class UserLocationMeta(BaseModel):
     """Location metadata from browser geolocation or IP fallback."""
 
@@ -61,6 +70,7 @@ class GoalQuestionsResponse(BaseModel):
     title: str
     status: str
     questions: list[QuestionSchema]
+    readiness: ReadinessSchema | None = None
 
 
 class GoalRejectionResponse(BaseModel):
@@ -74,16 +84,19 @@ class AnswerSubmission(BaseModel):
     """Request body for submitting answers to generated questions."""
 
     answers: dict[str, Any]
-    round: int = Field(ge=1, le=2)
+    round: int = Field(ge=1, le=50)
 
 
 class AnswerResponse(BaseModel):
-    """Response after submitting answers."""
+    """Response after submitting answers.
 
-    is_complete: bool
-    follow_up_questions: list[QuestionSchema] = Field(  # pyright: ignore[reportUnknownVariableType]
-        default_factory=list,
-    )
+    Always includes next_questions and readiness.
+    The goal stays in 'questioning' status — user decides when to generate.
+    """
+
+    next_questions: list[QuestionSchema] = Field(default_factory=list)
+    readiness: ReadinessSchema | None = None
+    next_round: int
     status: str
 
 

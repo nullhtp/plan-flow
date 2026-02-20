@@ -795,9 +795,11 @@ async def generate_board_stream_endpoint(
     - generation_complete: board_id, failed_tasks
     - generation_error: error message
 
-    Accepts goals in 'answered' or 'generating' status. The 'generating' case
-    handles reconnection when a previous SSE connection was dropped (e.g. by
-    browser StrictMode or network interruption) before the backend completed.
+    Accepts goals in 'questioning', 'answered', or 'generating' status.
+    The 'questioning' status supports the iterative question flow where the
+    user can generate a board at any point. The 'generating' case handles
+    reconnection when a previous SSE connection was dropped (e.g. by browser
+    StrictMode or network interruption) before the backend completed.
     """
     # Pre-flight validation — inline so we can also accept 'generating' status
     goal = await session.get(Goal, goal_id)
@@ -809,10 +811,17 @@ async def generate_board_stream_endpoint(
 
     from app.domains.goals.models import GoalStatus
 
-    if goal.status not in (GoalStatus.ANSWERED.value, GoalStatus.GENERATING.value):
+    if goal.status not in (
+        GoalStatus.QUESTIONING.value,
+        GoalStatus.ANSWERED.value,
+        GoalStatus.GENERATING.value,
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Goal is in '{goal.status}' status, expected 'answered'",
+            detail=(
+                f"Goal is in '{goal.status}' status, "
+                "expected 'questioning' or 'answered'"
+            ),
         )
 
     # If a board already exists, return 409
@@ -829,9 +838,9 @@ async def generate_board_stream_endpoint(
     # If goal was left in 'generating' from a previous aborted attempt,
     # revert it so the streaming function can transition it cleanly.
     if goal.status == GoalStatus.GENERATING.value:
-        from app.domains.goals.service import revert_goal_to_answered
+        from app.domains.goals.service import revert_goal_to_questioning
 
-        await revert_goal_to_answered(session, goal)
+        await revert_goal_to_questioning(session, goal)
 
     return StreamingResponse(
         generate_board_with_streaming(session, goal, current_user.id),

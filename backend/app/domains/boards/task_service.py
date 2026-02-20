@@ -329,7 +329,7 @@ async def validate_goal_for_generation(
     Pre-flight checks that run before the SSE stream starts,
     so errors can be returned as regular HTTP responses.
 
-    Raises GoalNotReadyError if goal is not in 'answered' status.
+    Raises GoalNotReadyError if goal is not in 'questioning' or 'answered' status.
     Raises BoardAlreadyExistsError if a board already exists.
     Raises BoardNotFoundError if goal not found or not owned by user.
     """
@@ -337,8 +337,8 @@ async def validate_goal_for_generation(
     if goal is None or goal.user_id != user_id:
         raise BoardNotFoundError
 
-    if goal.status != GoalStatus.ANSWERED.value:
-        msg = f"Goal is in '{goal.status}' status, expected 'answered'"
+    if goal.status not in (GoalStatus.QUESTIONING.value, GoalStatus.ANSWERED.value):
+        msg = f"Goal is in '{goal.status}' status, expected 'questioning' or 'answered'"
         raise GoalNotReadyError(msg)
 
     # Check no board already exists
@@ -524,7 +524,7 @@ async def generate_board(
     from app.domains.ai.service import generate_board_stream
     from app.domains.boards.board_service import get_board
     from app.domains.goals.service import (
-        revert_goal_to_answered,
+        revert_goal_to_questioning,
         transition_goal_to_active,
         transition_goal_to_generating,
     )
@@ -602,13 +602,13 @@ async def generate_board(
                 )
             except (CyclicDependencyError, GoalNodeValidationError) as e:
                 logger.error("Skeleton persistence failed: %s", str(e))
-                await revert_goal_to_answered(session, goal)
+                await revert_goal_to_questioning(session, goal)
                 raise BoardGenerationError(
                     f"Board skeleton generation produced invalid graph: {e}"
                 ) from e
             except Exception as e:
                 logger.error("Skeleton persistence failed: %s", str(e))
-                await revert_goal_to_answered(session, goal)
+                await revert_goal_to_questioning(session, goal)
                 raise BoardGenerationError("Failed to persist board skeleton") from e
 
         elif event_type == "task_enriched":
@@ -665,13 +665,13 @@ async def generate_board(
 
         elif event_type == "generation_error":
             # Revert goal status and raise
-            await revert_goal_to_answered(session, goal)
+            await revert_goal_to_questioning(session, goal)
             error_msg = event_data.get("message", "Board generation failed")
             raise BoardGenerationError(error_msg)
 
     # If we never got a board (shouldn't happen if stream yields correctly)
     if board is None:
-        await revert_goal_to_answered(session, goal)
+        await revert_goal_to_questioning(session, goal)
         raise BoardGenerationError("Board generation produced no output")
 
     # Reload the board with all relationships for the response
@@ -693,7 +693,7 @@ async def generate_board_with_streaming(
     from app.domains.ai.schemas import ClassificationOutput
     from app.domains.ai.service import generate_board_stream
     from app.domains.goals.service import (
-        revert_goal_to_answered,
+        revert_goal_to_questioning,
         transition_goal_to_active,
         transition_goal_to_generating,
     )
@@ -770,7 +770,7 @@ async def generate_board_with_streaming(
                 )
             except (CyclicDependencyError, GoalNodeValidationError) as e:
                 logger.error("Skeleton persistence failed: %s", str(e))
-                await revert_goal_to_answered(session, goal)
+                await revert_goal_to_questioning(session, goal)
                 yield _client_sse(
                     "generation_error",
                     {"error": f"Invalid board structure: {e}"},
@@ -778,7 +778,7 @@ async def generate_board_with_streaming(
                 return
             except Exception as e:
                 logger.error("Skeleton persistence failed: %s", str(e))
-                await revert_goal_to_answered(session, goal)
+                await revert_goal_to_questioning(session, goal)
                 yield _client_sse(
                     "generation_error",
                     {"error": "Failed to create board structure"},
@@ -869,7 +869,7 @@ async def generate_board_with_streaming(
             )
 
         elif event_type == "generation_error":
-            await revert_goal_to_answered(session, goal)
+            await revert_goal_to_questioning(session, goal)
             error_msg = event_data.get("message", "Board generation failed")
             yield _client_sse(
                 "generation_error",
@@ -878,7 +878,7 @@ async def generate_board_with_streaming(
             return
 
     if board is None:
-        await revert_goal_to_answered(session, goal)
+        await revert_goal_to_questioning(session, goal)
         yield _client_sse(
             "generation_error",
             {"error": "Board generation produced no output"},

@@ -1,7 +1,6 @@
-import { type FormEvent, useState } from "react";
-import type { QuestionSchema } from "@/api/generated/model";
+import { type FormEvent, useEffect, useRef, useState } from "react";
+import type { QuestionSchema, ReadinessSchema } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
 	MultiselectOptionField,
@@ -12,15 +11,23 @@ import {
 	serializeMultiselectValue,
 	serializeOptionValue,
 } from "@/shared/components/question-fields";
+import { GenerateFooter } from "./generate-footer";
 
 type AnswerValues = Record<string, string | string[] | number>;
+
+/** A completed or in-progress round of Q&A. */
+export interface Round {
+	round: number;
+	questions: QuestionSchema[];
+	answers: AnswerValues;
+	readiness: ReadinessSchema | null;
+}
 
 // --- Internal state for managing option + other selections ---
 
 interface FieldState {
 	selectedOption: string;
 	otherText: string;
-	// multiselect only
 	selectedOptions: string[];
 }
 
@@ -69,7 +76,7 @@ function QuestionField({
 		getInitialFieldState(question, value),
 	);
 
-	// Backward compatibility: no options → plain text input
+	// Backward compatibility: no options -> plain text input
 	if (!hasOptions) {
 		const stringValue = value === undefined ? "" : String(value);
 		return (
@@ -138,40 +145,62 @@ function QuestionField({
 	);
 }
 
-// --- Read-only answers display ---
+// --- Collapsible read-only round section ---
 
-function ReadOnlyAnswers({
-	questions,
-	answers,
-	onEdit,
-}: {
-	questions: QuestionSchema[];
-	answers: AnswerValues;
-	onEdit: () => void;
-}) {
+function CompletedRound({ round, onEdit }: { round: Round; onEdit: (roundNum: number) => void }) {
+	const [expanded, setExpanded] = useState(false);
+	const answeredCount = Object.keys(round.answers).length;
+
 	function formatAnswer(question: QuestionSchema): string {
-		const value = answers[question.id];
+		const value = round.answers[question.id];
 		if (value === undefined || value === "") return "Not answered";
 		if (Array.isArray(value)) return value.join(", ");
 		return String(value);
 	}
 
 	return (
-		<div className="space-y-4 rounded-lg border bg-muted/30 p-4">
-			<div className="flex items-center justify-between">
-				<p className="text-sm font-medium">Your answers</p>
-				<Button variant="ghost" size="sm" onClick={onEdit}>
+		<div className="rounded-lg border bg-muted/30">
+			<div className="flex w-full items-center justify-between px-4 py-3">
+				<button
+					type="button"
+					className="flex flex-1 items-center gap-2 text-left"
+					onClick={() => setExpanded(!expanded)}
+				>
+					<span className="text-sm font-medium">Round {round.round}</span>
+					<span className="text-xs text-muted-foreground">
+						{answeredCount} question{answeredCount !== 1 ? "s" : ""} answered
+					</span>
+					<svg
+						width="16"
+						height="16"
+						viewBox="0 0 16 16"
+						fill="none"
+						className={`ml-auto transform transition-transform ${expanded ? "rotate-180" : ""}`}
+						aria-hidden="true"
+					>
+						<title>Toggle</title>
+						<path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+					</svg>
+				</button>
+				<Button
+					variant="ghost"
+					size="sm"
+					className="ml-2 flex-shrink-0"
+					onClick={() => onEdit(round.round)}
+				>
 					Edit
 				</Button>
 			</div>
-			<div className="space-y-3">
-				{questions.map((q) => (
-					<div key={q.id} className="space-y-1">
-						<p className="text-sm font-medium">{q.text}</p>
-						<p className="text-sm text-muted-foreground">{formatAnswer(q)}</p>
-					</div>
-				))}
-			</div>
+			{expanded && (
+				<div className="space-y-3 border-t px-4 py-3">
+					{round.questions.map((q) => (
+						<div key={q.id} className="space-y-1">
+							<p className="text-sm font-medium">{q.text}</p>
+							<p className="text-sm text-muted-foreground">{formatAnswer(q)}</p>
+						</div>
+					))}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -180,33 +209,58 @@ function ReadOnlyAnswers({
 
 interface DynamicQuestionFormProps {
 	goalTitle: string;
-	initialQuestions: QuestionSchema[];
-	followUpQuestions?: QuestionSchema[];
-	initialAnswers?: AnswerValues;
-	isRound1Submitted: boolean;
+	/** All completed and current rounds. The last round is the active editable one. */
+	rounds: Round[];
+	/** Questions for the current (active) round. */
+	activeQuestions: QuestionSchema[];
+	/** Current round number (1-indexed). */
+	currentRound: number;
+	/** Latest readiness assessment (from most recent submission). */
+	readiness: ReadinessSchema | null;
+	/** Whether at least one round has been submitted. */
+	hasCompletedRounds: boolean;
+	/** Called when user submits current round's answers. */
 	onSubmitAnswers: (answers: AnswerValues, round: number) => void;
+	/** Called when user clicks Edit on a completed round. */
+	onEditRound: (roundNum: number) => void;
+	/** Called when user clicks Generate Board. */
+	onGenerate: () => void;
+	/** Whether an API call is in progress. */
 	isPending: boolean;
-	onEdit: () => void;
+	/** Whether answers are being processed (loading indicator). */
+	isLoadingFollowUp: boolean;
 }
 
 export function DynamicQuestionForm({
 	goalTitle,
-	initialQuestions,
-	followUpQuestions,
-	initialAnswers,
-	isRound1Submitted,
+	rounds,
+	activeQuestions,
+	currentRound,
+	readiness,
+	hasCompletedRounds,
 	onSubmitAnswers,
+	onEditRound,
+	onGenerate,
 	isPending,
-	onEdit,
+	isLoadingFollowUp,
 }: DynamicQuestionFormProps) {
-	const activeQuestions =
-		isRound1Submitted && followUpQuestions ? followUpQuestions : initialQuestions;
-	const round = isRound1Submitted && followUpQuestions ? 2 : 1;
+	const newQuestionsRef = useRef<HTMLFormElement>(null);
 
 	const [values, setValues] = useState<AnswerValues>(() => {
-		if (round === 1 && initialAnswers) return { ...initialAnswers };
+		// If the current round has partial answers (from editing), pre-fill
+		const currentRoundData = rounds.find((r) => r.round === currentRound);
+		if (currentRoundData && Object.keys(currentRoundData.answers).length > 0) {
+			return { ...currentRoundData.answers };
+		}
 		return {};
 	});
+
+	// Auto-scroll to new questions when they appear
+	useEffect(() => {
+		if (currentRound > 1 && newQuestionsRef.current) {
+			newQuestionsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+		}
+	}, [currentRound]);
 
 	function handleChange(questionId: string, value: string | string[] | number) {
 		setValues((prev) => ({ ...prev, [questionId]: value }));
@@ -225,24 +279,52 @@ export function DynamicQuestionForm({
 	function handleSubmit(e: FormEvent) {
 		e.preventDefault();
 		if (!isValid()) return;
-		onSubmitAnswers(values, round);
+		onSubmitAnswers(values, currentRound);
 	}
 
+	// Completed rounds = all rounds except the last (active) one
+	const completedRounds = rounds.filter(
+		(r) => r.round < currentRound && Object.keys(r.answers).length > 0,
+	);
+
 	return (
-		<Card className="w-full max-w-2xl">
-			<CardHeader>
-				<CardTitle className="text-2xl">{goalTitle}</CardTitle>
-				<p className="text-sm text-muted-foreground">
-					{round === 1
+		<div className={`w-full max-w-2xl ${hasCompletedRounds ? "pt-24" : ""}`}>
+			{/* Header */}
+			<div className="mb-6">
+				<h1 className="text-2xl font-semibold tracking-tight">{goalTitle}</h1>
+				<p className="mt-1 text-sm text-muted-foreground">
+					{currentRound === 1
 						? "Help us understand your goal better by answering these questions."
-						: "A few more questions to refine your plan."}
+						: "Answer follow-up questions to improve your board, or generate now."}
 				</p>
-			</CardHeader>
-			<CardContent className="space-y-6">
-				{isRound1Submitted && initialAnswers && (
-					<ReadOnlyAnswers questions={initialQuestions} answers={initialAnswers} onEdit={onEdit} />
-				)}
-				<form onSubmit={handleSubmit} className="space-y-6">
+			</div>
+
+			{/* Completed rounds as collapsible read-only sections */}
+			<div className="space-y-4">
+				{completedRounds.map((round) => (
+					<CompletedRound key={round.round} round={round} onEdit={onEditRound} />
+				))}
+			</div>
+
+			{/* Divider between completed and active */}
+			{completedRounds.length > 0 && activeQuestions.length > 0 && (
+				<div className="my-6 border-t" />
+			)}
+
+			{/* Loading indicator while generating follow-up questions */}
+			{isLoadingFollowUp && (
+				<div className="flex items-center justify-center gap-2 py-12">
+					<div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+					<span className="text-sm text-muted-foreground">Generating follow-up questions...</span>
+				</div>
+			)}
+
+			{/* Active round form */}
+			{!isLoadingFollowUp && activeQuestions.length > 0 && (
+				<form ref={newQuestionsRef} onSubmit={handleSubmit} className="space-y-6">
+					{currentRound > 1 && (
+						<p className="text-sm font-medium text-muted-foreground">Round {currentRound}</p>
+					)}
 					{activeQuestions.map((question) => (
 						<QuestionField
 							key={question.id}
@@ -253,10 +335,15 @@ export function DynamicQuestionForm({
 						/>
 					))}
 					<Button type="submit" className="w-full" disabled={isPending || !isValid()}>
-						{isPending ? "Submitting..." : round === 2 ? "Complete" : "Continue"}
+						{isPending ? "Submitting..." : "Continue"}
 					</Button>
 				</form>
-			</CardContent>
-		</Card>
+			)}
+
+			{/* Sticky generate footer - visible after first round is answered */}
+			{hasCompletedRounds && (
+				<GenerateFooter readiness={readiness} onGenerate={onGenerate} isPending={isPending} />
+			)}
+		</div>
 	);
 }

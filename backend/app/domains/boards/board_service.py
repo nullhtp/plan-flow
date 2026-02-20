@@ -269,8 +269,26 @@ def build_board_response(
 
 
 def format_qa_pairs(ai_context: dict[str, Any]) -> str:
-    """Format questions and answers from ai_context into a string for the prompt."""
+    """Format questions and answers from ai_context into a string for the prompt.
+
+    Supports both the new rounds-based format and the legacy flat format.
+    """
     lines: list[str] = []
+
+    # New rounds-based format
+    rounds = ai_context.get("rounds")
+    if rounds:
+        for r in rounds:
+            questions = r.get("questions", [])
+            answers = r.get("answers", {})
+            for q in questions:
+                qid = q.get("id", "")
+                text = q.get("text", "")
+                answer = answers.get(qid, "(not answered)")
+                lines.append(f"Q ({qid}): {text}\nA: {answer}")
+        return "\n\n".join(lines)
+
+    # Legacy flat format (backward compat)
     questions = ai_context.get("questions", [])
     answers = ai_context.get("answers", {})
     follow_up_questions = ai_context.get("follow_up_questions", [])

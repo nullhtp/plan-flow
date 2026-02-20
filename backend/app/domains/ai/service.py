@@ -29,6 +29,7 @@ from app.domains.ai.schemas import (
     ClassificationOutput,
     QuestionItem,
     QuestionsOutput,
+    ReadinessAssessment,
     SubtaskActionOutput,
     SubtaskActionsResponse,
 )
@@ -55,6 +56,7 @@ class ClassifyAndGenerateResult:
     is_rejected: bool
     rejection_reason: str | None = None
     refinement_suggestions: list[str] | None = None
+    readiness: ReadinessAssessment | None = None
 
 
 async def _retry_async(
@@ -99,41 +101,53 @@ async def classify_and_generate_questions(
             refinement_suggestions=classification.refinement_suggestions,
         )
 
-    questions: list[QuestionItem] = await _retry_async(
+    questions_output: QuestionsOutput = await _retry_async(
         _generate_questions, raw_input, classification, user_context, memory_context
     )
 
     return ClassifyAndGenerateResult(
         classification=classification,
-        questions=questions,
+        questions=questions_output.questions,
         is_rejected=False,
+        readiness=questions_output.readiness,
     )
 
 
 async def generate_follow_up_questions(
     raw_input: str,
     classification: ClassificationOutput,
-    questions: list[QuestionItem],
-    answers: dict[str, Any],
+    rounds: list[dict[str, Any]],
+    round_num: int,
     user_context: str = "",
     memory_context: str = "",
-) -> list[QuestionItem]:
-    """Generate follow-up questions based on initial answers, with retries."""
+) -> QuestionsOutput | None:
+    """Generate follow-up questions based on accumulated Q&A history, with retries.
+
+    Args:
+        raw_input: Original goal text.
+        classification: Goal classification output.
+        rounds: All rounds data (questions, answers, readiness).
+        round_num: The next round number being generated.
+        user_context: Formatted user meta block.
+        memory_context: Formatted memory block.
+
+    Returns QuestionsOutput with questions + readiness, or None on failure.
+    """
     try:
-        follow_ups: list[QuestionItem] = await _retry_async(
+        result: QuestionsOutput = await _retry_async(
             _generate_follow_ups,
             raw_input,
             classification,
-            questions,
-            answers,
+            rounds,
+            round_num,
             user_context,
             memory_context,
         )
     except AIOutputError:
         logger.warning("Follow-up generation failed, proceeding without follow-ups")
-        return []
+        return None
 
-    return follow_ups
+    return result
 
 
 # ── Sub-Board Question Generation ────────────────────────

@@ -15,6 +15,7 @@ from app.domains.goals.schemas import (
     GoalRejectionResponse,
     GoalResponse,
     QuestionSchema,
+    ReadinessSchema,
 )
 from app.domains.goals.service import (
     GoalNotFoundError,
@@ -79,11 +80,16 @@ async def create_goal_endpoint(
         QuestionSchema.model_validate(q.model_dump()) for q in result.questions
     ]
 
+    readiness = None
+    if result.readiness:
+        readiness = ReadinessSchema.model_validate(result.readiness.model_dump())
+
     return GoalQuestionsResponse(
         goal_id=goal.id,
         title=goal.title,
         status=goal.status,
         questions=questions,
+        readiness=readiness,
     )
 
 
@@ -94,9 +100,13 @@ async def submit_answers_endpoint(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AnswerResponse:
-    """Submit answers to a goal's questions."""
+    """Submit answers to a goal's questions.
+
+    Returns next follow-up questions and readiness assessment.
+    The goal stays in 'questioning' status until the user triggers board generation.
+    """
     try:
-        goal, follow_ups, is_complete = await submit_answers(
+        goal, next_questions, follow_up_output = await submit_answers(
             session,
             goal_id,
             current_user.id,
@@ -114,13 +124,20 @@ async def submit_answers_endpoint(
             detail=str(e),
         ) from None
 
-    follow_up_schemas = [
-        QuestionSchema.model_validate(q.model_dump()) for q in follow_ups
+    next_question_schemas = [
+        QuestionSchema.model_validate(q.model_dump()) for q in next_questions
     ]
 
+    readiness = None
+    if follow_up_output and follow_up_output.readiness:
+        readiness = ReadinessSchema.model_validate(
+            follow_up_output.readiness.model_dump()
+        )
+
     return AnswerResponse(
-        is_complete=is_complete,
-        follow_up_questions=follow_up_schemas,
+        next_questions=next_question_schemas,
+        readiness=readiness,
+        next_round=body.round + 1,
         status=goal.status,
     )
 

@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.ai.prompts.meta import format_user_meta_block, resolve_user_context
-from app.domains.ai.schemas import ClassificationOutput, QuestionItem
+from app.domains.ai.schemas import ClassificationOutput, QuestionItem, QuestionsOutput
 from app.domains.ai.service import (
     AIOutputError,
     ClassifyAndGenerateResult,
@@ -27,6 +27,70 @@ class GoalNotFoundError(Exception):
 
 class GoalStatusError(Exception):
     """Raised when a goal is in the wrong status for the requested operation."""
+
+
+# ── Backward Compatibility ───────────────────────────────
+
+
+def convert_legacy_ai_context(ai_context: dict[str, Any]) -> dict[str, Any]:
+    """Convert old flat ai_context to rounds-based format.
+
+    Old format had top-level keys: questions, answers,
+    follow_up_questions, follow_up_answers.
+    New format uses ai_context["rounds"] as an ordered list
+    of {round, questions, answers, readiness} dicts.
+    """
+    if "rounds" in ai_context:
+        return ai_context  # Already new format
+
+    if "questions" not in ai_context:
+        return ai_context  # No questions yet, nothing to convert
+
+    rounds: list[dict[str, Any]] = []
+
+    # Round 1: initial questions + answers
+    questions = ai_context.get("questions", [])
+    answers = ai_context.get("answers", {})
+    rounds.append(
+        {
+            "round": 1,
+            "questions": questions,
+            "answers": answers,
+            "readiness": {
+                "score": 0.0,
+                "covered_dimensions": [],
+                "uncovered_dimensions": [],
+                "summary": "",
+            },
+        }
+    )
+
+    # Round 2: follow-up questions + answers (if any)
+    follow_up_questions = ai_context.get("follow_up_questions", [])
+    if follow_up_questions:
+        follow_up_answers = ai_context.get("follow_up_answers", {})
+        rounds.append(
+            {
+                "round": 2,
+                "questions": follow_up_questions,
+                "answers": follow_up_answers,
+                "readiness": {
+                    "score": 0.0,
+                    "covered_dimensions": [],
+                    "uncovered_dimensions": [],
+                    "summary": "",
+                },
+            }
+        )
+
+    # Build new context, preserving classification, user_meta, etc.
+    new_context: dict[str, Any] = {}
+    for key in ("classification", "user_meta"):
+        if key in ai_context:
+            new_context[key] = ai_context[key]
+    new_context["rounds"] = rounds
+
+    return new_context
 
 
 async def create_goal(
@@ -101,12 +165,30 @@ async def create_goal(
 
     goal.title = result.classification.suggested_title
     goal.status = GoalStatus.QUESTIONING.value
-    # Merge user_meta into ai_context alongside classification and questions
+    # Build rounds-based ai_context
     updated_ai_context: dict[str, Any] = (
         dict(goal.ai_context) if goal.ai_context else {}
     )
     updated_ai_context["classification"] = result.classification.model_dump()
-    updated_ai_context["questions"] = [q.model_dump() for q in result.questions]
+    # Store round 1 with questions, empty answers, initial readiness
+    readiness_data = (
+        result.readiness.model_dump()
+        if result.readiness
+        else {
+            "score": 0.0,
+            "covered_dimensions": [],
+            "uncovered_dimensions": result.classification.dimensions,
+            "summary": "No answers collected yet.",
+        }
+    )
+    updated_ai_context["rounds"] = [
+        {
+            "round": 1,
+            "questions": [q.model_dump() for q in result.questions],
+            "answers": {},
+            "readiness": readiness_data,
+        }
+    ]
     goal.ai_context = updated_ai_context
     goal.updated_at = datetime.now(UTC)
     session.add(goal)
@@ -141,10 +223,11 @@ async def submit_answers(
     user_id: str,
     answers: dict[str, Any],
     round_num: int,
-) -> tuple[Goal, list[QuestionItem], bool]:
+) -> tuple[Goal, list[QuestionItem], QuestionsOutput | None]:
     """Submit answers for a goal's questions.
 
-    Returns (goal, follow_up_questions, is_complete).
+    Returns (goal, next_questions, questions_output_with_readiness).
+    The goal stays in 'questioning' status — no 'answered' transition.
     """
     goal = await _get_goal_for_user(session, goal_id, user_id)
 
@@ -156,85 +239,62 @@ async def submit_answers(
 
     ai_context: dict[str, Any] = dict(goal.ai_context)
 
-    if round_num == 1:
-        # Store initial answers
-        ai_context["answers"] = answers
+    # Ensure rounds format (backward compat)
+    ai_context = convert_legacy_ai_context(ai_context)
 
-        # Try to generate follow-up questions
-        classification_data = ai_context.get("classification", {})
-        classification = ClassificationOutput.model_validate(classification_data)
-        questions_data = ai_context.get("questions", [])
-        questions = [QuestionItem.model_validate(q) for q in questions_data]
+    rounds: list[dict[str, Any]] = ai_context.get("rounds", [])
 
-        # Format user meta for follow-up prompt injection
-        user_context_for_follow_up = format_user_meta_block(ai_context.get("user_meta"))
+    # Truncate rounds after current round if editing earlier round
+    if round_num <= len(rounds):
+        # Keep only rounds up to and including the current one
+        rounds = rounds[:round_num]
+        # Store answers on the current round
+        rounds[round_num - 1]["answers"] = answers
+    else:
+        # This shouldn't normally happen, but handle gracefully
+        if rounds:
+            rounds[-1]["answers"] = answers
 
-        # Retrieve memory context for follow-up questions
-        memory_context_for_follow_up = ""
+    ai_context["rounds"] = rounds
 
-        if await is_memory_enabled(session, user_id):
-            from app.domains.ai.memory import retrieve_relevant_memories
-            from app.domains.ai.prompts.memory import format_memory_block
+    # Build classification for follow-up generation
+    classification_data = ai_context.get("classification", {})
+    classification = ClassificationOutput.model_validate(classification_data)
 
-            memories = await retrieve_relevant_memories(
-                session, user_id, goal.original_input
-            )
-            memory_context_for_follow_up = format_memory_block(memories)
+    # Get questions for memory extraction
+    current_round = rounds[round_num - 1] if round_num <= len(rounds) else None
+    current_questions = [
+        QuestionItem.model_validate(q)
+        for q in (current_round.get("questions", []) if current_round else [])
+    ]
 
-        follow_ups = await generate_follow_up_questions(
-            goal.original_input,
-            classification,
-            questions,
-            answers,
-            user_context_for_follow_up,
-            memory_context_for_follow_up,
+    # Format user meta for follow-up prompt injection
+    user_context_for_follow_up = format_user_meta_block(ai_context.get("user_meta"))
+
+    # Retrieve memory context for follow-up questions
+    memory_context_for_follow_up = ""
+
+    if await is_memory_enabled(session, user_id):
+        from app.domains.ai.memory import retrieve_relevant_memories
+        from app.domains.ai.prompts.memory import format_memory_block
+
+        memories = await retrieve_relevant_memories(
+            session, user_id, goal.original_input
         )
+        memory_context_for_follow_up = format_memory_block(memories)
 
-        # Extract memories from initial answers (best-effort)
-        if await is_memory_enabled(session, user_id):
-            try:
-                from app.domains.ai.memory import (
-                    extract_memories_from_answers,
-                    store_memories_batch,
-                )
+    # Generate follow-up questions for next round
+    next_round_num = round_num + 1
+    follow_up_output = await generate_follow_up_questions(
+        goal.original_input,
+        classification,
+        rounds,
+        next_round_num,
+        user_context_for_follow_up,
+        memory_context_for_follow_up,
+    )
 
-                mem_inputs = extract_memories_from_answers(questions, answers, goal_id)
-                if mem_inputs:
-                    await store_memories_batch(
-                        session, user_id, mem_inputs, source_goal_id=goal_id
-                    )
-                    await session.commit()
-            except Exception:
-                logger.exception("Memory extraction after answers failed")
-
-        if follow_ups:
-            ai_context["follow_up_questions"] = [q.model_dump() for q in follow_ups]
-            goal.ai_context = ai_context
-            goal.updated_at = datetime.now(UTC)
-            session.add(goal)
-            await session.commit()
-            await session.refresh(goal)
-            return goal, follow_ups, False
-
-        # No follow-ups needed — mark as answered
-        goal.ai_context = ai_context
-        goal.status = GoalStatus.ANSWERED.value
-        goal.updated_at = datetime.now(UTC)
-        session.add(goal)
-        await session.commit()
-        await session.refresh(goal)
-        return goal, [], True
-
-    # Round 2 — always completes
-    ai_context["follow_up_answers"] = answers
-    goal.ai_context = ai_context
-    goal.status = GoalStatus.ANSWERED.value
-    goal.updated_at = datetime.now(UTC)
-    session.add(goal)
-    await session.commit()
-    await session.refresh(goal)
-
-    # Extract memories from follow-up answers (best-effort)
+    # Extract memories from answers (best-effort)
     if await is_memory_enabled(session, user_id):
         try:
             from app.domains.ai.memory import (
@@ -242,18 +302,46 @@ async def submit_answers(
                 store_memories_batch,
             )
 
-            follow_up_questions_data = ai_context.get("follow_up_questions", [])
-            fq_list = [QuestionItem.model_validate(q) for q in follow_up_questions_data]
-            mem_inputs = extract_memories_from_answers(fq_list, answers, goal_id)
+            mem_inputs = extract_memories_from_answers(
+                current_questions, answers, goal_id
+            )
             if mem_inputs:
                 await store_memories_batch(
                     session, user_id, mem_inputs, source_goal_id=goal_id
                 )
                 await session.commit()
         except Exception:
-            logger.exception("Memory extraction after follow-up answers failed")
+            logger.exception("Memory extraction after answers failed")
 
-    return goal, [], True
+    # Append next round with generated questions
+    next_questions: list[QuestionItem] = []
+    if follow_up_output and follow_up_output.questions:
+        next_questions = follow_up_output.questions
+        # Ensure question IDs have proper round prefix
+        for i, q in enumerate(next_questions):
+            expected_prefix = f"r{next_round_num}q"
+            if not q.id.startswith(expected_prefix):
+                q.id = f"r{next_round_num}q{i + 1}"
+
+        readiness_data = follow_up_output.readiness.model_dump()
+        rounds.append(
+            {
+                "round": next_round_num,
+                "questions": [q.model_dump() for q in next_questions],
+                "answers": {},
+                "readiness": readiness_data,
+            }
+        )
+        ai_context["rounds"] = rounds
+
+    # Persist updated ai_context — goal stays in 'questioning'
+    goal.ai_context = ai_context
+    goal.updated_at = datetime.now(UTC)
+    session.add(goal)
+    await session.commit()
+    await session.refresh(goal)
+
+    return goal, next_questions, follow_up_output
 
 
 async def get_goal(
@@ -305,12 +393,16 @@ async def transition_goal_to_active(
     await session.refresh(goal)
 
 
-async def revert_goal_to_answered(
+async def revert_goal_to_questioning(
     session: AsyncSession,
     goal: Goal,
 ) -> None:
-    """Revert goal status back to 'answered' on generation failure."""
-    goal.status = GoalStatus.ANSWERED.value
+    """Revert goal status back to 'questioning' on generation failure."""
+    goal.status = GoalStatus.QUESTIONING.value
     goal.updated_at = datetime.now(UTC)
     session.add(goal)
     await session.commit()
+
+
+# Backward-compatible alias
+revert_goal_to_answered = revert_goal_to_questioning

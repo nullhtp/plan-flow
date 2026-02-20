@@ -1,49 +1,4 @@
-# goal-input-ui Specification
-
-## Purpose
-Frontend goal creation flow. Covers the new goal page (free-text input with examples), adaptive question form rendering, answer submission with follow-up support, and board generation trigger with loading/error states.
-## Requirements
-### Requirement: New Goal Page
-The system SHALL provide a "New Goal" page accessible to authenticated users at route `/goals/new`. The page SHALL display a free-text input field for entering a goal description and a submit button. Below the input, the page SHALL display 4-6 clickable example goal suggestions (e.g., "Move from Berlin to Lisbon", "Learn conversational Japanese in 6 months", "Launch an MVP for my SaaS"). Clicking an example SHALL populate the input field with that text. The page SHALL use the application's existing Shadcn/ui components and Tailwind styling.
-
-#### Scenario: User navigates to new goal page
-- **WHEN** an authenticated user navigates to `/goals/new`
-- **THEN** the page displays a text input, a submit button, and example goal suggestions
-
-#### Scenario: User clicks an example goal
-- **WHEN** the user clicks an example goal suggestion
-- **THEN** the input field is populated with the example text and the user can edit it before submitting
-
-#### Scenario: Unauthenticated user redirected
-- **WHEN** an unauthenticated user navigates to `/goals/new`
-- **THEN** the user is redirected to the login page
-
-### Requirement: Goal Submission Loading State
-The system SHALL display a loading state after the user submits a goal, while the AI classification and question generation pipeline runs. The loading state SHALL disable the submit button and show a visual indicator (e.g., spinner or skeleton) to communicate that AI processing is in progress. The loading state SHALL have clear messaging (e.g., "Understanding your goal...").
-
-#### Scenario: Loading displayed during AI processing
-- **WHEN** the user submits a goal and the API call is in progress
-- **THEN** the submit button is disabled, a loading indicator is visible, and a message indicates AI processing
-
-#### Scenario: Loading state ends on success
-- **WHEN** the API returns successfully with questions
-- **THEN** the loading state is removed and the dynamic form is displayed
-
-#### Scenario: Loading state ends on error
-- **WHEN** the API returns an error
-- **THEN** the loading state is removed and an error message is displayed
-
-### Requirement: Vague Goal Rejection Display
-The system SHALL display a user-friendly rejection message when the AI determines a goal is too vague. The rejection display SHALL include the AI's explanation of why the goal is too vague and a list of 2-3 clickable refinement suggestions. Clicking a suggestion SHALL populate the goal input field with that suggestion, allowing the user to submit the refined goal.
-
-#### Scenario: Rejection with refinement suggestions displayed
-- **WHEN** the API returns a 422 response indicating the goal is too vague
-- **THEN** the page displays the rejection reason and 2-3 clickable refinement suggestions
-
-#### Scenario: User clicks a refinement suggestion
-- **WHEN** the user clicks a refinement suggestion
-- **THEN** the input field is populated with the suggestion text and the user can edit and resubmit
-
+## MODIFIED Requirements
 ### Requirement: Dynamic Question Form Renderer
 The system SHALL render AI-generated questions as a growing, multi-round form with a unified options-based layout. The form SHALL support unlimited question-answer rounds. Each completed round SHALL be displayed as a collapsible read-only section above the current round's editable questions. The current round's questions SHALL use the same options-based layout as before: every question, regardless of type (`text`, `select`, `multiselect`, `number`), SHALL display its `options` as clickable chips or cards, followed by an always-visible "Other" text input field below the options. Each question SHALL display its `text` as the field label and its `rationale` as helper text below the field. Required questions SHALL be marked with a visual indicator. The form SHALL include a "Continue" submit button for the current round that is disabled until all required fields have values. After submitting a round, the AI generates new follow-up questions which appear below the now read-only previous round.
 
@@ -126,63 +81,7 @@ The system SHALL support a growing form pattern for unlimited iterative follow-u
 - **WHEN** the user submits a round and the AI is generating follow-up questions
 - **THEN** a loading indicator (e.g., skeleton or spinner) is displayed below the submitted answers section
 
-### Requirement: Answer Submission Loading State
-The system SHALL display a loading state after the user submits answers, while the API processes the answers and optionally generates follow-up questions. The loading indicator SHALL appear below the submitted answers section.
-
-#### Scenario: Loading during answer processing
-- **WHEN** the user submits answers and the API call is in progress
-- **THEN** a loading indicator is displayed and the submit button is disabled
-
-### Requirement: AI Error Handling
-The system SHALL handle AI pipeline errors gracefully in the UI. When the API returns an error due to AI failure (timeout, malformed output after retries, provider error), the page SHALL display a user-friendly error message with a "Try Again" button that re-submits the last request. The error message SHALL NOT expose technical details (no stack traces, no raw error messages from the LLM provider).
-
-#### Scenario: AI timeout error displayed
-- **WHEN** the API returns a 503 or 504 error due to AI timeout
-- **THEN** the page displays a message like "Our AI is taking longer than expected. Please try again." with a retry button
-
-#### Scenario: Generic AI error displayed
-- **WHEN** the API returns a 500 error due to AI processing failure
-- **THEN** the page displays a message like "Something went wrong while processing your goal. Please try again." with a retry button
-
-#### Scenario: Retry re-submits the request
-- **WHEN** the user clicks the "Try Again" button after an error
-- **THEN** the previous request (goal creation or answer submission) is re-sent to the API
-
-### Requirement: Goal Routes and Navigation
-The system SHALL add frontend routes for the goal creation flow: `/goals/new` (new goal page) and `/goals/:id` (goal detail page that renders the appropriate view based on goal status). The authenticated home page (`/`) SHALL include a navigation element (e.g., button or card) to access `/goals/new`. All goal routes SHALL be protected by the existing auth route wrapper.
-
-#### Scenario: Navigation from home to new goal
-- **WHEN** an authenticated user is on the home page
-- **THEN** a visible element links to `/goals/new`
-
-#### Scenario: Goal detail route renders based on status
-- **WHEN** a user navigates to `/goals/:id`
-- **AND** the goal is in `questioning` status
-- **THEN** the dynamic question form is rendered with current questions
-
-#### Scenario: Goal detail route renders summary for answered goal
-- **WHEN** a user navigates to `/goals/:id`
-- **AND** the goal is in `answered` status
-- **THEN** the post-answer summary view is rendered
-
-### Requirement: Answer Value Serialization for Options-Based Questions
-The frontend SHALL serialize answer values with a consistent convention that distinguishes AI-preset options from user-typed custom answers. When the user selects a preset option, the answer value SHALL be the option string exactly as displayed. When the user types a custom answer in the "Other" field, the answer value SHALL be prefixed with `"other: "` (e.g., `"other: My custom answer"`). For multiselect questions, the answer SHALL be an array where preset selections are bare strings and custom text is prefixed (e.g., `["Budget", "Timeline", "other: Personal preference"]`). This convention enables the AI to distinguish between structured selections and free-form input when generating boards.
-
-#### Scenario: Select answer with preset option
-- **WHEN** the user selects "Medium" from a select question's options
-- **THEN** the submitted answer value is `"Medium"`
-
-#### Scenario: Select answer with custom Other text
-- **WHEN** the user types "Very specific requirement" in the "Other" field of a select question
-- **THEN** the submitted answer value is `"other: Very specific requirement"`
-
-#### Scenario: Multiselect answer with mixed selections
-- **WHEN** the user selects "Budget" and "Timeline" chips and types "Personal preference" in Other
-- **THEN** the submitted answer value is `["Budget", "Timeline", "other: Personal preference"]`
-
-#### Scenario: Multiselect answer with only preset options
-- **WHEN** the user selects "Budget" and "Quality" without typing in Other
-- **THEN** the submitted answer value is `["Budget", "Quality"]`
+## ADDED Requirements
 
 ### Requirement: Persistent Generate Board Footer
 The system SHALL display a sticky footer bar containing a "Generate Board" button and a readiness indicator after the user has answered at least the first round of questions. The footer SHALL be fixed to the bottom of the viewport and visible at all times during the iterative questioning flow. The "Generate Board" button SHALL trigger board generation using all collected Q&A data. The footer SHALL NOT appear before the first round is answered (during the initial question display). When the user clicks "Generate Board", the wizard SHALL transition to the `generating` step that displays the full-screen board generation progress view (see `board-generation-progress` spec).
@@ -233,3 +132,7 @@ The system SHALL NOT display a separate post-answer summary page. The growing qu
 - **WHEN** a user navigates to a goal in `questioning` status that has 3 completed rounds and a 4th round of unanswered questions
 - **THEN** rounds 1-3 are displayed as read-only collapsible sections, round 4 questions are editable, and the sticky footer shows the readiness indicator
 
+## REMOVED Requirements
+### Requirement: Post-Answer Summary View
+**Reason**: The separate summary step is replaced by the growing question form with its read-only previous rounds and the sticky Generate Board footer. The growing form serves as both the question input and the summary.
+**Migration**: Remove the `GoalSummary` component usage from the goal creation wizard. The component file may be kept for potential use in other contexts (e.g., goal detail page read-only view) but is no longer part of the creation flow.

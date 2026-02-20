@@ -5,12 +5,11 @@ from typing import Any
 from app.domains.ai.lang_utils import get_language_name
 from app.domains.ai.llm import get_llm
 from app.domains.ai.prompts.questions import (
-    FOLLOW_UP_SYSTEM_PROMPT,
-    FOLLOW_UP_USER_PROMPT,
-    QUESTIONS_SYSTEM_PROMPT,
     QUESTIONS_USER_PROMPT,
+    build_system_prompt,
+    format_qa_history,
 )
-from app.domains.ai.schemas import ClassificationOutput, QuestionItem, QuestionsOutput
+from app.domains.ai.schemas import ClassificationOutput, QuestionsOutput
 
 
 async def generate_questions(
@@ -18,8 +17,11 @@ async def generate_questions(
     classification: ClassificationOutput,
     user_context: str = "",
     memory_context: str = "",
-) -> list[QuestionItem]:
-    """Generate initial questions based on goal classification."""
+) -> QuestionsOutput:
+    """Generate initial questions based on goal classification.
+
+    Returns QuestionsOutput with questions and initial readiness assessment.
+    """
     llm = get_llm()
     structured_llm = llm.with_structured_output(QuestionsOutput)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
@@ -32,13 +34,15 @@ async def generate_questions(
         complexity=classification.complexity,
         dimensions=", ".join(classification.dimensions),
         language=language,
+        qa_history="",
         user_context=user_context,
         memory_context=memory_context,
     )
 
-    system_content = QUESTIONS_SYSTEM_PROMPT.format(
+    system_content = build_system_prompt(
         language=language,
         language_name=language_name,
+        round_num=1,
     )
 
     messages = [
@@ -52,44 +56,52 @@ async def generate_questions(
         msg = f"Expected QuestionsOutput, got {type(result)}"  # pyright: ignore[reportUnknownArgumentType]
         raise TypeError(msg)
 
-    return result.questions
+    return result
 
 
 async def generate_follow_up_questions(
     raw_input: str,
     classification: ClassificationOutput,
-    questions: list[QuestionItem],
-    answers: dict[str, Any],
+    rounds: list[dict[str, Any]],
+    round_num: int,
     user_context: str = "",
     memory_context: str = "",
-) -> list[QuestionItem]:
-    """Generate follow-up questions based on initial answers."""
+) -> QuestionsOutput:
+    """Generate follow-up questions based on accumulated Q&A history.
+
+    Args:
+        raw_input: Original goal text.
+        classification: Goal classification output.
+        rounds: List of round dicts with questions, answers, readiness.
+        round_num: The round number being generated (next round).
+        user_context: Formatted user meta block.
+        memory_context: Formatted memory block.
+
+    Returns QuestionsOutput with questions and updated readiness assessment.
+    """
     llm = get_llm()
     structured_llm = llm.with_structured_output(QuestionsOutput)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-
-    # Format Q&A pairs for the prompt
-    qa_lines: list[str] = []
-    for q in questions:
-        answer = answers.get(q.id, "(not answered)")
-        qa_lines.append(f"Q ({q.id}): {q.text}\nA: {answer}")
-    qa_pairs = "\n\n".join(qa_lines)
 
     language = classification.language
     language_name = get_language_name(language)
 
-    user_content = FOLLOW_UP_USER_PROMPT.format(
+    qa_history = format_qa_history(rounds)
+
+    user_content = QUESTIONS_USER_PROMPT.format(
         raw_input=raw_input,
         domain=classification.domain,
         complexity=classification.complexity,
+        dimensions=", ".join(classification.dimensions),
         language=language,
-        qa_pairs=qa_pairs,
+        qa_history=qa_history,
         user_context=user_context,
         memory_context=memory_context,
     )
 
-    system_content = FOLLOW_UP_SYSTEM_PROMPT.format(
+    system_content = build_system_prompt(
         language=language,
         language_name=language_name,
+        round_num=round_num,
     )
 
     messages = [
@@ -103,4 +115,4 @@ async def generate_follow_up_questions(
         msg = f"Expected QuestionsOutput, got {type(result)}"  # pyright: ignore[reportUnknownArgumentType]
         raise TypeError(msg)
 
-    return result.questions
+    return result
