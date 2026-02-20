@@ -2,6 +2,10 @@
 
 These tests use the test database (via conftest fixtures) since tools
 operate on real SQLAlchemy models with selectin-loaded relationships.
+
+NOTE: We call tool.coroutine(...) directly instead of tool.ainvoke(...)
+because LangChain's Runnable wrapper breaks SQLAlchemy's async greenlet
+context when used inside pytest-asyncio tests.
 """
 
 from __future__ import annotations
@@ -45,7 +49,7 @@ async def test_get_task_details_success(
     task_id = id_map["t1"]
 
     tool = make_get_task_details(session, board.id, test_user.id)
-    result = await tool.ainvoke({"task_id": task_id})
+    result = await tool.coroutine(task_id=task_id)
 
     assert result["id"] == task_id
     assert result["title"] == "Task 1"
@@ -64,7 +68,7 @@ async def test_get_task_details_not_found(
     board, _ = board_with_tasks
 
     tool = make_get_task_details(session, board.id, test_user.id)
-    result = await tool.ainvoke({"task_id": "nonexistent-id"})
+    result = await tool.coroutine(task_id="nonexistent-id")
 
     assert "error" in result
 
@@ -80,7 +84,7 @@ async def test_get_task_details_goal_task_dependencies(
     goal_task_id = id_map["t3"]
 
     tool = make_get_task_details(session, board.id, test_user.id)
-    result = await tool.ainvoke({"task_id": goal_task_id})
+    result = await tool.coroutine(task_id=goal_task_id)
 
     assert result["is_goal_node"] is True
     assert len(result["dependency_ids"]) == 2
@@ -100,7 +104,7 @@ async def test_get_board_overview(
     board, _ = board_with_tasks
 
     tool = make_get_board_overview(session, board.id, test_user.id)
-    result = await tool.ainvoke({})
+    result = await tool.coroutine()
 
     assert result["total_tasks"] == 3
     assert result["not_started"] == 3
@@ -114,7 +118,7 @@ async def test_get_board_overview_not_found(
 ) -> None:
     """Returns error for non-existent board."""
     tool = make_get_board_overview(session, "nonexistent-board", test_user.id)
-    result = await tool.ainvoke({})
+    result = await tool.coroutine()
     assert "error" in result
 
 
@@ -131,7 +135,7 @@ async def test_get_blocked_tasks(
     board, id_map = board_with_tasks
 
     tool = make_get_blocked_tasks(session, board.id, test_user.id)
-    result = await tool.ainvoke({})
+    result = await tool.coroutine()
 
     # t3 depends on t1 and t2 which are both not_started
     blocked_ids = {item["task_id"] for item in result}
@@ -152,7 +156,7 @@ async def test_get_task_dependencies_with_deps(
     goal_task_id = id_map["t3"]
 
     tool = make_get_task_dependencies(session, board.id, test_user.id)
-    result = await tool.ainvoke({"task_id": goal_task_id})
+    result = await tool.coroutine(task_id=goal_task_id)
 
     assert result["task_title"] == "Goal Task"
     assert len(result["prerequisites"]) == 2
@@ -170,7 +174,7 @@ async def test_get_task_dependencies_no_deps(
     task_id = id_map["t1"]
 
     tool = make_get_task_dependencies(session, board.id, test_user.id)
-    result = await tool.ainvoke({"task_id": task_id})
+    result = await tool.coroutine(task_id=task_id)
 
     assert result["task_title"] == "Task 1"
     assert len(result["prerequisites"]) == 0
@@ -190,7 +194,7 @@ async def test_list_all_tasks(
     board, _ = board_with_tasks
 
     tool = make_list_all_tasks(session, board.id, test_user.id)
-    result = await tool.ainvoke({})
+    result = await tool.coroutine()
 
     assert len(result) == 3
     titles = {t["title"] for t in result}
@@ -210,7 +214,7 @@ async def test_get_board_progress(
     board, _ = board_with_tasks
 
     tool = make_get_board_progress(session, board.id, test_user.id)
-    result = await tool.ainvoke({})
+    result = await tool.coroutine()
 
     assert result["total_tasks"] == 3
     assert result["completion_percentage"] == 0.0

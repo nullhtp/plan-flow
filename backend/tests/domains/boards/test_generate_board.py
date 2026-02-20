@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.goals.models import Goal
 
@@ -98,14 +99,14 @@ async def _mock_stream_error(**kwargs: Any) -> AsyncGenerator[str, None]:
 
 
 @pytest.mark.asyncio
-@patch("app.domains.boards.router.generate_board_stream")
+@patch("app.domains.ai.service.generate_board_stream")
 async def test_generate_board_success(
     mock_stream: AsyncMock,
     auth_client: AsyncClient,
     answered_goal: Goal,
 ) -> None:
     """Successful board generation returns 201 with BoardResponse JSON."""
-    mock_stream.return_value = _mock_stream_success()
+    mock_stream.side_effect = lambda **kwargs: _mock_stream_success()
 
     response = await auth_client.post(
         f"/api/goals/{answered_goal.id}/generate-board",
@@ -141,25 +142,33 @@ async def test_generate_board_success(
 async def test_generate_board_wrong_status(
     auth_client: AsyncClient,
     test_goal: Goal,
+    session: AsyncSession,
 ) -> None:
-    """Goal in 'questioning' status returns 409."""
+    """Goal in 'active' status returns 409."""
+    from app.domains.goals.models import GoalStatus
+
+    # The endpoint now accepts 'questioning' and 'answered'.
+    # Set goal to 'active' to trigger the rejection.
+    test_goal.status = GoalStatus.ACTIVE.value
+    session.add(test_goal)
+    await session.commit()
+
     response = await auth_client.post(
         f"/api/goals/{test_goal.id}/generate-board",
     )
     assert response.status_code == 409
-    assert "answered" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
-@patch("app.domains.boards.router.generate_board_stream")
+@patch("app.domains.ai.service.generate_board_stream")
 async def test_generate_board_already_exists(
     mock_stream: AsyncMock,
     auth_client: AsyncClient,
     answered_goal: Goal,
-    session: AsyncMock,
+    session: AsyncSession,
 ) -> None:
     """Second generation attempt returns 409."""
-    mock_stream.return_value = _mock_stream_success()
+    mock_stream.side_effect = lambda **kwargs: _mock_stream_success()
 
     # First generation succeeds
     response1 = await auth_client.post(
@@ -198,14 +207,14 @@ async def test_generate_board_unauthenticated(
 
 
 @pytest.mark.asyncio
-@patch("app.domains.boards.router.generate_board_stream")
+@patch("app.domains.ai.service.generate_board_stream")
 async def test_generate_board_ai_error_returns_500(
     mock_stream: AsyncMock,
     auth_client: AsyncClient,
     answered_goal: Goal,
 ) -> None:
     """AI failure returns 500 with error message."""
-    mock_stream.return_value = _mock_stream_error()
+    mock_stream.side_effect = lambda **kwargs: _mock_stream_error()
 
     response = await auth_client.post(
         f"/api/goals/{answered_goal.id}/generate-board",
@@ -215,7 +224,7 @@ async def test_generate_board_ai_error_returns_500(
 
 
 @pytest.mark.asyncio
-@patch("app.domains.boards.router.generate_board_stream")
+@patch("app.domains.ai.service.generate_board_stream")
 async def test_generate_board_status_transitions(
     mock_stream: AsyncMock,
     auth_client: AsyncClient,
@@ -237,7 +246,7 @@ async def test_generate_board_status_transitions(
 
 
 @pytest.mark.asyncio
-@patch("app.domains.boards.router.generate_board_stream")
+@patch("app.domains.ai.service.generate_board_stream")
 async def test_generate_board_has_edges(
     mock_stream: AsyncMock,
     auth_client: AsyncClient,
@@ -266,7 +275,7 @@ async def test_generate_board_has_edges(
 
 
 @pytest.mark.asyncio
-@patch("app.domains.boards.router.generate_board_stream")
+@patch("app.domains.ai.service.generate_board_stream")
 async def test_generate_board_persists_to_db(
     mock_stream: AsyncMock,
     auth_client: AsyncClient,
@@ -301,13 +310,13 @@ async def test_generate_board_persists_to_db(
 
 
 @pytest.mark.asyncio
-@patch("app.domains.boards.router.generate_board_stream")
+@patch("app.domains.ai.service.generate_board_stream")
 async def test_generate_board_ai_error_reverts_goal(
     mock_stream: AsyncMock,
     auth_client: AsyncClient,
     answered_goal: Goal,
 ) -> None:
-    """AI failure reverts goal back to 'answered' status."""
+    """AI failure reverts goal back to 'questioning' status."""
     mock_stream.return_value = _mock_stream_error()
 
     response = await auth_client.post(
@@ -315,7 +324,7 @@ async def test_generate_board_ai_error_reverts_goal(
     )
     assert response.status_code == 500
 
-    # Goal should be reverted to 'answered' so user can retry
+    # Goal should be reverted to 'questioning' so user can retry
     goal_response = await auth_client.get(f"/api/goals/{answered_goal.id}")
     assert goal_response.status_code == 200
-    assert goal_response.json()["status"] == "answered"
+    assert goal_response.json()["status"] == "questioning"

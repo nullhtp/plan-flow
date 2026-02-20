@@ -6,7 +6,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domains.ai.schemas import QuestionItem
+from app.domains.ai.schemas import QuestionItem, QuestionsOutput, ReadinessAssessment
 from app.domains.goals.models import Goal
 
 
@@ -18,16 +18,24 @@ async def test_submit_answers_round1_with_followups(
     test_goal: Goal,
 ) -> None:
     """Round 1 answers with follow-up questions returns them."""
-    mock_followup.return_value = [
-        QuestionItem(
-            id="fq1",
-            text="Do you have pets to relocate?",
-            type="select",
-            options=["Yes", "No"],
-            rationale="Pet transport requires extra planning",
-            required=True,
+    mock_followup.return_value = QuestionsOutput(
+        questions=[
+            QuestionItem(
+                id="r2q1",
+                text="Do you have pets to relocate?",
+                type="select",
+                options=["Yes", "No", "Not applicable"],
+                rationale="Pet transport requires extra planning",
+                required=True,
+            ),
+        ],
+        readiness=ReadinessAssessment(
+            score=0.5,
+            covered_dimensions=["budget"],
+            uncovered_dimensions=["timeline", "housing"],
+            summary="More information needed.",
         ),
-    ]
+    )
 
     response = await auth_client.post(
         f"/api/goals/{test_goal.id}/answers",
@@ -38,9 +46,8 @@ async def test_submit_answers_round1_with_followups(
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["is_complete"] is False
-    assert len(data["follow_up_questions"]) == 1
-    assert data["follow_up_questions"][0]["id"] == "fq1"
+    assert len(data["next_questions"]) == 1
+    assert data["next_questions"][0]["id"] == "r2q1"
     assert data["status"] == "questioning"
 
 
@@ -51,8 +58,16 @@ async def test_submit_answers_round1_no_followups(
     auth_client: AsyncClient,
     test_goal: Goal,
 ) -> None:
-    """Round 1 answers without follow-ups completes questioning."""
-    mock_followup.return_value = []
+    """Round 1 answers without follow-ups returns empty next_questions."""
+    mock_followup.return_value = QuestionsOutput(
+        questions=[],
+        readiness=ReadinessAssessment(
+            score=0.9,
+            covered_dimensions=["timeline", "budget", "housing"],
+            uncovered_dimensions=[],
+            summary="Sufficient information collected.",
+        ),
+    )
 
     response = await auth_client.post(
         f"/api/goals/{test_goal.id}/answers",
@@ -63,17 +78,21 @@ async def test_submit_answers_round1_no_followups(
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["is_complete"] is True
-    assert len(data["follow_up_questions"]) == 0
-    assert data["status"] == "answered"
+    assert len(data["next_questions"]) == 0
+    # Goal stays in 'questioning' — user decides when to generate
+    assert data["status"] == "questioning"
 
 
 @pytest.mark.asyncio
+@patch("app.domains.goals.service.generate_follow_up_questions")
 async def test_submit_answers_round2_completes(
+    mock_followup: AsyncMock,
     auth_client: AsyncClient,
     test_goal: Goal,
 ) -> None:
-    """Round 2 always completes questioning."""
+    """Round 2 answers returns next_questions (possibly empty)."""
+    mock_followup.return_value = None
+
     response = await auth_client.post(
         f"/api/goals/{test_goal.id}/answers",
         json={
@@ -83,8 +102,9 @@ async def test_submit_answers_round2_completes(
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["is_complete"] is True
-    assert data["status"] == "answered"
+    assert data["next_questions"] == []
+    # Goal stays in 'questioning'
+    assert data["status"] == "questioning"
 
 
 @pytest.mark.asyncio

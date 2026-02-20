@@ -21,7 +21,7 @@ async def test_get_goal_success(
     assert data["title"] == "Relocate to Lisbon"
     assert data["status"] == "questioning"
     assert "ai_context" in data
-    assert "questions" in data["ai_context"]
+    assert "rounds" in data["ai_context"]
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,10 @@
 """Integration tests for confirm/reject flow.
 
 Tests the PendingAction CRUD service and tool execution dispatcher.
+
+NOTE: We call tool.coroutine(...) directly instead of tool.ainvoke(...)
+because LangChain's Runnable wrapper breaks SQLAlchemy's async greenlet
+context when used inside pytest-asyncio tests.
 """
 
 from __future__ import annotations
@@ -44,7 +48,7 @@ async def test_confirm_status_change(
 
     # Create a pending action for status change
     tool = make_update_task_status(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"task_id": task_id, "new_status": "in_progress"})
+    result = await tool.coroutine(task_id=task_id, new_status="in_progress")
 
     assert result["status"] == "pending_confirmation"
     action_id = result["pending_action_id"]
@@ -78,7 +82,7 @@ async def test_reject_action(
     task_id = id_map["t1"]
 
     tool = make_update_task_status(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"task_id": task_id, "new_status": "in_progress"})
+    result = await tool.coroutine(task_id=task_id, new_status="in_progress")
     action_id = result["pending_action_id"]
 
     reject_result = await reject_action(session, action_id, test_user.id)
@@ -134,7 +138,7 @@ async def test_confirm_already_confirmed(
     board, id_map = board_with_tasks
 
     tool = make_update_task_status(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"task_id": id_map["t1"], "new_status": "in_progress"})
+    result = await tool.coroutine(task_id=id_map["t1"], new_status="in_progress")
     action_id = result["pending_action_id"]
 
     # Confirm first time
@@ -158,7 +162,7 @@ async def test_confirm_wrong_user(
     board, id_map = board_with_tasks
 
     tool = make_update_task_status(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"task_id": id_map["t1"], "new_status": "in_progress"})
+    result = await tool.coroutine(task_id=id_map["t1"], new_status="in_progress")
     action_id = result["pending_action_id"]
 
     # Try to confirm as different user
@@ -181,11 +185,11 @@ async def test_new_pending_expires_old(
     tool = make_update_task_status(session, board.id, test_user.id, THREAD_ID)
 
     # Create first pending action
-    r1 = await tool.ainvoke({"task_id": id_map["t1"], "new_status": "in_progress"})
+    r1 = await tool.coroutine(task_id=id_map["t1"], new_status="in_progress")
     action_id_1 = r1["pending_action_id"]
 
     # Create second pending action on same thread
-    r2 = await tool.ainvoke({"task_id": id_map["t2"], "new_status": "in_progress"})
+    r2 = await tool.coroutine(task_id=id_map["t2"], new_status="in_progress")
     action_id_2 = r2["pending_action_id"]
 
     # First action should be expired

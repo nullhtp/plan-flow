@@ -2,6 +2,10 @@
 
 Tests verify immediate execution vs. pending action creation
 and business rule enforcement.
+
+NOTE: We call tool.coroutine(...) directly instead of tool.ainvoke(...)
+because LangChain's Runnable wrapper breaks SQLAlchemy's async greenlet
+context when used inside pytest-asyncio tests.
 """
 
 from __future__ import annotations
@@ -48,9 +52,7 @@ async def test_update_task_field_title(
     task_id = id_map["t1"]
 
     tool = make_update_task_field(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {"task_id": task_id, "field": "title", "value": "New Title"}
-    )
+    result = await tool.coroutine(task_id=task_id, field="title", value="New Title")
 
     assert result["status"] == "executed"
     assert result["new_value"] == "New Title"
@@ -70,9 +72,7 @@ async def test_update_task_field_invalid_field(
     board, id_map = board_with_tasks
 
     tool = make_update_task_field(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {"task_id": id_map["t1"], "field": "status", "value": "done"}
-    )
+    result = await tool.coroutine(task_id=id_map["t1"], field="status", value="done")
 
     assert result["status"] == "failed"
     assert "not allowed" in result["error"]
@@ -87,8 +87,8 @@ async def test_update_task_field_invalid_priority(
     board, id_map = board_with_tasks
 
     tool = make_update_task_field(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {"task_id": id_map["t1"], "field": "priority", "value": "urgent"}
+    result = await tool.coroutine(
+        task_id=id_map["t1"], field="priority", value="urgent"
     )
 
     assert result["status"] == "failed"
@@ -107,7 +107,7 @@ async def test_update_task_status_creates_pending_action(
     board, id_map = board_with_tasks
 
     tool = make_update_task_status(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"task_id": id_map["t1"], "new_status": "in_progress"})
+    result = await tool.coroutine(task_id=id_map["t1"], new_status="in_progress")
 
     assert result["status"] == "pending_confirmation"
     assert "pending_action_id" in result
@@ -128,7 +128,7 @@ async def test_update_task_status_invalid_status(
     board, id_map = board_with_tasks
 
     tool = make_update_task_status(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"task_id": id_map["t1"], "new_status": "completed"})
+    result = await tool.coroutine(task_id=id_map["t1"], new_status="completed")
 
     assert result["status"] == "failed"
     assert "Invalid status" in result["error"]
@@ -144,7 +144,7 @@ async def test_update_task_status_skip_to_done_rejected(
     board, id_map = board_with_tasks
 
     tool = make_update_task_status(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"task_id": id_map["t1"], "new_status": "done"})
+    result = await tool.coroutine(task_id=id_map["t1"], new_status="done")
 
     assert result["status"] == "failed"
     assert "must be in progress" in result["error"]
@@ -162,7 +162,7 @@ async def test_create_subtask(
     board, id_map = board_with_tasks
 
     tool = make_create_subtask(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"task_id": id_map["t1"], "title": "Sub-item 1"})
+    result = await tool.coroutine(task_id=id_map["t1"], title="Sub-item 1")
 
     assert result["status"] == "executed"
     assert result["title"] == "Sub-item 1"
@@ -178,7 +178,7 @@ async def test_create_subtask_wrong_board(
     _, id_map = board_with_tasks
 
     tool = make_create_subtask(session, "wrong-board-id", test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"task_id": id_map["t1"], "title": "Test"})
+    result = await tool.coroutine(task_id=id_map["t1"], title="Test")
 
     assert result["status"] == "failed"
 
@@ -196,20 +196,18 @@ async def test_toggle_subtask(
 
     # First create a subtask
     create_tool = make_create_subtask(session, board.id, test_user.id, THREAD_ID)
-    create_result = await create_tool.ainvoke(
-        {"task_id": id_map["t1"], "title": "Sub-item"}
-    )
+    create_result = await create_tool.coroutine(task_id=id_map["t1"], title="Sub-item")
     subtask_id = create_result["subtask_id"]
 
     # Toggle it
     tool = make_toggle_subtask(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"subtask_id": subtask_id})
+    result = await tool.coroutine(subtask_id=subtask_id)
 
     assert result["status"] == "executed"
     assert result["completed"] is True
 
     # Toggle again
-    result2 = await tool.ainvoke({"subtask_id": subtask_id})
+    result2 = await tool.coroutine(subtask_id=subtask_id)
     assert result2["completed"] is False
 
 
@@ -226,14 +224,12 @@ async def test_delete_subtask_creates_pending_action(
 
     # Create a subtask first
     create_tool = make_create_subtask(session, board.id, test_user.id, THREAD_ID)
-    create_result = await create_tool.ainvoke(
-        {"task_id": id_map["t1"], "title": "To Delete"}
-    )
+    create_result = await create_tool.coroutine(task_id=id_map["t1"], title="To Delete")
     subtask_id = create_result["subtask_id"]
 
     # Attempt delete
     tool = make_delete_subtask(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"subtask_id": subtask_id})
+    result = await tool.coroutine(subtask_id=subtask_id)
 
     assert result["status"] == "pending_confirmation"
     assert "pending_action_id" in result
@@ -253,20 +249,18 @@ async def test_update_artifact_success(
 
     # Create an artifact first via save_artifact
     save_tool = make_save_artifact(session, board.id, task_id, test_user.id, THREAD_ID)
-    save_result = await save_tool.ainvoke(
-        {"title": "Original Title", "content": "# Original\nContent"}
+    save_result = await save_tool.coroutine(
+        title="Original Title", content="# Original\nContent"
     )
     assert save_result["status"] == "executed"
     artifact_id = save_result["artifact_id"]
 
     # Update it
     update_tool = make_update_artifact(session, board.id, test_user.id, THREAD_ID)
-    result = await update_tool.ainvoke(
-        {
-            "artifact_id": artifact_id,
-            "title": "Updated Title",
-            "content": "# Updated\nNew content here",
-        }
+    result = await update_tool.coroutine(
+        artifact_id=artifact_id,
+        title="Updated Title",
+        content="# Updated\nNew content here",
     )
 
     assert result["status"] == "executed"
@@ -288,12 +282,10 @@ async def test_update_artifact_not_found(
     board, _ = board_with_tasks
 
     tool = make_update_artifact(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {
-            "artifact_id": "nonexistent-id",
-            "title": "X",
-            "content": "Y",
-        }
+    result = await tool.coroutine(
+        artifact_id="nonexistent-id",
+        title="X",
+        content="Y",
     )
 
     assert result["status"] == "failed"
@@ -311,17 +303,15 @@ async def test_update_artifact_wrong_board(
 
     # Create an artifact on the correct board
     save_tool = make_save_artifact(session, board.id, task_id, test_user.id, THREAD_ID)
-    save_result = await save_tool.ainvoke({"title": "Test", "content": "Content"})
+    save_result = await save_tool.coroutine(title="Test", content="Content")
     artifact_id = save_result["artifact_id"]
 
     # Try to update from wrong board
     tool = make_update_artifact(session, "wrong-board-id", test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {
-            "artifact_id": artifact_id,
-            "title": "Hacked",
-            "content": "Bad content",
-        }
+    result = await tool.coroutine(
+        artifact_id=artifact_id,
+        title="Hacked",
+        content="Bad content",
     )
 
     assert result["status"] == "failed"

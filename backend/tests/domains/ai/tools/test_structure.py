@@ -1,6 +1,10 @@
 """Unit tests for AI structure tools.
 
 Tests verify DAG validation, goal node protection, and confirmation flow.
+
+NOTE: We call tool.coroutine(...) directly instead of tool.ainvoke(...)
+because LangChain's Runnable wrapper breaks SQLAlchemy's async greenlet
+context when used inside pytest-asyncio tests.
 """
 
 from __future__ import annotations
@@ -44,7 +48,7 @@ async def test_add_task_creates_pending_action(
     board, _id_map = board_with_tasks
 
     tool = make_add_task(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"title": "New Task", "description": "A new task"})
+    result = await tool.coroutine(title="New Task", description="A new task")
 
     assert result["status"] == "pending_confirmation"
     assert "pending_action_id" in result
@@ -66,12 +70,10 @@ async def test_add_task_with_cycle_rejected(
     # t3 depends on t1 and t2. If new task depends on t3 and t1 depends on new task,
     # that's a cycle: t1 -> t3 -> new -> t1
     tool = make_add_task(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {
-            "title": "Cycle Task",
-            "depends_on_ids": [id_map["t3"]],
-            "dependent_ids": [id_map["t1"]],
-        }
+    result = await tool.coroutine(
+        title="Cycle Task",
+        depends_on_ids=[id_map["t3"]],
+        dependent_ids=[id_map["t1"]],
     )
 
     assert result["status"] == "failed"
@@ -90,7 +92,7 @@ async def test_remove_task_creates_pending_action(
     board, id_map = board_with_tasks
 
     tool = make_remove_task(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"task_id": id_map["t1"]})
+    result = await tool.coroutine(task_id=id_map["t1"])
 
     assert result["status"] == "pending_confirmation"
 
@@ -105,7 +107,7 @@ async def test_remove_goal_node_rejected(
     board, id_map = board_with_tasks
 
     tool = make_remove_task(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke({"task_id": id_map["t3"]})
+    result = await tool.coroutine(task_id=id_map["t3"])
 
     assert result["status"] == "failed"
     assert "goal node" in result["error"].lower()
@@ -124,11 +126,9 @@ async def test_add_dependency_creates_pending_action(
     board, id_map = board_with_tasks
 
     tool = make_add_dependency(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {
-            "dependent_task_id": id_map["t2"],
-            "dependency_task_id": id_map["t1"],
-        }
+    result = await tool.coroutine(
+        dependent_task_id=id_map["t2"],
+        dependency_task_id=id_map["t1"],
     )
 
     assert result["status"] == "pending_confirmation"
@@ -144,11 +144,9 @@ async def test_add_dependency_cycle_rejected(
     board, id_map = board_with_tasks
 
     tool = make_add_dependency(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {
-            "dependent_task_id": id_map["t1"],
-            "dependency_task_id": id_map["t3"],
-        }
+    result = await tool.coroutine(
+        dependent_task_id=id_map["t1"],
+        dependency_task_id=id_map["t3"],
     )
 
     assert result["status"] == "failed"
@@ -168,11 +166,9 @@ async def test_remove_dependency_creates_pending_action(
     board, id_map = board_with_tasks
 
     tool = make_remove_dependency(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {
-            "dependent_task_id": id_map["t3"],
-            "dependency_task_id": id_map["t1"],
-        }
+    result = await tool.coroutine(
+        dependent_task_id=id_map["t3"],
+        dependency_task_id=id_map["t1"],
     )
 
     assert result["status"] == "pending_confirmation"
@@ -190,14 +186,12 @@ async def test_split_task_creates_pending_action(
     board, id_map = board_with_tasks
 
     tool = make_split_task(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {
-            "task_id": id_map["t1"],
-            "new_tasks": [
-                {"title": "Task 1a", "description": "First part"},
-                {"title": "Task 1b", "description": "Second part"},
-            ],
-        }
+    result = await tool.coroutine(
+        task_id=id_map["t1"],
+        new_tasks=[
+            {"title": "Task 1a", "description": "First part"},
+            {"title": "Task 1b", "description": "Second part"},
+        ],
     )
 
     assert result["status"] == "pending_confirmation"
@@ -212,14 +206,12 @@ async def test_split_goal_node_rejected(
     board, id_map = board_with_tasks
 
     tool = make_split_task(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {
-            "task_id": id_map["t3"],
-            "new_tasks": [
-                {"title": "Part A"},
-                {"title": "Part B"},
-            ],
-        }
+    result = await tool.coroutine(
+        task_id=id_map["t3"],
+        new_tasks=[
+            {"title": "Part A"},
+            {"title": "Part B"},
+        ],
     )
 
     assert result["status"] == "failed"
@@ -235,11 +227,9 @@ async def test_split_task_too_few_rejected(
     board, id_map = board_with_tasks
 
     tool = make_split_task(session, board.id, test_user.id, THREAD_ID)
-    result = await tool.ainvoke(
-        {
-            "task_id": id_map["t1"],
-            "new_tasks": [{"title": "Only one"}],
-        }
+    result = await tool.coroutine(
+        task_id=id_map["t1"],
+        new_tasks=[{"title": "Only one"}],
     )
 
     assert result["status"] == "failed"

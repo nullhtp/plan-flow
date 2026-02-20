@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
-from app.domains.ai.schemas import ClassificationOutput, QuestionItem
+from app.domains.ai.schemas import (
+    ClassificationOutput,
+    QuestionItem,
+    ReadinessAssessment,
+)
 from app.domains.ai.service import AIOutputError, ClassifyAndGenerateResult
 
 
@@ -33,7 +37,7 @@ def _mock_success_result() -> ClassifyAndGenerateResult:
                 id="q2",
                 text="When do you plan to move?",
                 type="text",
-                options=None,
+                options=["1-2 months", "3-4 months", "5-6 months"],
                 rationale="Timeline affects planning",
                 required=True,
             ),
@@ -47,6 +51,12 @@ def _mock_success_result() -> ClassifyAndGenerateResult:
             ),
         ],
         is_rejected=False,
+        readiness=ReadinessAssessment(
+            score=0.0,
+            covered_dimensions=[],
+            uncovered_dimensions=["timeline", "budget", "housing"],
+            summary="No answers collected yet.",
+        ),
     )
 
 

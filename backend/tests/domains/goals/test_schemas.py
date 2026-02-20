@@ -48,10 +48,10 @@ def test_classification_output_rejection() -> None:
 
 
 def test_classification_output_invalid_complexity() -> None:
-    """Complexity outside 1-5 range fails validation."""
+    """Complexity outside int range (e.g. string) fails validation."""
     data = {
         "domain": "test",
-        "complexity": 6,
+        "complexity": "not-a-number",
         "confidence": 0.5,
         "dimensions": [],
         "suggested_title": "Test",
@@ -88,7 +88,13 @@ def test_questions_output_valid() -> None:
                 "rationale": "Adjusts complexity",
                 "required": False,
             },
-        ]
+        ],
+        "readiness": {
+            "score": 0.0,
+            "covered_dimensions": [],
+            "uncovered_dimensions": ["budget", "timeline"],
+            "summary": "No answers yet.",
+        },
     }
     result = QuestionsOutput.model_validate(data)
     assert len(result.questions) == 3
@@ -98,8 +104,8 @@ def test_questions_output_valid() -> None:
     assert result.questions[2].options == ["1-3 years", "4-6 years", "7+ years"]
 
 
-def test_questions_output_too_few() -> None:
-    """Less than 3 questions fails validation."""
+def test_questions_output_missing_readiness() -> None:
+    """QuestionsOutput requires a readiness field."""
     data = {
         "questions": [
             {
@@ -109,7 +115,7 @@ def test_questions_output_too_few() -> None:
                 "options": ["A", "B", "C"],
                 "rationale": "Only one",
             },
-        ]
+        ],
     }
     with pytest.raises(ValidationError):
         QuestionsOutput.model_validate(data)

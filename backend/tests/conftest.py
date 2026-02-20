@@ -4,11 +4,13 @@ from collections.abc import AsyncGenerator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import selectinload
 from sqlalchemy.pool import NullPool
 from sqlmodel import SQLModel
 
@@ -34,15 +36,18 @@ _session_factory = async_sessionmaker(
 
 @pytest.fixture(autouse=True)
 async def setup_database() -> AsyncGenerator[None, None]:
-    """Create tables before each test, drop them after."""
+    """Create tables before each test, drop them after.
+
+    Uses DROP SCHEMA CASCADE in teardown to handle circular FK
+    dependencies (board <-> task).
+    """
     async with _engine.begin() as conn:
+        await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
         await conn.run_sync(SQLModel.metadata.create_all)
     yield
     async with _engine.begin() as conn:
-        # Use raw DROP CASCADE to handle circular FK dependencies (board <-> task)
         await conn.exec_driver_sql("DROP SCHEMA public CASCADE")
         await conn.exec_driver_sql("CREATE SCHEMA public")
-        # Re-enable pgvector extension after schema recreation
         await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
 
 
@@ -111,31 +116,47 @@ async def test_goal(session: AsyncSession, test_user: User) -> Goal:
                 "rejection_reason": None,
                 "refinement_suggestions": [],
             },
-            "questions": [
+            "rounds": [
                 {
-                    "id": "q1",
-                    "text": "What is your budget?",
-                    "type": "select",
-                    "options": ["< 5000", "5000-10000", "> 10000"],
-                    "rationale": "Budget determines housing options",
-                    "required": True,
-                },
-                {
-                    "id": "q2",
-                    "text": "Do you have a job lined up?",
-                    "type": "select",
-                    "options": ["Yes", "No", "Remote work"],
-                    "rationale": "Employment affects visa and timeline",
-                    "required": True,
-                },
-                {
-                    "id": "q3",
-                    "text": "Any specific concerns?",
-                    "type": "text",
-                    "options": None,
-                    "rationale": "Helps identify potential blockers",
-                    "required": False,
-                },
+                    "round": 1,
+                    "questions": [
+                        {
+                            "id": "q1",
+                            "text": "What is your budget?",
+                            "type": "select",
+                            "options": ["< 5000", "5000-10000", "> 10000"],
+                            "rationale": "Budget determines housing options",
+                            "required": True,
+                        },
+                        {
+                            "id": "q2",
+                            "text": "Do you have a job lined up?",
+                            "type": "select",
+                            "options": ["Yes", "No", "Remote work"],
+                            "rationale": "Employment affects visa and timeline",
+                            "required": True,
+                        },
+                        {
+                            "id": "q3",
+                            "text": "Any specific concerns?",
+                            "type": "text",
+                            "options": [
+                                "Visa requirements",
+                                "Housing costs",
+                                "Language barrier",
+                            ],
+                            "rationale": "Helps identify potential blockers",
+                            "required": False,
+                        },
+                    ],
+                    "answers": {},
+                    "readiness": {
+                        "score": 0.0,
+                        "covered_dimensions": [],
+                        "uncovered_dimensions": ["timeline", "budget", "housing"],
+                        "summary": "No answers collected yet.",
+                    },
+                }
             ],
         },
     )
@@ -164,37 +185,57 @@ async def answered_goal(session: AsyncSession, test_user: User) -> Goal:
                 "rejection_reason": None,
                 "refinement_suggestions": [],
             },
-            "questions": [
+            "rounds": [
                 {
-                    "id": "q1",
-                    "text": "What is your budget?",
-                    "type": "select",
-                    "options": ["< 5000", "5000-10000", "> 10000"],
-                    "rationale": "Budget determines housing options",
-                    "required": True,
-                },
-                {
-                    "id": "q2",
-                    "text": "Do you have a job lined up?",
-                    "type": "select",
-                    "options": ["Yes", "No", "Remote work"],
-                    "rationale": "Employment affects visa and timeline",
-                    "required": True,
-                },
-                {
-                    "id": "q3",
-                    "text": "Any specific concerns?",
-                    "type": "text",
-                    "options": None,
-                    "rationale": "Helps identify potential blockers",
-                    "required": False,
-                },
+                    "round": 1,
+                    "questions": [
+                        {
+                            "id": "q1",
+                            "text": "What is your budget?",
+                            "type": "select",
+                            "options": ["< 5000", "5000-10000", "> 10000"],
+                            "rationale": "Budget determines housing options",
+                            "required": True,
+                        },
+                        {
+                            "id": "q2",
+                            "text": "Do you have a job lined up?",
+                            "type": "select",
+                            "options": ["Yes", "No", "Remote work"],
+                            "rationale": "Employment affects visa and timeline",
+                            "required": True,
+                        },
+                        {
+                            "id": "q3",
+                            "text": "Any specific concerns?",
+                            "type": "text",
+                            "options": [
+                                "Visa requirements",
+                                "Housing costs",
+                                "Language barrier",
+                            ],
+                            "rationale": "Helps identify potential blockers",
+                            "required": False,
+                        },
+                    ],
+                    "answers": {
+                        "q1": "5000-10000",
+                        "q2": "Remote work",
+                        "q3": "Need to bring my cat",
+                    },
+                    "readiness": {
+                        "score": 0.8,
+                        "covered_dimensions": [
+                            "timeline",
+                            "budget",
+                            "housing",
+                            "logistics",
+                        ],
+                        "uncovered_dimensions": [],
+                        "summary": "Sufficient information collected.",
+                    },
+                }
             ],
-            "answers": {
-                "q1": "5000-10000",
-                "q2": "Remote work",
-                "q3": "Need to bring my cat",
-            },
         },
     )
     session.add(goal)
@@ -244,6 +285,25 @@ async def create_test_board(
     goal.status = GoalStatus.ACTIVE.value
     session.add(goal)
     await session.commit()
-    await session.refresh(goal)
 
-    return board, ai_id_to_db_id
+    # Re-fetch the board with all relationships eager-loaded so that
+    # tools can access task.subtasks, task.dependencies, task.dependents,
+    # and dependency_task/dependent_task without triggering lazy loads
+    # (which fail under async sessions).
+    stmt = (
+        sa_select(Board)
+        .options(
+            selectinload(Board.tasks).selectinload(Task.subtasks),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            selectinload(Board.tasks)
+            .selectinload(Task.dependencies)
+            .selectinload(TaskDependency.dependency_task),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            selectinload(Board.tasks)
+            .selectinload(Task.dependents)
+            .selectinload(TaskDependency.dependent_task),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        )
+        .where(Board.id == board.id)  # pyright: ignore[reportArgumentType]
+    )
+    result = await session.execute(stmt)
+    loaded_board = result.scalar_one()
+
+    return loaded_board, ai_id_to_db_id
