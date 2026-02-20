@@ -40,9 +40,8 @@ htmlcov/
 # Alembic
 backend/migrations/versions/*.pyc
 
-# Generated API client and OpenAPI spec (regenerated via codegen)
+# Generated API client (regenerated via codegen)
 frontend/src/api/generated/
-frontend/openapi.json
 
 # Docker
 docker-compose.override.yml
