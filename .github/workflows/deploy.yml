@@ -1,0 +1,115 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  # ── CI checks ─────────────────────────────────────────────
+  backend-checks:
+    name: Backend Checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+
+      - name: Format (ruff format)
+        run: uv run ruff format --check .
+
+      - name: Type check (pyright)
+        run: uv run pyright
+
+      - name: Test (pytest)
+        run: uv run pytest
+
+  frontend-checks:
+    name: Frontend Checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (biome check)
+        run: pnpm run lint
+
+      - name: Type check (tsc)
+        run: pnpm run type-check
+
+      - name: Test (vitest)
+        run: pnpm run test
+
+  # ── Deploy ────────────────────────────────────────────────
+  deploy:
+    name: Deploy to VDS
+    runs-on: ubuntu-latest
+    needs: [backend-checks, frontend-checks]
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+
+            APP_DIR=/opt/planflow
+
+            # Clone or pull latest code
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone https://github.com/nullhtp/plan-flow.git "$APP_DIR"
+            else
+              cd "$APP_DIR"
+              git fetch origin master
+              git reset --hard origin/master
+            fi
+
+            cd "$APP_DIR"
+
+            # Build and deploy with docker compose
+            docker compose -f docker-compose.prod.yml build --no-cache
+            docker compose -f docker-compose.prod.yml up -d db
+            sleep 5
+
+            # Run migrations
+            docker compose -f docker-compose.prod.yml run --rm migrate
+
+            # Start all services
+            docker compose -f docker-compose.prod.yml up -d
+
+            # Cleanup old images
+            docker image prune -f
+
+            echo "Deployment complete!"
