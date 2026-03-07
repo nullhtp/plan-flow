@@ -85,7 +85,7 @@ async def extract_file_endpoint(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e),
-        )
+        ) from None
     return ContentExtractionResponse(
         content=result.content,
         source_type=result.source_type,
@@ -115,7 +115,7 @@ async def extract_url_endpoint(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e),
-        )
+        ) from None
     return ContentExtractionResponse(
         content=result.content,
         source_type=result.source_type,
@@ -148,7 +148,7 @@ async def generate_template_endpoint(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Template generation failed: {e}",
-        )
+        ) from None
 
     return GenerateTemplateResponse(
         suggested_title=output.suggested_title,
@@ -212,7 +212,11 @@ async def save_generated_template_endpoint(
 # ── Template CRUD Endpoints ─────────────────────────────
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=TemplateDetailResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TemplateDetailResponse,
+)
 async def create_template_endpoint(
     body: TemplateCreateRequest,
     current_user: CurrentUser,

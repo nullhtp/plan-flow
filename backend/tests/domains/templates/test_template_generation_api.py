@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import create_access_token, hash_password
+from app.core.security import create_access_token
 from app.domains.ai.schemas import (
     TemplateGenerationOutput,
     TemplateGenSubtaskOutput,
@@ -16,7 +15,6 @@ from app.domains.ai.schemas import (
 )
 from app.domains.auth.models import User
 from app.domains.templates.models import TemplateCategory
-
 
 # ── Helpers ──────────────────────────────────────────────
 
@@ -79,7 +77,10 @@ class TestExtractContentEndpoint:
         test_user: User,
     ) -> None:
         token = create_access_token(test_user.id)
-        content = "This is enough text content for extraction to work properly and pass validation."
+        content = (
+            "This is enough text content for extraction"
+            " to work properly and pass validation."
+        )
         response = await client.post(
             "/api/templates/extract-content/file",
             files={"file": ("test.txt", content.encode(), "text/plain")},
@@ -136,7 +137,12 @@ class TestGenerateTemplateEndpoint:
 
         response = await client.post(
             "/api/templates/generate",
-            json={"content": "Steps to plan a vacation: book flights, find hotel, plan activities, pack bags"},
+            json={
+                "content": (
+                    "Steps to plan a vacation: book flights,"
+                    " find hotel, plan activities, pack bags"
+                ),
+            },
             headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 200

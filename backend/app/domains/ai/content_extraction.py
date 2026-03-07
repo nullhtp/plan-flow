@@ -87,7 +87,8 @@ def extract_from_file(data: bytes, filename: str) -> ExtractedContent:
 
     ext = _get_extension(filename)
     if ext not in EXTRACT_BY_EXT:
-        msg = f"Unsupported file type: {ext}. Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
+        supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
+        msg = f"Unsupported file type: {ext}. Supported: {supported}"
         raise ExtractionError(msg)
 
     extractor = EXTRACT_BY_EXT[ext]
@@ -107,15 +108,15 @@ async def extract_from_url(url: str) -> ExtractedContent:
                 url, follow_redirects=True, headers={"User-Agent": "PlanFlow/1.0"}
             )
             response.raise_for_status()
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as err:
         msg = f"URL fetch timed out after {URL_FETCH_TIMEOUT}s"
-        raise ExtractionError(msg)
-    except httpx.HTTPStatusError as e:
-        msg = f"URL returned HTTP {e.response.status_code}"
-        raise ExtractionError(msg)
-    except httpx.RequestError as e:
-        msg = f"Failed to fetch URL: {e}"
-        raise ExtractionError(msg)
+        raise ExtractionError(msg) from err
+    except httpx.HTTPStatusError as err:
+        msg = f"URL returned HTTP {err.response.status_code}"
+        raise ExtractionError(msg) from err
+    except httpx.RequestError as err:
+        msg = f"Failed to fetch URL: {err}"
+        raise ExtractionError(msg) from err
 
     html = response.text
     text = trafilatura.extract(html) or ""  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]

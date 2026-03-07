@@ -133,7 +133,7 @@ function GoalDetailPage() {
 						submitAnswers.mutate(
 							{ goalId: goal.id, data: { answers, round } },
 							{
-								onSuccess: (response) => {
+								onSuccess: (response: any) => {
 									if (response.status === 200) {
 										const data = response.data;
 										const newReadiness = data.readiness ?? latestReadiness;

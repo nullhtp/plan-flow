@@ -58,7 +58,7 @@ export function useTaskChat(taskId: string, boardId: string) {
 					setMessages((prev) => [...prev, assistantMsg]);
 
 					// Invalidate board query if any tool actions were executed
-					const hasExecutedActions = data.actions?.some((a) => a.status === "executed");
+					const hasExecutedActions = data.actions?.some((a: any) => a.status === "executed");
 					if (hasExecutedActions) {
 						const boardQueryKey = getGetBoardEndpointApiBoardsBoardIdGetQueryKey(boardId);
 						queryClient.invalidateQueries({ queryKey: boardQueryKey });
@@ -66,7 +66,7 @@ export function useTaskChat(taskId: string, boardId: string) {
 
 					// Invalidate artifacts if save_artifact or update_artifact was called
 					const hasArtifactChange = data.actions?.some(
-						(a) =>
+						(a: any) =>
 							(a.tool_name === "save_artifact" || a.tool_name === "update_artifact") &&
 							a.status === "executed",
 					);

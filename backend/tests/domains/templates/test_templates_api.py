@@ -8,17 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, hash_password
 from app.domains.auth.models import User
-from app.domains.boards.models import Board, Task, TaskDependency, Subtask
+from app.domains.boards.models import Board
 from app.domains.goals.models import Goal, GoalStatus
 from app.domains.templates.models import (
-    BoardTemplate,
     TemplateCategory,
-    TemplateTask,
-    TemplateTaskDependency,
-    TemplateSubtask,
 )
-from tests.conftest import create_test_board, make_skeleton
-
+from tests.conftest import create_test_board
 
 # ── Helpers ──────────────────────────────────────────────
 
@@ -90,7 +85,7 @@ async def test_create_template_from_board(
     answered_goal: Goal,
 ) -> None:
     """POST /api/templates creates a template from a board."""
-    board, id_map = await _create_board_with_tasks(session, answered_goal)
+    board, _id_map = await _create_board_with_tasks(session, answered_goal)
 
     data = await _create_template(auth_client, board.id)
 

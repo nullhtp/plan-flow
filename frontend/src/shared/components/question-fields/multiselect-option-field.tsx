@@ -34,7 +34,7 @@ export function MultiselectOptionField({
 
 	return (
 		<div className={cn("space-y-2", compact && "space-y-1.5")}>
-			{options.map((option) => (
+			{options.map((option: any) => (
 				<div key={option} className="flex items-center gap-2">
 					<Checkbox
 						id={`${question.id}-${option}`}

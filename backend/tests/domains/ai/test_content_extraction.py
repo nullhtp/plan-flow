@@ -26,14 +26,20 @@ class TestExtractText:
 
 class TestExtractFromFile:
     def test_txt_file(self) -> None:
-        content = "This is a plain text file with enough content to pass the minimum character requirement."
+        content = (
+            "This is a plain text file with enough content"
+            " to pass the minimum character requirement."
+        )
         result = extract_from_file(content.encode(), "test.txt")
         assert result.source_type == "file"
         assert result.source_name == "test.txt"
         assert result.char_count > 0
 
     def test_md_file(self) -> None:
-        content = "# Heading\n\nThis is markdown content with enough text to pass validation minimum."
+        content = (
+            "# Heading\n\nThis is markdown content"
+            " with enough text to pass validation minimum."
+        )
         result = extract_from_file(content.encode(), "readme.md")
         assert result.source_type == "file"
         assert "Heading" in result.content

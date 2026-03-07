@@ -74,7 +74,7 @@ function GoalsNewPage() {
 			// user_meta included for AI context; typed after Orval regeneration
 			{ data: { original_input: input, user_meta: userMeta } as GoalCreate },
 			{
-				onSuccess: (response) => {
+				onSuccess: (response: any) => {
 					if (response.status === 201) {
 						const data = response.data as GoalQuestionsResponse;
 						const initialRound: Round = {
@@ -137,7 +137,7 @@ function GoalsNewPage() {
 		submitAnswers.mutate(
 			{ goalId, data: { answers, round } },
 			{
-				onSuccess: (response) => {
+				onSuccess: (response: any) => {
 					if (response.status === 200) {
 						const data = response.data;
 						const newReadiness = data.readiness ?? currentReadiness;

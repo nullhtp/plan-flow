@@ -94,7 +94,10 @@ goals_router = APIRouter(prefix="/goals", tags=["boards"])
 async def list_boards_endpoint(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
-    shared: bool = Query(False, description="Return boards shared with user instead of owned"),
+    shared: bool = Query(
+        False,
+        description="Return boards shared with user instead of owned",
+    ),
 ) -> list[BoardListResponse]:
     """List boards for the authenticated user with summary stats."""
     boards = await list_boards(session, current_user.id, shared=shared)
@@ -111,7 +114,10 @@ async def join_board_endpoint(
     try:
         result = await join_board_via_token(session, body.token, current_user.id)
     except BoardNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid or expired share link") from None
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired share link",
+        ) from None
 
     return JoinBoardResponse(**result)
 
@@ -142,7 +148,9 @@ async def get_board_endpoint(
         repo = BoardRepository(session)
         parent_board = await repo.get_parent_board(board)
 
-    return build_board_response(board, user_meta=user_meta, parent_board=parent_board, role=role)
+    return build_board_response(
+        board, user_meta=user_meta, parent_board=parent_board, role=role
+    )
 
 
 @router.patch("/{board_id}", response_model=BoardResponse)
@@ -167,7 +175,11 @@ async def update_board_endpoint(
 # ── Share Link Endpoints ─────────────────────────────────
 
 
-@router.post("/{board_id}/share", response_model=ShareLinkResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{board_id}/share",
+    response_model=ShareLinkResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_share_link_endpoint(
     board_id: str,
     current_user: CurrentUser,
@@ -175,11 +187,19 @@ async def create_share_link_endpoint(
 ) -> ShareLinkResponse:
     """Create or regenerate a share link for a board. Owner-only."""
     try:
-        share = await create_or_regenerate_share_link(session, board_id, current_user.id)
+        share = await create_or_regenerate_share_link(
+            session, board_id, current_user.id
+        )
     except BoardNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found") from None
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Board not found",
+        ) from None
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from None
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        ) from None
 
     from app.core.config import settings
 
@@ -197,18 +217,28 @@ async def get_share_link_endpoint(
     try:
         share = await get_share_link(session, board_id, current_user.id)
     except BoardNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found") from None
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Board not found",
+        ) from None
 
     if share is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No share link exists")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No share link exists",
+        )
 
     from app.core.config import settings
 
     url = f"{settings.frontend_origin}/join?token={share.token}"
-    return ShareLinkResponse(token=share.token, url=url, created_at=share.created_at)
+    return ShareLinkResponse(
+        token=share.token, url=url, created_at=share.created_at
+    )
 
 
-@router.delete("/{board_id}/share", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{board_id}/share", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_share_link_endpoint(
     board_id: str,
     current_user: CurrentUser,
@@ -216,12 +246,20 @@ async def delete_share_link_endpoint(
 ) -> None:
     """Delete the share link. Owner-only."""
     try:
-        deleted = await delete_share_link(session, board_id, current_user.id)
+        deleted = await delete_share_link(
+            session, board_id, current_user.id
+        )
     except BoardNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found") from None
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Board not found",
+        ) from None
 
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No share link exists")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No share link exists",
+        )
 
 
 # ── Member Endpoints ─────────────────────────────────────
@@ -237,12 +275,18 @@ async def list_members_endpoint(
     try:
         members = await list_board_members(session, board_id, current_user.id)
     except BoardNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found") from None
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Board not found",
+        ) from None
 
     return [BoardMemberResponse(**m) for m in members]
 
 
-@router.delete("/{board_id}/members/{target_user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{board_id}/members/{target_user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 async def revoke_member_endpoint(
     board_id: str,
     target_user_id: str,
@@ -251,14 +295,25 @@ async def revoke_member_endpoint(
 ) -> None:
     """Remove a collaborator from the board. Owner-only."""
     try:
-        deleted = await revoke_board_member(session, board_id, target_user_id, current_user.id)
+        deleted = await revoke_board_member(
+            session, board_id, target_user_id, current_user.id
+        )
     except BoardNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found") from None
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Board not found",
+        ) from None
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from None
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from None
 
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
+        )
 
 
 # ── Task Endpoints ───────────────────────────────────────
