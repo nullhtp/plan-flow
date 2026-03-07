@@ -1,7 +1,5 @@
 """SQLModel definitions for the board-templates domain."""
 
-from __future__ import annotations
-
 import uuid
 from datetime import UTC, datetime
 
@@ -30,9 +28,7 @@ class TemplateCategory(SQLModel, table=True):
     name: str = Field(sa_column=Column(String(100), nullable=False, unique=True))
     slug: str = Field(sa_column=Column(String(100), nullable=False, unique=True))
     description: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
-    icon: str | None = Field(
-        default=None, sa_column=Column(String(50), nullable=True)
-    )
+    icon: str | None = Field(default=None, sa_column=Column(String(50), nullable=True))
     display_order: int = Field(
         default=0, sa_column=Column(Integer, nullable=False, server_default="0")
     )
@@ -41,7 +37,7 @@ class TemplateCategory(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
 
-    templates: list[BoardTemplate] = Relationship(back_populates="category")
+    templates: list["BoardTemplate"] = Relationship(back_populates="category")
 
 
 class BoardTemplate(SQLModel, table=True):
@@ -64,9 +60,7 @@ class BoardTemplate(SQLModel, table=True):
         ),
     )
     title: str = Field(sa_column=Column(String(200), nullable=False))
-    description: str | None = Field(
-        default=None, sa_column=Column(Text, nullable=True)
-    )
+    description: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     visibility: str = Field(
         default="private",
         sa_column=Column(String(20), nullable=False, server_default="private"),
@@ -88,11 +82,11 @@ class BoardTemplate(SQLModel, table=True):
     )
 
     category: TemplateCategory | None = Relationship(back_populates="templates")
-    tasks: list[TemplateTask] = Relationship(
+    tasks: list["TemplateTask"] = Relationship(
         back_populates="template",
         sa_relationship_kwargs={"cascade": "all, delete-orphan", "lazy": "selectin"},
     )
-    dependencies: list[TemplateTaskDependency] = Relationship(
+    dependencies: list["TemplateTaskDependency"] = Relationship(
         back_populates="template",
         sa_relationship_kwargs={"cascade": "all, delete-orphan", "lazy": "selectin"},
     )
@@ -134,7 +128,7 @@ class TemplateTask(SQLModel, table=True):
     )
 
     template: BoardTemplate = Relationship(back_populates="tasks")
-    subtasks: list[TemplateSubtask] = Relationship(
+    subtasks: list["TemplateSubtask"] = Relationship(
         back_populates="template_task",
         sa_relationship_kwargs={
             "cascade": "all, delete-orphan",

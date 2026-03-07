@@ -9,6 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import get_session
 from app.core.security import create_access_token, hash_password
 from app.domains.auth.models import User
 from app.domains.boards.member_repository import MemberRepository
@@ -39,8 +40,13 @@ def _make_authed_client(transport: ASGITransport, user: User) -> AsyncClient:
 
 
 @pytest.fixture
-async def transport():
-    return ASGITransport(app=app)  # pyright: ignore[reportArgumentType]
+async def transport(session: AsyncSession):
+    async def _override_get_session():
+        yield session
+
+    app.dependency_overrides[get_session] = _override_get_session
+    yield ASGITransport(app=app)  # pyright: ignore[reportArgumentType]
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -369,9 +375,7 @@ async def test_shared_boards_list_empty_for_owner(
 
 
 @pytest.mark.asyncio
-async def test_get_user_role_owner(
-    session: AsyncSession, answered_goal: Goal
-) -> None:
+async def test_get_user_role_owner(session: AsyncSession, answered_goal: Goal) -> None:
     board, _ = await create_test_board(session, answered_goal)
     role = await get_user_role_for_board(session, board.id, answered_goal.user_id)
     assert role == "owner"

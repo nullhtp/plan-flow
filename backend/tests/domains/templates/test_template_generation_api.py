@@ -77,6 +77,7 @@ class TestExtractContentEndpoint:
         test_user: User,
     ) -> None:
         token = create_access_token(test_user.id)
+        client.cookies.set("access_token", token)
         content = (
             "This is enough text content for extraction"
             " to work properly and pass validation."
@@ -84,7 +85,6 @@ class TestExtractContentEndpoint:
         response = await client.post(
             "/api/templates/extract-content/file",
             files={"file": ("test.txt", content.encode(), "text/plain")},
-            headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -98,10 +98,10 @@ class TestExtractContentEndpoint:
         test_user: User,
     ) -> None:
         token = create_access_token(test_user.id)
+        client.cookies.set("access_token", token)
         response = await client.post(
             "/api/templates/extract-content/file",
             files={"file": ("test.exe", b"data", "application/octet-stream")},
-            headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 422
 
@@ -111,10 +111,10 @@ class TestExtractContentEndpoint:
         test_user: User,
     ) -> None:
         token = create_access_token(test_user.id)
+        client.cookies.set("access_token", token)
         response = await client.post(
             "/api/templates/extract-content/file",
             files={"file": ("tiny.txt", b"hi", "text/plain")},
-            headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 422
 
@@ -134,6 +134,7 @@ class TestGenerateTemplateEndpoint:
         await _seed_categories(session)
         mock_generate.return_value = _mock_generation_output()
         token = create_access_token(test_user.id)
+        client.cookies.set("access_token", token)
 
         response = await client.post(
             "/api/templates/generate",
@@ -143,7 +144,6 @@ class TestGenerateTemplateEndpoint:
                     " find hotel, plan activities, pack bags"
                 ),
             },
-            headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -157,10 +157,10 @@ class TestGenerateTemplateEndpoint:
         test_user: User,
     ) -> None:
         token = create_access_token(test_user.id)
+        client.cookies.set("access_token", token)
         response = await client.post(
             "/api/templates/generate",
             json={"content": "short"},
-            headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 422
 
@@ -177,6 +177,7 @@ class TestSaveGeneratedTemplateEndpoint:
     ) -> None:
         categories = await _seed_categories(session)
         token = create_access_token(test_user.id)
+        client.cookies.set("access_token", token)
 
         response = await client.post(
             "/api/templates/save-generated",
@@ -209,7 +210,6 @@ class TestSaveGeneratedTemplateEndpoint:
                     },
                 ],
             },
-            headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 201
         data = response.json()
@@ -226,6 +226,7 @@ class TestSaveGeneratedTemplateEndpoint:
     ) -> None:
         await _seed_categories(session)
         token = create_access_token(test_user.id)
+        client.cookies.set("access_token", token)
 
         response = await client.post(
             "/api/templates/save-generated",
@@ -248,7 +249,6 @@ class TestSaveGeneratedTemplateEndpoint:
                     },
                 ],
             },
-            headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 422
 
@@ -260,6 +260,7 @@ class TestSaveGeneratedTemplateEndpoint:
     ) -> None:
         await _seed_categories(session)
         token = create_access_token(test_user.id)
+        client.cookies.set("access_token", token)
 
         response = await client.post(
             "/api/templates/save-generated",
@@ -275,6 +276,5 @@ class TestSaveGeneratedTemplateEndpoint:
                     },
                 ],
             },
-            headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 422

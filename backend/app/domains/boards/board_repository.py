@@ -30,9 +30,9 @@ class BoardRepository:
 
     async def get_with_relations(self, board_id: str) -> Board | None:
         """Fetch a board with tasks, subtasks, sub-boards, and edges."""
-        self.session.expire_all()
         stmt = (
             select(Board)
+            .execution_options(populate_existing=True)
             .options(
                 selectinload(Board.tasks).selectinload(Task.subtasks),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
                 selectinload(Board.tasks).selectinload(Task.dependencies),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
@@ -48,9 +48,9 @@ class BoardRepository:
 
     async def get_with_relations_by_goal(self, goal_id: str) -> Board | None:
         """Fetch a board by goal_id with all relations eager-loaded."""
-        self.session.expire_all()
         stmt = (
             select(Board)
+            .execution_options(populate_existing=True)
             .options(
                 selectinload(Board.tasks).selectinload(Task.subtasks),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
                 selectinload(Board.tasks).selectinload(Task.dependencies),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
