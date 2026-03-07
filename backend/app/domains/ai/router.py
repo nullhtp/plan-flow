@@ -33,18 +33,20 @@ boards_chat_router = APIRouter(prefix="/boards", tags=["ai"])
 async def _validate_board_ownership(
     session: AsyncSession, board_id: str, user_id: str
 ) -> tuple:  # pyright: ignore[reportMissingTypeArgument]
-    """Load board + goal and verify ownership. Returns (board, goal).
+    """Load board + goal and verify access. Returns (board, goal).
 
     NOTE: This is a router-level helper that raises HTTPException directly.
     It is NOT the same as boards.ownership.validate_board_ownership which
     raises domain errors. Kept here because it returns (board, goal) tuple
     needed by the chat endpoints.
 
-    Supports both root boards (goal_id set) and sub-boards (parent_task_id set)
-    by walking the ownership chain via _resolve_goal_for_board.
+    Supports both owners and collaborators, and both root boards and sub-boards.
     """
     from app.domains.boards.models import Board
-    from app.domains.boards.ownership import _resolve_goal_for_board
+    from app.domains.boards.ownership import (
+        _resolve_goal_for_board,
+        get_user_role_for_board,
+    )
 
     board = await session.get(Board, board_id)
     if board is None:
@@ -53,12 +55,14 @@ async def _validate_board_ownership(
             detail="Board not found",
         )
 
-    goal = await _resolve_goal_for_board(session, board)
-    if goal is None or goal.user_id != user_id:
+    role = await get_user_role_for_board(session, board_id, user_id)
+    if role is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied",
         )
+
+    goal = await _resolve_goal_for_board(session, board)
 
     return board, goal
 

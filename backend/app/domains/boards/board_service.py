@@ -8,9 +8,12 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.boards.board_repository import BoardRepository
-from app.domains.boards.models import Board
+from app.domains.boards.member_repository import MemberRepository
+from app.domains.boards.models import Board, BoardShare
 from app.domains.boards.ownership import (
     BoardNotFoundError,
+    get_user_role_for_board,
+    validate_board_access,
     validate_board_ownership,
 )
 from app.domains.boards.schemas import (
@@ -20,6 +23,7 @@ from app.domains.boards.schemas import (
     SubBoardProgressResponse,
     TaskResponse,
 )
+from app.domains.boards.share_repository import ShareRepository
 from app.domains.goals.models import Goal
 
 # ── Board CRUD ──────────────────────────────────────────
@@ -28,10 +32,26 @@ from app.domains.goals.models import Goal
 async def list_boards(
     session: AsyncSession,
     user_id: str,
+    *,
+    shared: bool = False,
 ) -> list[dict[str, Any]]:
-    """Return all boards for a user with summary stats."""
+    """Return boards for a user with summary stats.
+
+    When shared=False (default), returns owned boards with role="owner".
+    When shared=True, returns boards where user is a collaborator with role="collaborator".
+    """
     repo = BoardRepository(session)
-    return await repo.list_by_user(user_id)
+    if shared:
+        member_repo = MemberRepository(session)
+        board_ids = await member_repo.list_boards_for_user(user_id)
+        boards = await repo.list_root_boards_by_ids(board_ids)
+        for b in boards:
+            b["role"] = "collaborator"
+        return boards
+    boards = await repo.list_by_user(user_id)
+    for b in boards:
+        b["role"] = "owner"
+    return boards
 
 
 async def get_board(
@@ -50,40 +70,10 @@ async def get_board(
     if board is None:
         raise BoardNotFoundError
 
-    # Validate ownership: root boards check goal directly,
-    # sub-boards trace parent_task -> board -> goal
-    await _validate_board_ownership_chain(session, board, user_id)
+    # Validate access: owner or collaborator
+    await validate_board_access(session, board_id, user_id)
 
     return board
-
-
-async def _validate_board_ownership_chain(
-    session: AsyncSession, board: Board, user_id: str
-) -> None:
-    """Validate ownership for both root boards and sub-boards.
-
-    Root boards: board -> goal -> user
-    Sub-boards: board -> parent_task -> parent_board -> goal -> user
-    """
-    if board.goal_id is not None:
-        # Root board: check goal ownership directly
-        goal = await session.get(Goal, board.goal_id)
-        if goal is None or goal.user_id != user_id:
-            raise BoardNotFoundError
-    elif board.parent_task_id is not None:
-        # Sub-board: trace to root board's goal
-        from app.domains.boards.models import Task
-
-        parent_task = await session.get(Task, board.parent_task_id)
-        if parent_task is None:
-            raise BoardNotFoundError
-        parent_board = await session.get(Board, parent_task.board_id)
-        if parent_board is None:
-            raise BoardNotFoundError
-        # Recurse (handles multi-level if ever needed, but currently 1-level only)
-        await _validate_board_ownership_chain(session, parent_board, user_id)
-    else:
-        raise BoardNotFoundError
 
 
 async def get_board_by_goal(
@@ -112,7 +102,7 @@ async def update_board(
     title: str,
 ) -> Board:
     """Update board title."""
-    board = await validate_board_ownership(session, board_id, user_id)
+    board = await validate_board_access(session, board_id, user_id)
     board.title = title
     board.updated_at = datetime.now(UTC)
     repo = BoardRepository(session)
@@ -152,6 +142,7 @@ def build_board_response(
     board: Board,
     user_meta: dict[str, Any] | None = None,
     parent_board: Board | None = None,
+    role: str = "owner",
 ) -> BoardResponse:
     """Build a BoardResponse from a Board with loaded relationships.
 
@@ -159,6 +150,7 @@ def build_board_response(
         board: The board with tasks and edges loaded.
         user_meta: Optional user metadata from goal's ai_context.
         parent_board: Optional parent board for breadcrumb navigation (sub-boards only).
+        role: The requesting user's role ("owner" or "collaborator").
     """
     tasks = board.tasks
     edges: list[EdgeResponse] = []
@@ -264,8 +256,156 @@ def build_board_response(
         user_meta=user_meta,
         parent_task_id=board.parent_task_id,
         parent_board=parent_board_ref,
+        role=role,
         created_at=board.created_at,
     )
+
+
+# ── Share Link Management ────────────────────────────────
+
+
+async def create_or_regenerate_share_link(
+    session: AsyncSession,
+    board_id: str,
+    user_id: str,
+) -> BoardShare:
+    """Create or regenerate a share link. Owner-only."""
+    board = await validate_board_ownership(session, board_id, user_id)
+    if board.parent_task_id is not None:
+        msg = "Only root boards can be shared"
+        raise ValueError(msg)
+    repo = ShareRepository(session)
+    share = await repo.upsert(board_id, user_id)
+    await session.commit()
+    return share
+
+
+async def get_share_link(
+    session: AsyncSession,
+    board_id: str,
+    user_id: str,
+) -> BoardShare | None:
+    """Get the current share link. Owner-only."""
+    await validate_board_ownership(session, board_id, user_id)
+    repo = ShareRepository(session)
+    return await repo.get_by_board_id(board_id)
+
+
+async def delete_share_link(
+    session: AsyncSession,
+    board_id: str,
+    user_id: str,
+) -> bool:
+    """Delete the share link. Owner-only."""
+    await validate_board_ownership(session, board_id, user_id)
+    repo = ShareRepository(session)
+    deleted = await repo.delete(board_id)
+    await session.commit()
+    return deleted
+
+
+# ── Join via Token ───────────────────────────────────────
+
+
+async def join_board_via_token(
+    session: AsyncSession,
+    token: str,
+    user_id: str,
+) -> dict[str, str]:
+    """Redeem a share token and become a board member.
+
+    Returns {"board_id", "board_title", "role"}.
+    Idempotent: re-joining returns success without duplicating.
+    """
+    share_repo = ShareRepository(session)
+    share = await share_repo.get_by_token(token)
+    if share is None:
+        raise BoardNotFoundError
+
+    board = await session.get(Board, share.board_id)
+    if board is None:
+        raise BoardNotFoundError
+
+    # Check if user is the owner
+    goal = await session.get(Goal, board.goal_id) if board.goal_id else None
+    if goal is not None and goal.user_id == user_id:
+        return {"board_id": board.id, "board_title": board.title, "role": "owner"}
+
+    # Check if already a member
+    member_repo = MemberRepository(session)
+    existing = await member_repo.get_by_board_and_user(board.id, user_id)
+    if existing is not None:
+        return {"board_id": board.id, "board_title": board.title, "role": "collaborator"}
+
+    await member_repo.create(board.id, user_id)
+    await session.commit()
+    return {"board_id": board.id, "board_title": board.title, "role": "collaborator"}
+
+
+# ── Member Management ────────────────────────────────────
+
+
+async def list_board_members(
+    session: AsyncSession,
+    board_id: str,
+    user_id: str,
+) -> list[dict[str, Any]]:
+    """List all members including the owner. Owner-only."""
+    await validate_board_ownership(session, board_id, user_id)
+
+    board = await session.get(Board, board_id)
+    if board is None:
+        raise BoardNotFoundError
+
+    # Get owner info from goal
+    from app.domains.auth.models import User
+
+    goal = await session.get(Goal, board.goal_id) if board.goal_id else None
+    members: list[dict[str, Any]] = []
+    if goal is not None:
+        owner = await session.get(User, goal.user_id)
+        if owner is not None:
+            members.append({
+                "user_id": owner.id,
+                "email": owner.email,
+                "role": "owner",
+                "joined_at": board.created_at,
+            })
+
+    member_repo = MemberRepository(session)
+    board_members = await member_repo.list_by_board(board_id)
+    for bm in board_members:
+        member_user = await session.get(User, bm.user_id)
+        if member_user is not None:
+            members.append({
+                "user_id": member_user.id,
+                "email": member_user.email,
+                "role": bm.role,
+                "joined_at": bm.joined_at,
+            })
+
+    return members
+
+
+async def revoke_board_member(
+    session: AsyncSession,
+    board_id: str,
+    target_user_id: str,
+    owner_user_id: str,
+) -> bool:
+    """Remove a collaborator from the board. Owner-only."""
+    board = await validate_board_ownership(session, board_id, owner_user_id)
+
+    # Cannot remove the owner
+    goal = await session.get(Goal, board.goal_id) if board.goal_id else None
+    if goal is not None and goal.user_id == target_user_id:
+        msg = "Cannot remove the board owner"
+        raise ValueError(msg)
+
+    member_repo = MemberRepository(session)
+    deleted = await member_repo.delete(board_id, target_user_id)
+    await session.commit()
+    return deleted
 
 
 def format_qa_pairs(ai_context: dict[str, Any]) -> str:

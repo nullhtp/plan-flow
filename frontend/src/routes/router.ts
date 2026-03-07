@@ -6,6 +6,7 @@ import { boardExpandTaskRoute } from "./boards.$boardId.expand.$taskId";
 import { goalDetailRoute } from "./goals.$goalId";
 import { goalsNewRoute } from "./goals.new";
 import { indexRoute } from "./index";
+import { joinRoute } from "./join";
 import { loginRoute } from "./login";
 import { registerRoute } from "./register";
 import { settingsRoute } from "./settings";
@@ -17,6 +18,7 @@ const routeTree = rootRoute.addChildren([
 	registerRoute,
 	authenticatedRoute.addChildren([
 		indexRoute,
+		joinRoute,
 		goalsNewRoute,
 		goalDetailRoute,
 		boardDetailRoute,

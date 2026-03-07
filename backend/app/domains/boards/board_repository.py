@@ -138,6 +138,61 @@ class BoardRepository:
         """
         return await self.list_root_boards_for_user(user_id)
 
+    async def list_root_boards_by_ids(
+        self, board_ids: list[str]
+    ) -> list[dict[str, Any]]:
+        """Return root boards matching the given IDs with summary stats."""
+        if not board_ids:
+            return []
+
+        stmt = (
+            select(
+                Board.id,
+                Board.goal_id,
+                Board.title,
+                Board.created_at,
+                Goal.title.label("goal_title"),
+            )
+            .join(Goal, Board.goal_id == Goal.id)
+            .where(
+                Board.id.in_(board_ids),
+                Board.parent_task_id.is_(None),  # pyright: ignore[reportUnknownMemberType]
+            )
+            .order_by(Board.created_at.desc())
+        )
+        result = await self.session.execute(stmt)
+        rows = result.all()
+
+        boards: list[dict[str, Any]] = []
+        for row in rows:
+            task_count_stmt = (
+                select(func.count()).select_from(Task).where(Task.board_id == row.id)
+            )
+            task_count_result = await self.session.execute(task_count_stmt)
+            task_count = task_count_result.scalar() or 0
+
+            completed_stmt = (
+                select(func.count())
+                .select_from(Task)
+                .where(Task.board_id == row.id, Task.status == "done")
+            )
+            completed_result = await self.session.execute(completed_stmt)
+            completed_count = completed_result.scalar() or 0
+
+            boards.append(
+                {
+                    "id": row.id,
+                    "goal_id": row.goal_id,
+                    "title": row.title,
+                    "goal_title": row.goal_title,
+                    "task_count": task_count,
+                    "completed_task_count": completed_count,
+                    "created_at": row.created_at,
+                }
+            )
+
+        return boards
+
     async def get_parent_board(self, board: Board) -> Board | None:
         """Get the parent board for a sub-board.
 

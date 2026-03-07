@@ -263,3 +263,62 @@ class Artifact(SQLModel, table=True):
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
+
+
+class BoardShare(SQLModel, table=True):
+    """A shareable link for a root board."""
+
+    __tablename__ = "board_share"  # pyright: ignore[reportAssignmentType]
+
+    id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        primary_key=True,
+    )
+    board_id: str = Field(
+        sa_column=Column(
+            String,
+            ForeignKey("board.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
+        ),
+    )
+    token: str = Field(
+        sa_column=Column(String(64), nullable=False, unique=True, index=True),
+    )
+    created_by: str = Field(foreign_key="user.id")
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
+class BoardMember(SQLModel, table=True):
+    """A collaborator granted access to a board via share link."""
+
+    __tablename__ = "board_member"  # pyright: ignore[reportAssignmentType]
+
+    id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        primary_key=True,
+    )
+    board_id: str = Field(
+        sa_column=Column(
+            String,
+            ForeignKey("board.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+    )
+    user_id: str = Field(foreign_key="user.id", index=True)
+    role: str = Field(
+        default="collaborator",
+        sa_column=Column(String(20), nullable=False, server_default="collaborator"),
+    )
+    joined_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("board_id", "user_id", name="uq_board_member_board_user"),
+    )

@@ -68,6 +68,7 @@ export interface BoardResponse {
 	user_meta: UserMetaResponse | null;
 	parent_task_id: string | null;
 	parent_board: ParentBoardResponse | null;
+	role: "owner" | "collaborator";
 	created_at: string;
 }
 
@@ -78,5 +79,25 @@ export interface BoardListResponse {
 	goal_title: string;
 	task_count: number;
 	completed_task_count: number;
+	role: "owner" | "collaborator";
 	created_at: string;
+}
+
+export interface ShareLinkResponse {
+	token: string;
+	url: string;
+	created_at: string;
+}
+
+export interface BoardMemberResponse {
+	user_id: string;
+	email: string;
+	role: "owner" | "collaborator";
+	joined_at: string;
+}
+
+export interface JoinBoardResponse {
+	board_id: string;
+	board_title: string;
+	role: string;
 }

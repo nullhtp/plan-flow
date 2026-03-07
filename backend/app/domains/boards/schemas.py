@@ -79,6 +79,7 @@ class BoardResponse(BaseModel):
     user_meta: dict[str, Any] | None = None
     parent_task_id: str | None = None
     parent_board: ParentBoardResponse | None = None
+    role: str = "owner"
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -104,6 +105,7 @@ class BoardListResponse(BaseModel):
     goal_title: str
     task_count: int
     completed_task_count: int
+    role: str = "owner"
     created_at: datetime
 
 
@@ -195,3 +197,37 @@ class ArtifactListResponse(BaseModel):
     """Response containing a list of artifacts."""
 
     artifacts: list[ArtifactResponse]
+
+
+# ── Share / Member Schemas ──────────────────────────────
+
+
+class ShareLinkResponse(BaseModel):
+    """Response for a board share link."""
+
+    token: str
+    url: str
+    created_at: datetime
+
+
+class JoinBoardRequest(BaseModel):
+    """Request to join a board via share token."""
+
+    token: str
+
+
+class JoinBoardResponse(BaseModel):
+    """Response after joining a board."""
+
+    board_id: str
+    board_title: str
+    role: str
+
+
+class BoardMemberResponse(BaseModel):
+    """A member of a board."""
+
+    user_id: str
+    email: str
+    role: str
+    joined_at: datetime

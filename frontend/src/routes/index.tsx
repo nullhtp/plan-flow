@@ -16,6 +16,7 @@ function IndexPage() {
 	const logout = useLogout();
 	const navigate = useNavigate();
 	const boards = useBoardListData();
+	const sharedBoards = useBoardListData(true);
 
 	return (
 		<div className="flex min-h-screen flex-col">
@@ -52,6 +53,17 @@ function IndexPage() {
 					<div className="flex flex-col items-center justify-center gap-4 py-20">
 						<p className="text-muted-foreground">No boards yet. Create a goal to get started.</p>
 						<Button onClick={() => navigate({ to: "/goals/new" })}>New Goal</Button>
+					</div>
+				)}
+
+				{sharedBoards.length > 0 && (
+					<div className={boards.length > 0 ? "mt-8" : ""}>
+						<h2 className="mb-4 text-lg font-semibold">Shared with You</h2>
+						<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+							{sharedBoards.map((board) => (
+								<BoardCard key={board.id} board={board} />
+							))}
+						</div>
 					</div>
 				)}
 			</main>

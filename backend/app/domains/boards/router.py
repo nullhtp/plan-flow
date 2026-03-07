@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,9 +15,15 @@ from app.domains.boards.artifact_service import (
 )
 from app.domains.boards.board_service import (
     build_board_response,
+    create_or_regenerate_share_link,
+    delete_share_link,
     get_board,
+    get_share_link,
     get_user_meta_for_board,
+    join_board_via_token,
+    list_board_members,
     list_boards,
+    revoke_board_member,
     update_board,
 )
 from app.domains.boards.ownership import (
@@ -25,6 +31,7 @@ from app.domains.boards.ownership import (
     BoardNotFoundError,
     SubtaskNotFoundError,
     TaskNotFoundError,
+    get_user_role_for_board,
     validate_artifact_ownership,
     validate_task_ownership,
 )
@@ -32,8 +39,12 @@ from app.domains.boards.schemas import (
     ArtifactListResponse,
     ArtifactResponse,
     BoardListResponse,
+    BoardMemberResponse,
     BoardResponse,
     BoardUpdate,
+    JoinBoardRequest,
+    JoinBoardResponse,
+    ShareLinkResponse,
     SubBoardGenerateRequest,
     SubBoardQuestionsResponse,
     SubtaskCreate,
@@ -83,10 +94,26 @@ goals_router = APIRouter(prefix="/goals", tags=["boards"])
 async def list_boards_endpoint(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
+    shared: bool = Query(False, description="Return boards shared with user instead of owned"),
 ) -> list[BoardListResponse]:
-    """List all boards for the authenticated user with summary stats."""
-    boards = await list_boards(session, current_user.id)
+    """List boards for the authenticated user with summary stats."""
+    boards = await list_boards(session, current_user.id, shared=shared)
     return [BoardListResponse(**b) for b in boards]
+
+
+@router.post("/join", response_model=JoinBoardResponse)
+async def join_board_endpoint(
+    body: JoinBoardRequest,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> JoinBoardResponse:
+    """Join a board via share token."""
+    try:
+        result = await join_board_via_token(session, body.token, current_user.id)
+    except BoardNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid or expired share link") from None
+
+    return JoinBoardResponse(**result)
 
 
 @router.get("/{board_id}", response_model=BoardResponse)
@@ -105,6 +132,7 @@ async def get_board_endpoint(
         ) from None
 
     user_meta = await get_user_meta_for_board(session, board)
+    role = await get_user_role_for_board(session, board_id, current_user.id) or "owner"
 
     # For sub-boards, resolve parent board for breadcrumb navigation
     from app.domains.boards.board_repository import BoardRepository
@@ -114,7 +142,7 @@ async def get_board_endpoint(
         repo = BoardRepository(session)
         parent_board = await repo.get_parent_board(board)
 
-    return build_board_response(board, user_meta=user_meta, parent_board=parent_board)
+    return build_board_response(board, user_meta=user_meta, parent_board=parent_board, role=role)
 
 
 @router.patch("/{board_id}", response_model=BoardResponse)
@@ -134,6 +162,103 @@ async def update_board_endpoint(
         ) from None
 
     return build_board_response(board)
+
+
+# ── Share Link Endpoints ─────────────────────────────────
+
+
+@router.post("/{board_id}/share", response_model=ShareLinkResponse, status_code=status.HTTP_201_CREATED)
+async def create_share_link_endpoint(
+    board_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ShareLinkResponse:
+    """Create or regenerate a share link for a board. Owner-only."""
+    try:
+        share = await create_or_regenerate_share_link(session, board_id, current_user.id)
+    except BoardNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found") from None
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from None
+
+    from app.core.config import settings
+
+    url = f"{settings.frontend_origin}/join?token={share.token}"
+    return ShareLinkResponse(token=share.token, url=url, created_at=share.created_at)
+
+
+@router.get("/{board_id}/share", response_model=ShareLinkResponse)
+async def get_share_link_endpoint(
+    board_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ShareLinkResponse:
+    """Get the current share link. Owner-only."""
+    try:
+        share = await get_share_link(session, board_id, current_user.id)
+    except BoardNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found") from None
+
+    if share is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No share link exists")
+
+    from app.core.config import settings
+
+    url = f"{settings.frontend_origin}/join?token={share.token}"
+    return ShareLinkResponse(token=share.token, url=url, created_at=share.created_at)
+
+
+@router.delete("/{board_id}/share", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_share_link_endpoint(
+    board_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    """Delete the share link. Owner-only."""
+    try:
+        deleted = await delete_share_link(session, board_id, current_user.id)
+    except BoardNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found") from None
+
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No share link exists")
+
+
+# ── Member Endpoints ─────────────────────────────────────
+
+
+@router.get("/{board_id}/members", response_model=list[BoardMemberResponse])
+async def list_members_endpoint(
+    board_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[BoardMemberResponse]:
+    """List all members of a board including the owner. Owner-only."""
+    try:
+        members = await list_board_members(session, board_id, current_user.id)
+    except BoardNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found") from None
+
+    return [BoardMemberResponse(**m) for m in members]
+
+
+@router.delete("/{board_id}/members/{target_user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_member_endpoint(
+    board_id: str,
+    target_user_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    """Remove a collaborator from the board. Owner-only."""
+    try:
+        deleted = await revoke_board_member(session, board_id, target_user_id, current_user.id)
+    except BoardNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found") from None
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from None
+
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
 
 
 # ── Task Endpoints ───────────────────────────────────────

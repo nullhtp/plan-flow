@@ -1,5 +1,5 @@
 import { createRoute } from "@tanstack/react-router";
-import { Brain, Save } from "lucide-react";
+import { Brain, Save, Share2 } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
 import { useUpdateBoardEndpointApiBoardsBoardIdPatch } from "@/api/generated/boards/boards";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { BoardMetaInfo } from "@/features/board/components/BoardMetaInfo";
 import { BoardSkeleton } from "@/features/board/components/BoardSkeleton";
 import { BreadcrumbNav } from "@/features/board/components/BreadcrumbNav";
 import { DagView } from "@/features/board/components/DagView";
+import { SharePanel } from "@/features/board/components/SharePanel";
 import { useBoard } from "@/features/board/hooks/use-board";
 import type { BoardResponse } from "@/features/board/types";
 import { ErrorDisplay } from "@/features/goals/components/error-display";
@@ -37,6 +38,7 @@ function BoardDetailPage() {
 	const [editTitle, setEditTitle] = useState("");
 	const [showMemorySidebar, setShowMemorySidebar] = useState(false);
 	const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
+	const [showSharePanel, setShowSharePanel] = useState(false);
 
 	if (boardQuery.isLoading) {
 		return (
@@ -106,6 +108,23 @@ function BoardDetailPage() {
 					</div>
 					{board.user_meta && <BoardMetaInfo userMeta={board.user_meta} />}
 				</div>
+				{board.role === "owner" && !board.parent_task_id && (
+					<Button
+						variant={showSharePanel ? "default" : "outline"}
+						size="sm"
+						className="gap-1.5 shrink-0"
+						onClick={() => setShowSharePanel((v) => !v)}
+						title="Share board"
+					>
+						<Share2 className="h-4 w-4" />
+						<span className="hidden sm:inline">Share</span>
+					</Button>
+				)}
+				{board.role === "collaborator" && (
+					<span className="shrink-0 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700">
+						Shared with you
+					</span>
+				)}
 				<Button
 					variant="outline"
 					size="sm"
@@ -147,6 +166,11 @@ function BoardDetailPage() {
 				open={showSaveAsTemplate}
 				onClose={() => setShowSaveAsTemplate(false)}
 			/>
+
+			{/* Share Panel */}
+			{showSharePanel && (
+				<SharePanel boardId={board.id} onClose={() => setShowSharePanel(false)} />
+			)}
 		</div>
 	);
 }
