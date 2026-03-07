@@ -23,7 +23,14 @@ export function BoardCard({ board }: BoardCardProps) {
 			}}
 		>
 			<CardHeader className="pb-2">
-				<CardTitle className="text-base">{board.title}</CardTitle>
+				<div className="flex items-center justify-between gap-2">
+					<CardTitle className="min-w-0 truncate text-base">{board.title}</CardTitle>
+					{board.role === "collaborator" && (
+						<span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+							Shared
+						</span>
+					)}
+				</div>
 				{board.goal_title && <p className="text-xs text-muted-foreground">{board.goal_title}</p>}
 			</CardHeader>
 			<CardContent>
