@@ -132,6 +132,7 @@ export interface SaveGeneratedTemplateRequest {
 	description?: string | null;
 	category_id?: string | null;
 	visibility?: string;
+	create_board?: boolean;
 	tasks: {
 		id: string;
 		title: string;
@@ -139,5 +140,74 @@ export interface SaveGeneratedTemplateRequest {
 		is_goal_node: boolean;
 		depends_on: string[];
 		subtasks: { title: string }[];
+		priority?: string | null;
+		estimated_minutes?: number | null;
 	}[];
+}
+
+// ── Template Classification & Question Types ─────────
+
+export interface TemplateClassificationData {
+	domain: string;
+	complexity: number;
+	confidence: number;
+	dimensions: string[];
+	suggested_title: string;
+	language: string;
+}
+
+export interface TemplateQuestionSchema {
+	id: string;
+	text: string;
+	type: string;
+	options: string[];
+	rationale: string;
+	required: boolean;
+	allow_other: boolean;
+}
+
+export interface TemplateReadinessSchema {
+	score: number;
+	covered_dimensions: string[];
+	uncovered_dimensions: string[];
+	summary: string;
+}
+
+export interface TemplateClassifyRequest {
+	input_type: "describe" | "text" | "file" | "url";
+	content: string;
+	title?: string;
+}
+
+export interface TemplateClassifyResponse {
+	classification: TemplateClassificationData;
+	questions: TemplateQuestionSchema[];
+	readiness: TemplateReadinessSchema | null;
+	is_rejected: boolean;
+	rejection_reason: string | null;
+	refinement_suggestions: string[];
+}
+
+export interface TemplateAnswerSubmission {
+	answers: Record<string, string>;
+	round: number;
+	classification: TemplateClassificationData;
+	previous_rounds: Record<string, unknown>[];
+	content: string | null;
+	raw_input: string;
+}
+
+export interface TemplateAnswerResponse {
+	next_questions: TemplateQuestionSchema[];
+	readiness: TemplateReadinessSchema | null;
+	next_round: number;
+	is_ready: boolean;
+}
+
+export interface TemplateGenerateStreamRequest {
+	raw_input: string;
+	classification: TemplateClassificationData;
+	qa_rounds: Record<string, unknown>[];
+	content: string | null;
+	title: string | null;
 }

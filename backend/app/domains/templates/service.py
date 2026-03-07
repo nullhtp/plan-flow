@@ -470,6 +470,8 @@ async def save_generated_template(
             title=t["title"],
             description=t.get("description", ""),
             is_goal_node=t.get("is_goal_node", False),
+            priority=t.get("priority"),
+            estimated_minutes=t.get("estimated_minutes"),
         )
         template_tasks.append(tt)
         task_id_map[input_id] = tt.id

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -215,6 +216,12 @@ class GenerateTemplateTaskInput(BaseModel):
     is_goal_node: bool = False
     depends_on: list[str] = Field(default_factory=list)
     subtasks: list[GenerateTemplateSubtaskInput] = Field(default_factory=list)
+    priority: str | None = Field(
+        default=None, description="Task priority: low, medium, or high"
+    )
+    estimated_minutes: int | None = Field(
+        default=None, description="Estimated time in minutes"
+    )
 
 
 class SaveGeneratedTemplateRequest(BaseModel):
@@ -225,3 +232,134 @@ class SaveGeneratedTemplateRequest(BaseModel):
     category_id: str | None = None
     visibility: str = "private"
     tasks: list[GenerateTemplateTaskInput] = Field(min_length=1)
+    create_board: bool = Field(
+        default=False,
+        description="If true, also create a board from the saved template",
+    )
+
+
+# ── Template Classification & Question Schemas ─────────
+
+
+class TemplateQuestionSchema(BaseModel):
+    """A single AI-generated question for the template question form."""
+
+    id: str
+    text: str
+    type: str = Field(description="One of: text, select, multiselect, number")
+    options: list[str] = Field(
+        min_length=3,
+        max_length=6,
+        description=("3-6 selectable options. Required for all question types."),
+    )
+    rationale: str
+    required: bool = True
+    allow_other: bool = True
+
+
+class TemplateReadinessSchema(BaseModel):
+    """Readiness assessment for template generation."""
+
+    score: float = Field(description="0.0-1.0 readiness score")
+    covered_dimensions: list[str] = Field(default_factory=list)
+    uncovered_dimensions: list[str] = Field(default_factory=list)
+    summary: str = Field(default="")
+
+
+class TemplateClassifyRequest(BaseModel):
+    """Request body for template classification."""
+
+    input_type: str = Field(
+        description="Input type: 'describe', 'text', 'file', or 'url'",
+    )
+    content: str = Field(
+        min_length=1,
+        max_length=50000,
+        description="The input content — description text or pre-extracted content",
+    )
+    title: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Optional title hint for the template",
+    )
+
+
+class TemplateClassificationData(BaseModel):
+    """Classification data returned from the classify endpoint."""
+
+    domain: str
+    complexity: int
+    confidence: float
+    dimensions: list[str]
+    suggested_title: str
+    language: str
+
+
+class TemplateClassifyResponse(BaseModel):
+    """Response from the template classify endpoint."""
+
+    classification: TemplateClassificationData
+    questions: list[TemplateQuestionSchema]
+    readiness: TemplateReadinessSchema | None = None
+    is_rejected: bool = False
+    rejection_reason: str | None = None
+    refinement_suggestions: list[str] = Field(default_factory=list)
+
+
+class TemplateAnswerSubmission(BaseModel):
+    """Request body for submitting answers to template questions."""
+
+    answers: dict[str, Any]
+    round: int = Field(ge=1, le=2, description="Round number (max 2)")
+    classification: TemplateClassificationData
+    previous_rounds: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Previous Q&A rounds for context",
+    )
+    content: str | None = Field(
+        default=None,
+        max_length=50000,
+        description="Original source content (for content-based inputs)",
+    )
+    raw_input: str = Field(
+        min_length=1,
+        max_length=50000,
+        description="Original input text (description or content summary)",
+    )
+
+
+class TemplateAnswerResponse(BaseModel):
+    """Response after submitting template answers."""
+
+    next_questions: list[TemplateQuestionSchema] = Field(default_factory=list)
+    readiness: TemplateReadinessSchema | None = None
+    next_round: int
+    is_ready: bool = Field(
+        default=False,
+        description="True when no more question rounds are needed",
+    )
+
+
+class TemplateGenerateStreamRequest(BaseModel):
+    """Request body for streaming template generation."""
+
+    raw_input: str = Field(
+        min_length=1,
+        max_length=50000,
+        description="Original input text (description or content)",
+    )
+    classification: TemplateClassificationData
+    qa_rounds: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="All Q&A rounds (questions + answers)",
+    )
+    content: str | None = Field(
+        default=None,
+        max_length=50000,
+        description="Source content (for content-based inputs)",
+    )
+    title: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Optional title for the template",
+    )

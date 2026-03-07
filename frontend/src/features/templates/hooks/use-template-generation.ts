@@ -4,6 +4,10 @@ import type {
 	ContentExtractionResponse,
 	GenerateTemplateResponse,
 	SaveGeneratedTemplateRequest,
+	TemplateAnswerResponse,
+	TemplateAnswerSubmission,
+	TemplateClassifyRequest,
+	TemplateClassifyResponse,
 	TemplateDetailResponse,
 } from "../types";
 
@@ -66,6 +70,32 @@ export function useSaveGeneratedTemplate() {
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["templates"] });
+		},
+	});
+}
+
+export function useTemplateClassify() {
+	return useMutation({
+		mutationFn: async (body: TemplateClassifyRequest): Promise<TemplateClassifyResponse> => {
+			const res = await customFetch<{ data: TemplateClassifyResponse }>("/api/templates/classify", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
+			return res.data;
+		},
+	});
+}
+
+export function useTemplateSubmitAnswers() {
+	return useMutation({
+		mutationFn: async (body: TemplateAnswerSubmission): Promise<TemplateAnswerResponse> => {
+			const res = await customFetch<{ data: TemplateAnswerResponse }>("/api/templates/answers", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
+			return res.data;
 		},
 	});
 }

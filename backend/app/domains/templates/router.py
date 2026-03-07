@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
@@ -21,14 +22,22 @@ from app.domains.templates.schemas import (
     GenerateTemplateSubtaskResponse,
     GenerateTemplateTaskResponse,
     SaveGeneratedTemplateRequest,
+    TemplateAnswerResponse,
+    TemplateAnswerSubmission,
     TemplateCategoryBrief,
     TemplateCategoryResponse,
+    TemplateClassificationData,
+    TemplateClassifyRequest,
+    TemplateClassifyResponse,
     TemplateCreateRequest,
     TemplateCreatorResponse,
     TemplateDetailResponse,
     TemplateEdgeResponse,
+    TemplateGenerateStreamRequest,
     TemplateListItemResponse,
     TemplateListResponse,
+    TemplateQuestionSchema,
+    TemplateReadinessSchema,
     TemplateSubtaskResponse,
     TemplateTaskResponse,
     TemplateUpdateRequest,
@@ -125,13 +134,241 @@ async def extract_url_endpoint(
     )
 
 
+@router.post("/classify", response_model=TemplateClassifyResponse)
+async def classify_template_endpoint(
+    body: TemplateClassifyRequest,
+    current_user: CurrentUser,
+) -> TemplateClassifyResponse:
+    """Classify template input and generate initial questions.
+
+    Accepts description-based or content-based inputs. Returns classification
+    data, initial questions, and readiness assessment. Session state is
+    returned to the client for subsequent requests (no server-side session).
+    """
+    from app.domains.ai.schemas import ClassificationOutput
+    from app.domains.ai.service import (
+        AIOutputError,
+        classify_template_content,
+        generate_template_questions,
+    )
+
+    # Step 1: Classify the input
+    raw_input = body.content
+    try:
+        classification: ClassificationOutput = await classify_template_content(
+            raw_input=raw_input,
+            input_type=body.input_type,
+            content=body.content if body.input_type != "describe" else None,
+            title_hint=body.title,
+        )
+    except AIOutputError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Classification failed: {e}",
+        ) from None
+
+    # Check for rejection (too vague)
+    if classification.confidence < 0.3:
+        return TemplateClassifyResponse(
+            classification=TemplateClassificationData(
+                domain=classification.domain,
+                complexity=classification.complexity,
+                confidence=classification.confidence,
+                dimensions=classification.dimensions,
+                suggested_title=classification.suggested_title,
+                language=classification.language,
+            ),
+            questions=[],
+            is_rejected=True,
+            rejection_reason=classification.rejection_reason
+            or "This input is too vague to create a useful template.",
+            refinement_suggestions=classification.refinement_suggestions,
+        )
+
+    # Step 2: Generate initial questions
+    content_for_questions = body.content if body.input_type != "describe" else None
+    try:
+        questions_output = await generate_template_questions(
+            raw_input=raw_input,
+            classification=classification,
+            content=content_for_questions,
+        )
+    except AIOutputError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Question generation failed: {e}",
+        ) from None
+
+    questions = [
+        TemplateQuestionSchema.model_validate(q.model_dump())
+        for q in questions_output.questions
+    ]
+
+    readiness = None
+    if questions_output.readiness:
+        readiness = TemplateReadinessSchema.model_validate(
+            questions_output.readiness.model_dump()
+        )
+
+    return TemplateClassifyResponse(
+        classification=TemplateClassificationData(
+            domain=classification.domain,
+            complexity=classification.complexity,
+            confidence=classification.confidence,
+            dimensions=classification.dimensions,
+            suggested_title=classification.suggested_title,
+            language=classification.language,
+        ),
+        questions=questions,
+        readiness=readiness,
+    )
+
+
+@router.post("/answers", response_model=TemplateAnswerResponse)
+async def submit_template_answers_endpoint(
+    body: TemplateAnswerSubmission,
+    current_user: CurrentUser,
+) -> TemplateAnswerResponse:
+    """Submit answers to template questions and get follow-up questions.
+
+    Session state (classification, previous rounds, content) is passed in
+    the request body. Max 1 follow-up round (round 2) is supported.
+    """
+    from app.domains.ai.schemas import ClassificationOutput
+    from app.domains.ai.service import generate_template_follow_up_questions
+
+    # Reconstruct ClassificationOutput from the request data
+    classification = ClassificationOutput(
+        reasoning="",
+        domain=body.classification.domain,
+        complexity=body.classification.complexity,
+        confidence=body.classification.confidence,
+        dimensions=body.classification.dimensions,
+        suggested_title=body.classification.suggested_title,
+        language=body.classification.language,
+    )
+
+    # Build rounds data for the follow-up generator
+    # Current round answers are added to the rounds list
+    current_round = {
+        "round": body.round,
+        "questions": [
+            r.model_dump() if hasattr(r, "model_dump") else r
+            for r in body.previous_rounds[-1].get("questions", [])
+        ]
+        if body.previous_rounds
+        else [],
+        "answers": body.answers,
+    }
+
+    # Build the full rounds list with answers merged in
+    all_rounds: list[dict[str, Any]] = []
+    if body.previous_rounds:
+        for r in body.previous_rounds:
+            round_data = dict(r)
+            if r.get("round") == body.round:
+                round_data["answers"] = body.answers
+            all_rounds.append(round_data)
+    else:
+        all_rounds.append(current_round)
+
+    # Max 1 follow-up round — if this is round 2 or later, no more questions
+    if body.round >= 2:
+        return TemplateAnswerResponse(
+            next_questions=[],
+            readiness=None,
+            next_round=body.round + 1,
+            is_ready=True,
+        )
+
+    # Generate follow-up questions (round 2)
+    follow_up = await generate_template_follow_up_questions(
+        raw_input=body.raw_input,
+        classification=classification,
+        rounds=all_rounds,
+        content=body.content,
+    )
+
+    if follow_up is None or not follow_up.questions:
+        return TemplateAnswerResponse(
+            next_questions=[],
+            readiness=None,
+            next_round=body.round + 1,
+            is_ready=True,
+        )
+
+    next_questions = [
+        TemplateQuestionSchema.model_validate(q.model_dump())
+        for q in follow_up.questions
+    ]
+
+    readiness = None
+    if follow_up.readiness:
+        readiness = TemplateReadinessSchema.model_validate(
+            follow_up.readiness.model_dump()
+        )
+
+    return TemplateAnswerResponse(
+        next_questions=next_questions,
+        readiness=readiness,
+        next_round=body.round + 1,
+        is_ready=False,
+    )
+
+
+@router.post("/generate/stream")
+async def generate_template_stream_endpoint(
+    body: TemplateGenerateStreamRequest,
+    current_user: CurrentUser,
+) -> StreamingResponse:
+    """Generate a template using AI, streaming progress via SSE.
+
+    Returns a text/event-stream response with events:
+    - research_started, research_progress, research_complete
+    - skeleton_ready: template title, tasks (id, title, depends_on, is_goal_node)
+    - task_enriched: task_id, description, priority, estimated_minutes, subtasks
+    - generation_complete: template title, failed_tasks
+    - generation_error: error message
+    """
+    from app.domains.ai.service import generate_template_stream
+
+    # Format Q&A pairs from the rounds data
+    qa_lines: list[str] = []
+    for r in body.qa_rounds:
+        questions = r.get("questions", [])
+        answers = r.get("answers", {})
+        for q in questions:
+            qid = q.get("id", "")
+            text = q.get("text", "")
+            answer = answers.get(qid, "(not answered)")
+            qa_lines.append(f"Q: {text}\nA: {answer}")
+    qa_pairs = "\n".join(qa_lines) if qa_lines else "(no questions answered)"
+
+    return StreamingResponse(
+        generate_template_stream(
+            raw_input=body.raw_input,
+            domain=body.classification.domain,
+            complexity=body.classification.complexity,
+            dimensions=body.classification.dimensions,
+            qa_pairs=qa_pairs,
+            language=body.classification.language,
+            content=body.content,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.post("/generate", response_model=GenerateTemplateResponse)
 async def generate_template_endpoint(
     body: GenerateTemplateRequest,
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> GenerateTemplateResponse:
-    """Generate a template DAG from text content using AI."""
+    """Generate a template DAG from text content using AI (legacy)."""
     from app.domains.ai.service import AIOutputError, generate_template_from_content
 
     # Get category slugs for the prompt
@@ -181,7 +418,12 @@ async def save_generated_template_endpoint(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TemplateDetailResponse:
-    """Save a generated (and optionally edited) template."""
+    """Save a generated (and optionally edited) template.
+
+    Accepts the full edited template structure including tasks with
+    priority, estimated_minutes, and modified dependencies from the
+    DAG editor. Optionally creates a board from the saved template.
+    """
     tasks_dicts = [
         {
             "id": t.id or f"t{i}",
@@ -190,6 +432,8 @@ async def save_generated_template_endpoint(
             "is_goal_node": t.is_goal_node,
             "depends_on": t.depends_on,
             "subtasks": [{"title": s.title} for s in t.subtasks],
+            "priority": t.priority,
+            "estimated_minutes": t.estimated_minutes,
         }
         for i, t in enumerate(body.tasks)
     ]
@@ -203,6 +447,15 @@ async def save_generated_template_endpoint(
         category_id=body.category_id,
         visibility=body.visibility,
     )
+
+    # Optionally create a board from the saved template
+    if body.create_board:
+        await create_board_from_template(
+            session,
+            template_id=template.id,
+            user_id=current_user.id,
+            title=body.title,
+        )
 
     full = await get_template(session, template.id, current_user.id)
     return _build_detail_response(full, current_user)

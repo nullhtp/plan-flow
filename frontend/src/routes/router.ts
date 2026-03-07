@@ -12,6 +12,7 @@ import { registerRoute } from "./register";
 import { settingsRoute } from "./settings";
 import { templatesRoute } from "./templates";
 import { templateDetailRoute } from "./templates.$templateId";
+import { templatesGenerateRoute } from "./templates.generate";
 
 const routeTree = rootRoute.addChildren([
 	loginRoute,
@@ -25,6 +26,7 @@ const routeTree = rootRoute.addChildren([
 		boardExpandTaskRoute,
 		settingsRoute,
 		templatesRoute,
+		templatesGenerateRoute,
 		templateDetailRoute,
 	]),
 ]);
