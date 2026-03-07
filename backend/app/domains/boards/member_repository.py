@@ -52,9 +52,6 @@ class MemberRepository:
 
     async def list_boards_for_user(self, user_id: str) -> list[str]:
         """Return board IDs where user is a collaborator."""
-        stmt = (
-            select(BoardMember.board_id)
-            .where(BoardMember.user_id == user_id)
-        )
+        stmt = select(BoardMember.board_id).where(BoardMember.user_id == user_id)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

@@ -62,9 +62,7 @@ async def _create_template(
 
 
 @pytest.mark.asyncio
-async def test_list_categories(
-    client: AsyncClient, session: AsyncSession
-) -> None:
+async def test_list_categories(client: AsyncClient, session: AsyncSession) -> None:
     """GET /api/templates/categories returns seeded categories."""
     await _seed_categories(session)
     resp = await client.get("/api/templates/categories")

@@ -373,24 +373,28 @@ async def list_board_members(
     if goal is not None:
         owner = await session.get(User, goal.user_id)
         if owner is not None:
-            members.append({
-                "user_id": owner.id,
-                "email": owner.email,
-                "role": "owner",
-                "joined_at": board.created_at,
-            })
+            members.append(
+                {
+                    "user_id": owner.id,
+                    "email": owner.email,
+                    "role": "owner",
+                    "joined_at": board.created_at,
+                }
+            )
 
     member_repo = MemberRepository(session)
     board_members = await member_repo.list_by_board(board_id)
     for bm in board_members:
         member_user = await session.get(User, bm.user_id)
         if member_user is not None:
-            members.append({
-                "user_id": member_user.id,
-                "email": member_user.email,
-                "role": bm.role,
-                "joined_at": bm.joined_at,
-            })
+            members.append(
+                {
+                    "user_id": member_user.id,
+                    "email": member_user.email,
+                    "role": bm.role,
+                    "joined_at": bm.joined_at,
+                }
+            )
 
     return members
 
