@@ -404,3 +404,60 @@ class ActionConfirmResponse(BaseModel):
     description: str | None = Field(default=None)
     error: str | None = Field(default=None)
     result: dict | None = Field(default=None)  # pyright: ignore[reportMissingTypeArgument]
+
+
+# ── Template Generation Schemas ────────────────────────
+
+
+class TemplateGenSubtaskOutput(BaseModel):
+    """A subtask within a generated template task."""
+
+    title: str = Field(description="Concise, actionable subtask title")
+
+
+class TemplateGenTaskOutput(BaseModel):
+    """A single task in the AI-generated template output."""
+
+    id: str = Field(
+        description="Unique task identifier, e.g. 't1', 't2'",
+    )
+    title: str = Field(description="Concise, actionable task title")
+    description: str = Field(
+        default="",
+        description="Brief description of what this task involves",
+    )
+    depends_on: list[str] = Field(
+        default_factory=list,
+        description="List of task IDs this task depends on (prerequisites)",
+    )
+    is_goal_node: bool = Field(
+        default=False,
+        description="True for the single final goal completion task",
+    )
+    subtasks: list[TemplateGenSubtaskOutput] = Field(
+        default_factory=list,
+        description="2-5 concrete subtasks that break down this task",
+    )
+
+
+class TemplateGenerationOutput(BaseModel):
+    """Structured output from AI template generation."""
+
+    reasoning: str = Field(
+        default="",
+        description="Chain-of-thought reasoning about how to structure the template",
+    )
+    suggested_title: str = Field(
+        description="A concise title for the template",
+    )
+    suggested_description: str = Field(
+        default="",
+        description="A brief description of what the template covers",
+    )
+    suggested_category_slug: str = Field(
+        default="other",
+        description="Category slug from the available list",
+    )
+    tasks: list[TemplateGenTaskOutput] = Field(
+        description="Flat list of tasks forming a DAG (5-30 tasks)",
+    )

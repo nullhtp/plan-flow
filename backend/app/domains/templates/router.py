@@ -5,15 +5,22 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
 from app.domains.auth.deps import CurrentUser
 from app.domains.auth.models import User
 from app.domains.templates.schemas import (
+    ContentExtractionResponse,
     CreateBoardFromTemplateRequest,
     CreateBoardFromTemplateResponse,
+    ExtractUrlRequest,
+    GenerateTemplateRequest,
+    GenerateTemplateResponse,
+    GenerateTemplateSubtaskResponse,
+    GenerateTemplateTaskResponse,
+    SaveGeneratedTemplateRequest,
     TemplateCategoryBrief,
     TemplateCategoryResponse,
     TemplateCreateRequest,
@@ -33,6 +40,7 @@ from app.domains.templates.service import (
     get_template,
     list_categories,
     list_templates,
+    save_generated_template,
     update_template,
 )
 
@@ -51,6 +59,154 @@ async def list_categories_endpoint(
     """List all template categories with public template counts."""
     categories = await list_categories(session)
     return [TemplateCategoryResponse(**c) for c in categories]
+
+
+# ── Template Generation Endpoints ──────────────────────
+
+
+@router.post(
+    "/extract-content/file",
+    response_model=ContentExtractionResponse,
+)
+async def extract_file_endpoint(
+    file: UploadFile,
+    current_user: CurrentUser,
+) -> ContentExtractionResponse:
+    """Extract text content from an uploaded file (PDF, DOCX, TXT, MD)."""
+    from app.domains.ai.content_extraction import (
+        ExtractionError,
+        extract_from_file,
+    )
+
+    data = await file.read()
+    try:
+        result = extract_from_file(data, file.filename or "unknown")
+    except ExtractionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+    return ContentExtractionResponse(
+        content=result.content,
+        source_type=result.source_type,
+        source_name=result.source_name,
+        char_count=result.char_count,
+        truncated=result.truncated,
+    )
+
+
+@router.post(
+    "/extract-content/url",
+    response_model=ContentExtractionResponse,
+)
+async def extract_url_endpoint(
+    body: ExtractUrlRequest,
+    current_user: CurrentUser,
+) -> ContentExtractionResponse:
+    """Extract text content from a URL."""
+    from app.domains.ai.content_extraction import (
+        ExtractionError,
+        extract_from_url,
+    )
+
+    try:
+        result = await extract_from_url(body.url)
+    except ExtractionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+    return ContentExtractionResponse(
+        content=result.content,
+        source_type=result.source_type,
+        source_name=result.source_name,
+        char_count=result.char_count,
+        truncated=result.truncated,
+    )
+
+
+@router.post("/generate", response_model=GenerateTemplateResponse)
+async def generate_template_endpoint(
+    body: GenerateTemplateRequest,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> GenerateTemplateResponse:
+    """Generate a template DAG from text content using AI."""
+    from app.domains.ai.service import AIOutputError, generate_template_from_content
+
+    # Get category slugs for the prompt
+    categories = await list_categories(session)
+    category_slugs = [c["slug"] for c in categories]
+
+    try:
+        output = await generate_template_from_content(
+            content=body.content,
+            category_slugs=category_slugs,
+            title_hint=body.title or "",
+        )
+    except AIOutputError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Template generation failed: {e}",
+        )
+
+    return GenerateTemplateResponse(
+        suggested_title=output.suggested_title,
+        suggested_description=output.suggested_description,
+        suggested_category_slug=output.suggested_category_slug,
+        tasks=[
+            GenerateTemplateTaskResponse(
+                id=t.id,
+                title=t.title,
+                description=t.description,
+                is_goal_node=t.is_goal_node,
+                depends_on=t.depends_on,
+                subtasks=[
+                    GenerateTemplateSubtaskResponse(title=s.title)
+                    for s in t.subtasks
+                ],
+            )
+            for t in output.tasks
+        ],
+        task_count=len(output.tasks),
+    )
+
+
+@router.post(
+    "/save-generated",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TemplateDetailResponse,
+)
+async def save_generated_template_endpoint(
+    body: SaveGeneratedTemplateRequest,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TemplateDetailResponse:
+    """Save a generated (and optionally edited) template."""
+    tasks_dicts = [
+        {
+            "id": f"t{i}",
+            "title": t.title,
+            "description": t.description,
+            "is_goal_node": t.is_goal_node,
+            "depends_on": t.depends_on,
+            "subtasks": [{"title": s.title} for s in t.subtasks],
+        }
+        for i, t in enumerate(body.tasks)
+    ]
+
+    template = await save_generated_template(
+        session,
+        user_id=current_user.id,
+        title=body.title,
+        tasks_input=tasks_dicts,
+        description=body.description,
+        category_id=body.category_id,
+        visibility=body.visibility,
+    )
+
+    full = await get_template(session, template.id, current_user.id)
+    return _build_detail_response(full, current_user)
 
 
 # ── Template CRUD Endpoints ─────────────────────────────
