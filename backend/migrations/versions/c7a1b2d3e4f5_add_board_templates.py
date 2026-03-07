@@ -9,6 +9,7 @@ Create Date: 2026-03-07 12:00:00.000000
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from alembic import op
@@ -166,6 +167,7 @@ def upgrade() -> None:
         sa.column("display_order", sa.Integer),
         sa.column("created_at", sa.DateTime(timezone=True)),
     )
+    now = datetime.now(UTC)
     op.bulk_insert(
         template_category,
         [
@@ -176,7 +178,7 @@ def upgrade() -> None:
                 "description": desc,
                 "icon": icon,
                 "display_order": order,
-                "created_at": sa.func.now(),
+                "created_at": now,
             }
             for name, slug, desc, icon, order in SEED_CATEGORIES
         ],
