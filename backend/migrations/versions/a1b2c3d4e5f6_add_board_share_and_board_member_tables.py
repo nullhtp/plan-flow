@@ -38,9 +38,7 @@ def upgrade() -> None:
         sa.Column("id", sa.String(), nullable=False),
         sa.Column("board_id", sa.String(), nullable=False),
         sa.Column("user_id", sa.String(), nullable=False),
-        sa.Column(
-            "role", sa.String(20), nullable=False, server_default="collaborator"
-        ),
+        sa.Column("role", sa.String(20), nullable=False, server_default="collaborator"),
         sa.Column("joined_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["board_id"], ["board.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["user.id"]),

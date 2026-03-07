@@ -369,9 +369,7 @@ async def test_shared_boards_list_empty_for_owner(
 
 
 @pytest.mark.asyncio
-async def test_get_user_role_owner(
-    session: AsyncSession, answered_goal: Goal
-) -> None:
+async def test_get_user_role_owner(session: AsyncSession, answered_goal: Goal) -> None:
     board, _ = await create_test_board(session, answered_goal)
     role = await get_user_role_for_board(session, board.id, answered_goal.user_id)
     assert role == "owner"

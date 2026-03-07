@@ -101,11 +101,8 @@ class BoardTemplateRepository:
 
         Returns dict with keys: items, total, page, per_page, total_pages.
         """
-        stmt = (
-            select(BoardTemplate)
-            .options(
-                selectinload(BoardTemplate.category),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-            )
+        stmt = select(BoardTemplate).options(
+            selectinload(BoardTemplate.category),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         )
 
         # Visibility filter

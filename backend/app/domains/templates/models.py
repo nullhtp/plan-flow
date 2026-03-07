@@ -30,9 +30,7 @@ class TemplateCategory(SQLModel, table=True):
     name: str = Field(sa_column=Column(String(100), nullable=False, unique=True))
     slug: str = Field(sa_column=Column(String(100), nullable=False, unique=True))
     description: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
-    icon: str | None = Field(
-        default=None, sa_column=Column(String(50), nullable=True)
-    )
+    icon: str | None = Field(default=None, sa_column=Column(String(50), nullable=True))
     display_order: int = Field(
         default=0, sa_column=Column(Integer, nullable=False, server_default="0")
     )
@@ -64,9 +62,7 @@ class BoardTemplate(SQLModel, table=True):
         ),
     )
     title: str = Field(sa_column=Column(String(200), nullable=False))
-    description: str | None = Field(
-        default=None, sa_column=Column(Text, nullable=True)
-    )
+    description: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     visibility: str = Field(
         default="private",
         sa_column=Column(String(20), nullable=False, server_default="private"),
