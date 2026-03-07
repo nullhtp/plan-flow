@@ -12,7 +12,6 @@ from app.domains.boards.member_repository import MemberRepository
 from app.domains.boards.models import Board, BoardShare
 from app.domains.boards.ownership import (
     BoardNotFoundError,
-    get_user_role_for_board,
     validate_board_access,
     validate_board_ownership,
 )
@@ -38,7 +37,8 @@ async def list_boards(
     """Return boards for a user with summary stats.
 
     When shared=False (default), returns owned boards with role="owner".
-    When shared=True, returns boards where user is a collaborator with role="collaborator".
+    When shared=True, returns boards where user is a collaborator
+    with role="collaborator".
     """
     repo = BoardRepository(session)
     if shared:
@@ -335,11 +335,19 @@ async def join_board_via_token(
     member_repo = MemberRepository(session)
     existing = await member_repo.get_by_board_and_user(board.id, user_id)
     if existing is not None:
-        return {"board_id": board.id, "board_title": board.title, "role": "collaborator"}
+        return {
+            "board_id": board.id,
+            "board_title": board.title,
+            "role": "collaborator",
+        }
 
     await member_repo.create(board.id, user_id)
     await session.commit()
-    return {"board_id": board.id, "board_title": board.title, "role": "collaborator"}
+    return {
+        "board_id": board.id,
+        "board_title": board.title,
+        "role": "collaborator",
+    }
 
 
 # ── Member Management ────────────────────────────────────

@@ -42,6 +42,7 @@ from app.domains.ai.schemas import (
     ReadinessAssessment,
     SubtaskActionOutput,
     SubtaskActionsResponse,
+    TemplateGenerationOutput,
 )
 from app.domains.boards.dag_utils import (
     CyclicDependencyError,
@@ -331,7 +332,7 @@ async def generate_template_from_content(
     content: str,
     category_slugs: list[str],
     title_hint: str = "",
-) -> "TemplateGenerationOutput":
+) -> TemplateGenerationOutput:
     """Generate a template DAG from text content using a single LLM call.
 
     Follows the same structured-output pattern as generate_subtask_actions.
@@ -373,7 +374,7 @@ async def generate_template_from_content(
     return await _retry_async(_call)
 
 
-def _validate_template_dag(output: "TemplateGenerationOutput") -> None:
+def _validate_template_dag(output: TemplateGenerationOutput) -> None:
     """Validate that the template generation output forms a valid DAG.
 
     Reuses the same dag_utils as board generation — DRY.

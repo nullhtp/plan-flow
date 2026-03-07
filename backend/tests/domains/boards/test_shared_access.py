@@ -1,4 +1,7 @@
-"""Integration tests for board sharing: share links, join, members, and access validation."""
+"""Integration tests for board sharing.
+
+Covers share links, join, members, and access validation.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +16,6 @@ from app.domains.boards.ownership import get_user_role_for_board
 from app.domains.goals.models import Goal
 from app.main import app
 from tests.conftest import create_test_board
-
 
 # ── Helpers ──────────────────────────────────────────────
 
@@ -58,7 +60,11 @@ async def board_with_owner(session: AsyncSession, answered_goal: Goal):
     return await create_test_board(session, answered_goal)
 
 
-async def _create_share_and_join(owner_client: AsyncClient, other_client: AsyncClient, board_id: str) -> str:
+async def _create_share_and_join(
+    owner_client: AsyncClient,
+    other_client: AsyncClient,
+    board_id: str,
+) -> str:
     """Helper: create share link and join as other user. Returns token."""
     share_resp = await owner_client.post(f"/api/boards/{board_id}/share")
     token = share_resp.json()["token"]
@@ -90,14 +96,18 @@ async def test_get_share_link(owner_client: AsyncClient, board_with_owner) -> No
 
 
 @pytest.mark.asyncio
-async def test_get_share_link_not_found(owner_client: AsyncClient, board_with_owner) -> None:
+async def test_get_share_link_not_found(
+    owner_client: AsyncClient, board_with_owner
+) -> None:
     board, _ = board_with_owner
     resp = await owner_client.get(f"/api/boards/{board.id}/share")
     assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_regenerate_share_link(owner_client: AsyncClient, board_with_owner) -> None:
+async def test_regenerate_share_link(
+    owner_client: AsyncClient, board_with_owner
+) -> None:
     board, _ = board_with_owner
     resp1 = await owner_client.post(f"/api/boards/{board.id}/share")
     token1 = resp1.json()["token"]
@@ -117,7 +127,9 @@ async def test_delete_share_link(owner_client: AsyncClient, board_with_owner) ->
 
 
 @pytest.mark.asyncio
-async def test_delete_share_link_not_found(owner_client: AsyncClient, board_with_owner) -> None:
+async def test_delete_share_link_not_found(
+    owner_client: AsyncClient, board_with_owner
+) -> None:
     board, _ = board_with_owner
     resp = await owner_client.delete(f"/api/boards/{board.id}/share")
     assert resp.status_code == 404

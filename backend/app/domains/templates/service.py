@@ -131,7 +131,10 @@ async def create_template_from_board(
     for task in board.tasks:
         for dep in task.dependencies:
             # Only add if both tasks are in our map (same board)
-            if dep.dependency_task_id in task_id_map and dep.dependent_task_id in task_id_map:
+            if (
+                dep.dependency_task_id in task_id_map
+                and dep.dependent_task_id in task_id_map
+            ):
                 td = TemplateTaskDependency(
                     template_id=template.id,
                     dependent_task_id=task_id_map[dep.dependent_task_id],
@@ -426,12 +429,12 @@ async def save_generated_template(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Tasks contain a dependency cycle",
-        )
+        ) from None
     except GoalNodeValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e),
-        )
+        ) from None
 
     # Validate category if provided
     if category_id:

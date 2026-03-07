@@ -171,7 +171,7 @@ export function SubBoardCreationFlow({
 
 	const questionsQuery = useSubBoardQuestionsEndpointApiTasksTaskIdSubBoardQuestionsPost({
 		mutation: {
-			onSuccess: (response) => {
+			onSuccess: (response: any) => {
 				if (response.status !== 200) return;
 				// Cast the loosely-typed question items to QuestionSchema
 				const qs = (response.data.questions ?? []) as unknown as QuestionSchema[];
@@ -187,7 +187,7 @@ export function SubBoardCreationFlow({
 
 	const generateMutation = useGenerateSubBoardEndpointApiTasksTaskIdGenerateSubBoardPost({
 		mutation: {
-			onSuccess: (response) => {
+			onSuccess: (response: any) => {
 				if (response.status !== 200) return;
 				setFlowState("complete");
 				// Invalidate the board query to refresh the DAG with sub-board data

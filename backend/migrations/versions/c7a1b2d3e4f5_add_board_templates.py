@@ -23,13 +23,19 @@ depends_on = None
 SEED_CATEGORIES = [
     ("Career", "career", "Career growth and job-related goals", "briefcase", 1),
     ("Travel", "travel", "Travel planning and relocation", "plane", 2),
-    ("Health & Fitness", "health-fitness", "Health, fitness, and wellness goals", "heart", 3),
+    (
+        "Health & Fitness", "health-fitness",
+        "Health, fitness, and wellness goals", "heart", 3,
+    ),
     ("Education", "education", "Learning and skill development", "graduation-cap", 4),
     ("Finance", "finance", "Financial planning and budgeting", "wallet", 5),
     ("Home & Living", "home-living", "Home improvement and lifestyle", "home", 6),
     ("Projects", "projects", "Side projects and creative work", "rocket", 7),
     ("Events", "events", "Event planning and organization", "calendar", 8),
-    ("Personal Development", "personal-development", "Self-improvement and habits", "star", 9),
+    (
+        "Personal Development", "personal-development",
+        "Self-improvement and habits", "star", 9,
+    ),
     ("Other", "other", "Miscellaneous goals", "folder", 10),
 ]
 
@@ -58,7 +64,10 @@ def upgrade() -> None:
         sa.Column("category_id", sa.String(), nullable=True),
         sa.Column("title", sa.String(200), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("visibility", sa.String(20), nullable=False, server_default="private"),
+        sa.Column(
+            "visibility", sa.String(20),
+            nullable=False, server_default="private",
+        ),
         sa.Column("source_board_id", sa.String(), nullable=True),
         sa.Column("task_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),

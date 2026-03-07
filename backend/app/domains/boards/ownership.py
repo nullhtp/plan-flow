@@ -5,7 +5,8 @@ Each function loads the entity, walks the ownership chain
 error if the requesting user does not have access.
 
 Owner = goal.user_id (full control).
-Collaborator = board_member record (everything except board deletion / share management).
+Collaborator = board_member record
+(everything except board deletion / share management).
 """
 
 from __future__ import annotations
@@ -141,7 +142,7 @@ async def validate_board_access(
 async def validate_task_ownership(
     session: AsyncSession, task_id: str, user_id: str
 ) -> Task:
-    """Return task if user has access (owner or collaborator), else raise TaskNotFoundError."""
+    """Return task if user has access, else raise TaskNotFoundError."""
     task = await session.get(Task, task_id)
     if task is None:
         raise TaskNotFoundError
@@ -158,7 +159,7 @@ async def validate_task_ownership(
 async def validate_subtask_ownership(
     session: AsyncSession, subtask_id: str, user_id: str
 ) -> Subtask:
-    """Return subtask if user has access (owner or collaborator), else raise SubtaskNotFoundError."""
+    """Return subtask if user has access, else raise SubtaskNotFoundError."""
     subtask = await session.get(Subtask, subtask_id)
     if subtask is None:
         raise SubtaskNotFoundError
@@ -178,7 +179,7 @@ async def validate_subtask_ownership(
 async def validate_artifact_ownership(
     session: AsyncSession, artifact_id: str, user_id: str
 ) -> Artifact:
-    """Return artifact if user has access (owner or collaborator), else raise ArtifactNotFoundError."""
+    """Return artifact if user has access, else raise ArtifactNotFoundError."""
     artifact = await session.get(Artifact, artifact_id)
     if artifact is None:
         raise ArtifactNotFoundError

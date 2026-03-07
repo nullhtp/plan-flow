@@ -169,7 +169,7 @@ function BoardExpandTaskPage() {
 
 	const questionsQuery = useSubBoardQuestionsEndpointApiTasksTaskIdSubBoardQuestionsPost({
 		mutation: {
-			onSuccess: (response) => {
+			onSuccess: (response: any) => {
 				if (response.status !== 200) return;
 				const qs = (response.data.questions ?? []) as unknown as QuestionSchema[];
 				setPageState({ step: "questions", questions: qs });

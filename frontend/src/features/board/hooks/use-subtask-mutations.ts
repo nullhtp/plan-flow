@@ -19,7 +19,7 @@ export function useSubtaskMutations(boardId: string) {
 
 	const createSubtask = useCreateSubtaskEndpointApiTasksTaskIdSubtasksPost({
 		mutation: {
-			onSuccess: (response, variables) => {
+			onSuccess: (response: any, variables: any) => {
 				invalidateBoard();
 
 				// Fire-and-forget action generation for the newly created subtask
