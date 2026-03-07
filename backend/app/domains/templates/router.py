@@ -162,8 +162,7 @@ async def generate_template_endpoint(
                 is_goal_node=t.is_goal_node,
                 depends_on=t.depends_on,
                 subtasks=[
-                    GenerateTemplateSubtaskResponse(title=s.title)
-                    for s in t.subtasks
+                    GenerateTemplateSubtaskResponse(title=s.title) for s in t.subtasks
                 ],
             )
             for t in output.tasks
@@ -272,7 +271,9 @@ async def list_templates_endpoint(
                     id=t.category.id,
                     name=t.category.name,
                     slug=t.category.slug,
-                ) if t.category else None,
+                )
+                if t.category
+                else None,
                 task_count=t.task_count,
                 creator=TemplateCreatorResponse(
                     id=t.user_id,
@@ -410,7 +411,9 @@ def _build_detail_response(
             id=t.category.id,
             name=t.category.name,
             slug=t.category.slug,
-        ) if t.category else None,
+        )
+        if t.category
+        else None,
         task_count=t.task_count,
         creator=TemplateCreatorResponse(
             id=t.user_id,

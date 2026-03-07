@@ -231,14 +231,10 @@ async def get_share_link_endpoint(
     from app.core.config import settings
 
     url = f"{settings.frontend_origin}/join?token={share.token}"
-    return ShareLinkResponse(
-        token=share.token, url=url, created_at=share.created_at
-    )
+    return ShareLinkResponse(token=share.token, url=url, created_at=share.created_at)
 
 
-@router.delete(
-    "/{board_id}/share", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/{board_id}/share", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_share_link_endpoint(
     board_id: str,
     current_user: CurrentUser,
@@ -246,9 +242,7 @@ async def delete_share_link_endpoint(
 ) -> None:
     """Delete the share link. Owner-only."""
     try:
-        deleted = await delete_share_link(
-            session, board_id, current_user.id
-        )
+        deleted = await delete_share_link(session, board_id, current_user.id)
     except BoardNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
