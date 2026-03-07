@@ -95,3 +95,48 @@ export interface TemplateUpdateRequest {
 export interface CreateBoardFromTemplateRequest {
 	title?: string | null;
 }
+
+// ── Template Generation Types ────────────────────────
+
+export interface ContentExtractionResponse {
+	content: string;
+	source_type: string;
+	source_name: string;
+	char_count: number;
+	truncated: boolean;
+}
+
+export interface GenerateTemplateSubtaskResponse {
+	title: string;
+}
+
+export interface GenerateTemplateTaskResponse {
+	id: string;
+	title: string;
+	description: string;
+	is_goal_node: boolean;
+	depends_on: string[];
+	subtasks: GenerateTemplateSubtaskResponse[];
+}
+
+export interface GenerateTemplateResponse {
+	suggested_title: string;
+	suggested_description: string;
+	suggested_category_slug: string;
+	tasks: GenerateTemplateTaskResponse[];
+	task_count: number;
+}
+
+export interface SaveGeneratedTemplateRequest {
+	title: string;
+	description?: string | null;
+	category_id?: string | null;
+	visibility?: string;
+	tasks: {
+		title: string;
+		description: string;
+		is_goal_node: boolean;
+		depends_on: string[];
+		subtasks: { title: string }[];
+	}[];
+}

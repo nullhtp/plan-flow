@@ -383,3 +383,131 @@ async def create_board_from_template(
         "goal_id": goal.id,
         "title": board_title,
     }
+
+
+async def save_generated_template(
+    session: AsyncSession,
+    user_id: str,
+    title: str,
+    tasks_input: list[dict[str, Any]],
+    description: str | None = None,
+    category_id: str | None = None,
+    visibility: str = "private",
+) -> BoardTemplate:
+    """Save a generated (and optionally user-edited) template.
+
+    Validates DAG structure, then persists as BoardTemplate with
+    tasks, dependencies, and subtasks in a single transaction.
+    """
+    from app.domains.boards.dag_utils import (
+        CyclicDependencyError,
+        GoalNodeValidationError,
+        validate_dag,
+        validate_goal_node,
+    )
+
+    # Build temporary IDs for validation
+    task_ids = [t.get("id", f"t{i}") or f"t{i}" for i, t in enumerate(tasks_input)]
+    task_id_set = set(task_ids)
+    goal_flags = {
+        tid: t.get("is_goal_node", False)
+        for tid, t in zip(task_ids, tasks_input, strict=False)
+    }
+    edges: list[tuple[str, str]] = []
+    for tid, t in zip(task_ids, tasks_input, strict=False):
+        for dep_id in t.get("depends_on", []):
+            if dep_id in task_id_set:
+                edges.append((dep_id, tid))
+
+    try:
+        validate_dag(task_ids, edges)
+        validate_goal_node(task_ids, goal_flags, edges)
+    except CyclicDependencyError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Tasks contain a dependency cycle",
+        )
+    except GoalNodeValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+
+    # Validate category if provided
+    if category_id:
+        cat_repo = TemplateCategoryRepository(session)
+        cat = await cat_repo.get_by_id(category_id)
+        if cat is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid category",
+            )
+
+    # Create template
+    template_repo = BoardTemplateRepository(session)
+    template = BoardTemplate(
+        user_id=user_id,
+        category_id=category_id,
+        title=title,
+        description=description,
+        visibility=visibility,
+        task_count=len(tasks_input),
+    )
+    await template_repo.create(template)
+
+    # Create tasks, mapping input IDs to real DB IDs
+    task_id_map: dict[str, str] = {}
+    task_repo = TemplateTaskRepository(session)
+    template_tasks: list[TemplateTask] = []
+
+    for i, t in enumerate(tasks_input):
+        input_id = t.get("id", f"t{i}") or f"t{i}"
+        tt = TemplateTask(
+            template_id=template.id,
+            title=t["title"],
+            description=t.get("description", ""),
+            is_goal_node=t.get("is_goal_node", False),
+        )
+        template_tasks.append(tt)
+        task_id_map[input_id] = tt.id
+
+    await task_repo.bulk_create(template_tasks)
+
+    # Create dependencies
+    dep_repo = TemplateTaskDependencyRepository(session)
+    template_deps: list[TemplateTaskDependency] = []
+    for i, t in enumerate(tasks_input):
+        input_id = t.get("id", f"t{i}") or f"t{i}"
+        for dep_input_id in t.get("depends_on", []):
+            if dep_input_id in task_id_map:
+                template_deps.append(
+                    TemplateTaskDependency(
+                        template_id=template.id,
+                        dependent_task_id=task_id_map[input_id],
+                        dependency_task_id=task_id_map[dep_input_id],
+                    )
+                )
+
+    if template_deps:
+        await dep_repo.bulk_create(template_deps)
+
+    # Create subtasks
+    subtask_repo = TemplateSubtaskRepository(session)
+    template_subtasks: list[TemplateSubtask] = []
+    for i, t in enumerate(tasks_input):
+        input_id = t.get("id", f"t{i}") or f"t{i}"
+        new_task_id = task_id_map[input_id]
+        for j, st in enumerate(t.get("subtasks", [])):
+            template_subtasks.append(
+                TemplateSubtask(
+                    template_task_id=new_task_id,
+                    title=st["title"],
+                    position=str(j),
+                )
+            )
+
+    if template_subtasks:
+        await subtask_repo.bulk_create(template_subtasks)
+
+    await session.commit()
+    return template

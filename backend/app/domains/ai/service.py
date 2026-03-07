@@ -324,6 +324,74 @@ async def generate_subtask_actions(
     return response.actions
 
 
+# ── Template Generation ───────────────────────────────────
+
+
+async def generate_template_from_content(
+    content: str,
+    category_slugs: list[str],
+    title_hint: str = "",
+) -> "TemplateGenerationOutput":
+    """Generate a template DAG from text content using a single LLM call.
+
+    Follows the same structured-output pattern as generate_subtask_actions.
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from app.domains.ai.llm import get_llm
+    from app.domains.ai.prompts.generate_template import (
+        TEMPLATE_GENERATION_SYSTEM_PROMPT,
+        TEMPLATE_GENERATION_USER_PROMPT,
+    )
+    from app.domains.ai.schemas import TemplateGenerationOutput
+
+    system_prompt = TEMPLATE_GENERATION_SYSTEM_PROMPT.format(
+        category_slugs=", ".join(category_slugs),
+    )
+    user_prompt = TEMPLATE_GENERATION_USER_PROMPT.format(
+        content=content,
+        title_hint=f"\nSuggested title: {title_hint}" if title_hint else "",
+    )
+
+    llm = get_llm()
+    structured_llm = llm.with_structured_output(TemplateGenerationOutput)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+
+    async def _call() -> TemplateGenerationOutput:
+        result = await structured_llm.ainvoke(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ]
+        )
+        if not isinstance(result, TemplateGenerationOutput):
+            msg = f"Expected TemplateGenerationOutput, got {type(result)}"  # pyright: ignore[reportUnknownArgumentType]
+            raise TypeError(msg)
+        # Validate DAG structure
+        _validate_template_dag(result)
+        return result
+
+    return await _retry_async(_call)
+
+
+def _validate_template_dag(output: "TemplateGenerationOutput") -> None:
+    """Validate that the template generation output forms a valid DAG.
+
+    Reuses the same dag_utils as board generation — DRY.
+    """
+
+    task_ids = [t.id for t in output.tasks]
+    goal_flags = {t.id: t.is_goal_node for t in output.tasks}
+    task_id_set = set(task_ids)
+    edges: list[tuple[str, str]] = []
+    for t in output.tasks:
+        for dep_id in t.depends_on:
+            if dep_id in task_id_set:
+                edges.append((dep_id, t.id))
+
+    validate_dag(task_ids, edges)
+    validate_goal_node(task_ids, goal_flags, edges)
+
+
 # ── Two-Step Board Generation (Streaming) ────────────────
 
 

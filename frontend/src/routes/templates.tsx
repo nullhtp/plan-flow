@@ -3,6 +3,7 @@ import { createRoute, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CategoryFilter } from "@/features/templates/components/CategoryFilter";
+import { GenerateTemplateDialog } from "@/features/templates/components/GenerateTemplateDialog";
 import { TemplateCard } from "@/features/templates/components/TemplateCard";
 import { useCategoriesData } from "@/features/templates/hooks/use-categories";
 import { useTemplates } from "@/features/templates/hooks/use-templates";
@@ -20,6 +21,7 @@ function TemplatesPage() {
 	const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 	const [search, setSearch] = useState("");
 	const [page, setPage] = useState(1);
+	const [showGenerate, setShowGenerate] = useState(false);
 
 	const categories = useCategoriesData();
 	const { data, isLoading } = useTemplates({
@@ -45,6 +47,9 @@ function TemplatesPage() {
 			<header className="flex items-center justify-between border-b px-6 py-4">
 				<h1 className="text-2xl font-bold">Templates</h1>
 				<div className="flex gap-2">
+					<Button onClick={() => setShowGenerate(true)}>
+						Generate Template
+					</Button>
 					<Button variant="outline" onClick={() => navigate({ to: "/" })}>
 						Back to Boards
 					</Button>
@@ -141,6 +146,11 @@ function TemplatesPage() {
 					</div>
 				)}
 			</main>
+
+			<GenerateTemplateDialog
+				open={showGenerate}
+				onClose={() => setShowGenerate(false)}
+			/>
 		</div>
 	);
 }
