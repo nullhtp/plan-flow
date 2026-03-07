@@ -12,14 +12,11 @@ export function useCreateTemplate() {
 	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: async (body: TemplateCreateRequest) => {
-			const res = await customFetch<{ data: TemplateDetailResponse }>(
-				"/api/templates",
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify(body),
-				},
-			);
+			const res = await customFetch<{ data: TemplateDetailResponse }>("/api/templates", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
 			return res.data;
 		},
 		onSuccess: () => {
@@ -53,10 +50,7 @@ export function useDeleteTemplate() {
 	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: async (templateId: string) => {
-			await customFetch<{ data: unknown }>(
-				`/api/templates/${templateId}`,
-				{ method: "DELETE" },
-			);
+			await customFetch<{ data: unknown }>(`/api/templates/${templateId}`, { method: "DELETE" });
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["templates"] });

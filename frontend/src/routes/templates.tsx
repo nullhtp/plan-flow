@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { createRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CategoryFilter } from "@/features/templates/components/CategoryFilter";
@@ -47,9 +47,7 @@ function TemplatesPage() {
 			<header className="flex items-center justify-between border-b px-6 py-4">
 				<h1 className="text-2xl font-bold">Templates</h1>
 				<div className="flex gap-2">
-					<Button onClick={() => setShowGenerate(true)}>
-						Generate Template
-					</Button>
+					<Button onClick={() => setShowGenerate(true)}>Generate Template</Button>
 					<Button variant="outline" onClick={() => navigate({ to: "/" })}>
 						Back to Boards
 					</Button>
@@ -147,10 +145,7 @@ function TemplatesPage() {
 				)}
 			</main>
 
-			<GenerateTemplateDialog
-				open={showGenerate}
-				onClose={() => setShowGenerate(false)}
-			/>
+			<GenerateTemplateDialog open={showGenerate} onClose={() => setShowGenerate(false)} />
 		</div>
 	);
 }

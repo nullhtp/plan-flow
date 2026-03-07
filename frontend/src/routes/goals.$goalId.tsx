@@ -177,7 +177,7 @@ function GoalDetailPage() {
 	if (goal.status === "answered") {
 		const rounds = extractRounds(aiContext);
 		const allQuestions = rounds.flatMap((r) => r.questions);
-		const allAnswers = rounds.reduce<AnswerValues>((acc, r) => ({ ...acc, ...r.answers }), {});
+		const allAnswers = Object.assign({}, ...rounds.map((r) => r.answers)) as AnswerValues;
 		const qaPairs = allQuestions
 			.filter((q) => allAnswers[q.id] !== undefined)
 			.map((q) => ({

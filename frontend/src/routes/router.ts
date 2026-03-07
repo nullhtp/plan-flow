@@ -10,8 +10,8 @@ import { joinRoute } from "./join";
 import { loginRoute } from "./login";
 import { registerRoute } from "./register";
 import { settingsRoute } from "./settings";
-import { templateDetailRoute } from "./templates.$templateId";
 import { templatesRoute } from "./templates";
+import { templateDetailRoute } from "./templates.$templateId";
 
 const routeTree = rootRoute.addChildren([
 	loginRoute,

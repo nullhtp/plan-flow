@@ -40,14 +40,11 @@ export function useGenerateTemplate() {
 			content: string;
 			title?: string;
 		}): Promise<GenerateTemplateResponse> => {
-			const res = await customFetch<{ data: GenerateTemplateResponse }>(
-				"/api/templates/generate",
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify(body),
-				},
-			);
+			const res = await customFetch<{ data: GenerateTemplateResponse }>("/api/templates/generate", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
 			return res.data;
 		},
 	});
@@ -56,9 +53,7 @@ export function useGenerateTemplate() {
 export function useSaveGeneratedTemplate() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: async (
-			body: SaveGeneratedTemplateRequest,
-		): Promise<TemplateDetailResponse> => {
+		mutationFn: async (body: SaveGeneratedTemplateRequest): Promise<TemplateDetailResponse> => {
 			const res = await customFetch<{ data: TemplateDetailResponse }>(
 				"/api/templates/save-generated",
 				{
