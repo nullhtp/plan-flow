@@ -133,6 +133,7 @@ export interface SaveGeneratedTemplateRequest {
 	category_id?: string | null;
 	visibility?: string;
 	tasks: {
+		id: string;
 		title: string;
 		description: string;
 		is_goal_node: boolean;

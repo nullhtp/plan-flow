@@ -131,6 +131,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 				category_id: categoryId || undefined,
 				visibility,
 				tasks: tasks.map((t) => ({
+					id: t.id,
 					title: t.title,
 					description: t.description,
 					is_goal_node: t.is_goal_node,

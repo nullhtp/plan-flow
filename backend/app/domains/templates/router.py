@@ -184,7 +184,7 @@ async def save_generated_template_endpoint(
     """Save a generated (and optionally edited) template."""
     tasks_dicts = [
         {
-            "id": f"t{i}",
+            "id": t.id or f"t{i}",
             "title": t.title,
             "description": t.description,
             "is_goal_node": t.is_goal_node,
