@@ -1,7 +1,7 @@
 """add_board_share_and_board_member_tables
 
-Revision ID: a1b2c3d4e5f6
-Revises: eb35d52da786
+Revision ID: d4e5f6a7b8c9
+Revises: c7a1b2d3e4f5
 Create Date: 2026-03-07 10:00:00.000000
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "a1b2c3d4e5f6"
-down_revision = "eb35d52da786"
+revision = "d4e5f6a7b8c9"
+down_revision = "c7a1b2d3e4f5"
 branch_labels = None
 depends_on = None
 
