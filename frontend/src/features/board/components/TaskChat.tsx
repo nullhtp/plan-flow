@@ -178,7 +178,8 @@ function ChatMessageBubble({
 				{message.actions && message.actions.length > 0 && (
 					<div className="mt-2 space-y-1">
 						{message.actions.map((action, i) => (
-							<ToolActionCard key={`${action.tool_name}-${i}`} action={action} />
+							// biome-ignore lint/suspicious/noArrayIndexKey: actions are append-only chat entries
+							<ToolActionCard key={i} action={action} />
 						))}
 					</div>
 				)}

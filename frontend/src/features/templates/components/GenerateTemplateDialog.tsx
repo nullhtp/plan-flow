@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,10 +22,7 @@ interface GenerateTemplateDialogProps {
 	onClose: () => void;
 }
 
-export function GenerateTemplateDialog({
-	open,
-	onClose,
-}: GenerateTemplateDialogProps) {
+export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialogProps) {
 	const navigate = useNavigate();
 	const categories = useCategoriesData();
 	const extractContent = useExtractContent();
@@ -112,9 +109,7 @@ export function GenerateTemplateDialog({
 			setSuggestedDescription(generated.suggested_description);
 
 			// Match suggested category slug to a category ID
-			const matchedCat = categories.find(
-				(c) => c.slug === generated.suggested_category_slug,
-			);
+			const matchedCat = categories.find((c) => c.slug === generated.suggested_category_slug);
 			if (matchedCat) setCategoryId(matchedCat.id);
 
 			setStep("preview");
@@ -154,17 +149,11 @@ export function GenerateTemplateDialog({
 	};
 
 	const updateTaskTitle = (taskId: string, newTitle: string) => {
-		setTasks((prev) =>
-			prev.map((t) => (t.id === taskId ? { ...t, title: newTitle } : t)),
-		);
+		setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, title: newTitle } : t)));
 	};
 
 	const updateTaskDescription = (taskId: string, newDesc: string) => {
-		setTasks((prev) =>
-			prev.map((t) =>
-				t.id === taskId ? { ...t, description: newDesc } : t,
-			),
-		);
+		setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, description: newDesc } : t)));
 	};
 
 	return (
@@ -229,9 +218,7 @@ export function GenerateTemplateDialog({
 							{/* Text Tab */}
 							{inputTab === "text" && (
 								<div>
-									<Label htmlFor="text-content">
-										Paste or type your content
-									</Label>
+									<Label htmlFor="text-content">Paste or type your content</Label>
 									<textarea
 										id="text-content"
 										value={textContent}
@@ -250,10 +237,10 @@ export function GenerateTemplateDialog({
 							{inputTab === "document" && (
 								<div>
 									<Label>Upload a document</Label>
-									<div
-										className="mt-1 flex flex-col items-center justify-center rounded-md border-2 border-dashed border-input p-8 cursor-pointer hover:border-primary/50"
+									<button
+										type="button"
+										className="mt-1 flex w-full flex-col items-center justify-center rounded-md border-2 border-dashed border-input p-8 cursor-pointer hover:border-primary/50 bg-transparent"
 										onClick={() => fileInputRef.current?.click()}
-										onKeyDown={() => {}}
 									>
 										<input
 											ref={fileInputRef}
@@ -269,15 +256,13 @@ export function GenerateTemplateDialog({
 											<p className="text-sm">{selectedFile.name}</p>
 										) : (
 											<>
-												<p className="text-sm text-muted-foreground">
-													Click to select a file
-												</p>
+												<p className="text-sm text-muted-foreground">Click to select a file</p>
 												<p className="mt-1 text-xs text-muted-foreground">
 													PDF, DOCX, TXT, or Markdown (max 10 MB)
 												</p>
 											</>
 										)}
-									</div>
+									</button>
 								</div>
 							)}
 
@@ -304,9 +289,7 @@ export function GenerateTemplateDialog({
 					{step === "generating" && (
 						<div className="flex flex-col items-center justify-center py-12">
 							<div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-							<p className="text-muted-foreground">
-								AI is generating your template...
-							</p>
+							<p className="text-muted-foreground">AI is generating your template...</p>
 						</div>
 					)}
 
@@ -376,37 +359,28 @@ export function GenerateTemplateDialog({
 							</div>
 
 							{/* Task list */}
-							<h4 className="mb-2 font-medium">
-								Tasks ({tasks.length})
-							</h4>
+							<h4 className="mb-2 font-medium">Tasks ({tasks.length})</h4>
 							<div className="space-y-2">
 								{tasks
 									.filter((t) => !t.is_goal_node)
 									.map((task) => (
-										<div
-											key={task.id}
-											className="rounded-md border p-3"
-										>
+										<div key={task.id} className="rounded-md border p-3">
 											<Input
 												value={task.title}
-												onChange={(e) =>
-													updateTaskTitle(task.id, e.target.value)
-												}
+												onChange={(e) => updateTaskTitle(task.id, e.target.value)}
 												className="mb-1 font-medium"
 											/>
 											<Input
 												value={task.description}
-												onChange={(e) =>
-													updateTaskDescription(task.id, e.target.value)
-												}
+												onChange={(e) => updateTaskDescription(task.id, e.target.value)}
 												className="text-sm text-muted-foreground"
 												placeholder="Description"
 											/>
 											{task.subtasks.length > 0 && (
 												<div className="mt-2 space-y-0.5 pl-3">
-													{task.subtasks.map((st, i) => (
+													{task.subtasks.map((st) => (
 														<p
-															key={`${task.id}-st-${i}`}
+															key={`${task.id}-st-${st.title}`}
 															className="text-xs text-muted-foreground"
 														>
 															&bull; {st.title}
@@ -418,11 +392,7 @@ export function GenerateTemplateDialog({
 												<p className="mt-1 text-xs text-muted-foreground">
 													Depends on:{" "}
 													{task.depends_on
-														.map(
-															(depId) =>
-																tasks.find((t) => t.id === depId)
-																	?.title ?? depId,
-														)
+														.map((depId) => tasks.find((t) => t.id === depId)?.title ?? depId)
 														.join(", ")}
 												</p>
 											)}
@@ -433,18 +403,11 @@ export function GenerateTemplateDialog({
 								{tasks
 									.filter((t) => t.is_goal_node)
 									.map((task) => (
-										<div
-											key={task.id}
-											className="rounded-md border-2 border-primary/30 p-3"
-										>
-											<div className="mb-1 text-xs font-medium uppercase text-primary">
-												Goal
-											</div>
+										<div key={task.id} className="rounded-md border-2 border-primary/30 p-3">
+											<div className="mb-1 text-xs font-medium uppercase text-primary">Goal</div>
 											<Input
 												value={task.title}
-												onChange={(e) =>
-													updateTaskTitle(task.id, e.target.value)
-												}
+												onChange={(e) => updateTaskTitle(task.id, e.target.value)}
 												className="font-medium"
 											/>
 										</div>
@@ -470,9 +433,7 @@ export function GenerateTemplateDialog({
 								(inputTab === "url" && !urlValue)
 							}
 						>
-							{extractContent.isPending
-								? "Extracting..."
-								: "Generate"}
+							{extractContent.isPending ? "Extracting..." : "Generate"}
 						</Button>
 					)}
 					{step === "preview" && (
@@ -486,13 +447,8 @@ export function GenerateTemplateDialog({
 							>
 								Back
 							</Button>
-							<Button
-								onClick={handleSave}
-								disabled={saveTemplate.isPending || !suggestedTitle}
-							>
-								{saveTemplate.isPending
-									? "Saving..."
-									: "Save Template"}
+							<Button onClick={handleSave} disabled={saveTemplate.isPending || !suggestedTitle}>
+								{saveTemplate.isPending ? "Saving..." : "Save Template"}
 							</Button>
 						</>
 					)}

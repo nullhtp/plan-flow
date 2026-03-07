@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { createRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { UseTemplateDialog } from "@/features/templates/components/UseTemplateDialog";
 import { useTemplateDetail } from "@/features/templates/hooks/use-template-detail";
@@ -57,9 +57,7 @@ function TemplateDetailPage() {
 					{/* Metadata */}
 					<div className="mb-6 flex flex-wrap gap-3 text-sm text-muted-foreground">
 						{template.category && (
-							<span className="rounded-full bg-muted px-3 py-1">
-								{template.category.name}
-							</span>
+							<span className="rounded-full bg-muted px-3 py-1">{template.category.name}</span>
 						)}
 						<span>{template.task_count} tasks</span>
 						<span>by {template.creator.email}</span>
@@ -87,20 +85,14 @@ function TemplateDetailPage() {
 										<div>
 											<h3 className="font-medium">{task.title}</h3>
 											{task.description && (
-												<p className="mt-1 text-sm text-muted-foreground">
-													{task.description}
-												</p>
+												<p className="mt-1 text-sm text-muted-foreground">{task.description}</p>
 											)}
 										</div>
 										<div className="flex gap-2 text-xs text-muted-foreground">
 											{task.priority && (
-												<span className="rounded bg-muted px-1.5 py-0.5">
-													{task.priority}
-												</span>
+												<span className="rounded bg-muted px-1.5 py-0.5">{task.priority}</span>
 											)}
-											{task.estimated_minutes && (
-												<span>{task.estimated_minutes}min</span>
-											)}
+											{task.estimated_minutes && <span>{task.estimated_minutes}min</span>}
 										</div>
 									</div>
 									{deps.length > 0 && (
@@ -111,10 +103,7 @@ function TemplateDetailPage() {
 									{task.subtasks.length > 0 && (
 										<div className="mt-2 space-y-1">
 											{task.subtasks.map((st) => (
-												<div
-													key={st.id}
-													className="text-sm text-muted-foreground"
-												>
+												<div key={st.id} className="text-sm text-muted-foreground">
 													&bull; {st.title}
 												</div>
 											))}
@@ -127,14 +116,10 @@ function TemplateDetailPage() {
 						{/* Goal task */}
 						{goalTask && (
 							<div className="rounded-lg border-2 border-primary/30 p-4">
-								<div className="mb-1 text-xs font-medium uppercase text-primary">
-									Goal
-								</div>
+								<div className="mb-1 text-xs font-medium uppercase text-primary">Goal</div>
 								<h3 className="font-medium">{goalTask.title}</h3>
 								{goalTask.description && (
-									<p className="mt-1 text-sm text-muted-foreground">
-										{goalTask.description}
-									</p>
+									<p className="mt-1 text-sm text-muted-foreground">{goalTask.description}</p>
 								)}
 							</div>
 						)}

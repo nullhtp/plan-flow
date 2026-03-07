@@ -28,8 +28,7 @@ function JoinPage() {
 				navigate({ to: "/boards/$boardId", params: { boardId: data.board_id } });
 			},
 		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [token]);
+	}, [token, joinBoard.mutate, navigate]);
 
 	if (!token) {
 		return (
@@ -50,12 +49,10 @@ function JoinPage() {
 	if (joinBoard.isError) {
 		return (
 			<div className="flex min-h-screen flex-col items-center justify-center gap-3">
-				<p className="text-destructive">Failed to join board. The link may be invalid or expired.</p>
-				<button
-					type="button"
-					className="text-sm underline"
-					onClick={() => navigate({ to: "/" })}
-				>
+				<p className="text-destructive">
+					Failed to join board. The link may be invalid or expired.
+				</p>
+				<button type="button" className="text-sm underline" onClick={() => navigate({ to: "/" })}>
 					Go to dashboard
 				</button>
 			</div>

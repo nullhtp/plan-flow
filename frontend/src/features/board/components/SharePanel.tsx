@@ -33,7 +33,14 @@ export function SharePanel({ boardId, onClose }: SharePanelProps) {
 	};
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/30" onClick={onClose}>
+		// biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismiss pattern
+		// biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss pattern
+		<div
+			className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/30"
+			onClick={onClose}
+		>
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: stop propagation to backdrop */}
+			{/* biome-ignore lint/a11y/useKeyWithClickEvents: stop propagation to backdrop */}
 			<div
 				className="w-full max-w-md rounded-lg border bg-background p-5 shadow-lg"
 				onClick={(e) => e.stopPropagation()}
@@ -43,7 +50,11 @@ export function SharePanel({ boardId, onClose }: SharePanelProps) {
 						<Users className="h-5 w-5" />
 						Share Board
 					</h2>
-					<button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
+					<button
+						type="button"
+						onClick={onClose}
+						className="text-muted-foreground hover:text-foreground"
+					>
 						<X className="h-5 w-5" />
 					</button>
 				</div>
@@ -56,7 +67,12 @@ export function SharePanel({ boardId, onClose }: SharePanelProps) {
 							<div className="flex items-center gap-2 rounded border px-3 py-2 text-sm bg-muted/50">
 								<Link className="h-4 w-4 shrink-0 text-muted-foreground" />
 								<span className="truncate flex-1 select-all">{shareLink.url}</span>
-								<Button variant="outline" size="sm" className="shrink-0 h-7 gap-1" onClick={handleCopy}>
+								<Button
+									variant="outline"
+									size="sm"
+									className="shrink-0 h-7 gap-1"
+									onClick={handleCopy}
+								>
 									<Copy className="h-3 w-3" />
 									{copied ? "Copied" : "Copy"}
 								</Button>

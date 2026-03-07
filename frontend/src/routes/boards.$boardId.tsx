@@ -168,9 +168,7 @@ function BoardDetailPage() {
 			/>
 
 			{/* Share Panel */}
-			{showSharePanel && (
-				<SharePanel boardId={board.id} onClose={() => setShowSharePanel(false)} />
-			)}
+			{showSharePanel && <SharePanel boardId={board.id} onClose={() => setShowSharePanel(false)} />}
 		</div>
 	);
 }

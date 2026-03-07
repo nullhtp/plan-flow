@@ -32,9 +32,7 @@ export function TemplateCard({ template }: TemplateCardProps) {
 			</CardHeader>
 			<CardContent>
 				{template.description && (
-					<p className="mb-2 line-clamp-2 text-sm text-muted-foreground">
-						{template.description}
-					</p>
+					<p className="mb-2 line-clamp-2 text-sm text-muted-foreground">{template.description}</p>
 				)}
 				<div className="flex items-center justify-between text-xs text-muted-foreground">
 					<span>{template.task_count} tasks</span>
