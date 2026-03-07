@@ -25,6 +25,9 @@ function IndexPage() {
 				<div className="flex items-center gap-3">
 					{user && <span className="text-sm text-muted-foreground">{user.email}</span>}
 					<Button onClick={() => navigate({ to: "/goals/new" })}>New Goal</Button>
+					<Button variant="outline" onClick={() => navigate({ to: "/templates" })}>
+						Templates
+					</Button>
 					<Button variant="outline" onClick={() => navigate({ to: "/settings" })}>
 						Settings
 					</Button>

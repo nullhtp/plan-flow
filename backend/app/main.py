@@ -25,6 +25,7 @@ from app.domains.boards.router import subtasks_router as boards_subtasks_router
 from app.domains.boards.router import tasks_router as boards_tasks_router
 from app.domains.goals.router import router as goals_router
 from app.domains.settings.router import router as settings_router
+from app.domains.templates.router import router as templates_router
 
 # Suppress harmless Pydantic serialization warning from LangChain internals.
 # When using ChatOpenAI.with_structured_output(method="json_schema"), LangChain
@@ -92,6 +93,7 @@ app.include_router(ai_boards_chat_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(boards_memory_router, prefix="/api")
+app.include_router(templates_router, prefix="/api")
 
 
 @app.get("/health")
