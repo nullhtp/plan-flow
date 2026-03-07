@@ -291,7 +291,7 @@ Tests are integrated into each milestone, focused on critical paths.
 4. **Execution support** — task-level chat, board adaptation, follow-up suggestions
 
 ### Business Rules
-- Board generation is purely dynamic — no pre-built templates
+- Board creation supports two paths: AI generation (dynamic) and templates (user-saved reusable board structures with public/private visibility and category-based browsing)
 - AI generates dependency graph; users can edit task details but not dependencies manually (AI-only for MVP)
 - Task status transitions are validated server-side: `in_progress` requires all dependencies `done`; `done` requires currently `in_progress`
 - Exactly one goal node per board (DAG sink) — board completion is detected by goal node status

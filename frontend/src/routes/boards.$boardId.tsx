@@ -1,5 +1,5 @@
 import { createRoute } from "@tanstack/react-router";
-import { Brain } from "lucide-react";
+import { Brain, Save } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
 import { useUpdateBoardEndpointApiBoardsBoardIdPatch } from "@/api/generated/boards/boards";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { useBoard } from "@/features/board/hooks/use-board";
 import type { BoardResponse } from "@/features/board/types";
 import { ErrorDisplay } from "@/features/goals/components/error-display";
 import { BoardMemorySidebar } from "@/features/memory/components/BoardMemorySidebar";
+import { SaveAsTemplateDialog } from "@/features/templates/components/SaveAsTemplateDialog";
 import { authenticatedRoute } from "./_authenticated";
 
 type BoardSearchParams = {
@@ -35,6 +36,7 @@ function BoardDetailPage() {
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 	const [editTitle, setEditTitle] = useState("");
 	const [showMemorySidebar, setShowMemorySidebar] = useState(false);
+	const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
 
 	if (boardQuery.isLoading) {
 		return (
@@ -105,6 +107,17 @@ function BoardDetailPage() {
 					{board.user_meta && <BoardMetaInfo userMeta={board.user_meta} />}
 				</div>
 				<Button
+					variant="outline"
+					size="sm"
+					className="gap-1.5 shrink-0"
+					onClick={() => setShowSaveAsTemplate(true)}
+					title="Save as template"
+					disabled={!board.tasks || board.tasks.length === 0}
+				>
+					<Save className="h-4 w-4" />
+					<span className="hidden sm:inline">Save as Template</span>
+				</Button>
+				<Button
 					variant={showMemorySidebar ? "default" : "outline"}
 					size="sm"
 					className="gap-1.5 shrink-0"
@@ -125,6 +138,15 @@ function BoardDetailPage() {
 			{showMemorySidebar && (
 				<BoardMemorySidebar boardId={board.id} onClose={() => setShowMemorySidebar(false)} />
 			)}
+
+			{/* Save as Template Dialog */}
+			<SaveAsTemplateDialog
+				boardId={board.id}
+				boardTitle={board.title}
+				taskCount={board.tasks?.length ?? 0}
+				open={showSaveAsTemplate}
+				onClose={() => setShowSaveAsTemplate(false)}
+			/>
 		</div>
 	);
 }
