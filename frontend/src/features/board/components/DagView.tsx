@@ -7,6 +7,7 @@ import { useSubtaskMutations } from "../hooks/use-subtask-mutations";
 import { useTaskDetailPanel } from "../hooks/use-task-detail-panel";
 import { useTaskMutations } from "../hooks/use-task-mutations";
 import type { BoardResponse, TaskResponse } from "../types";
+import { filterBoardForFocusView } from "../utils/board-filters";
 import { getLayoutedElements } from "../utils/dagre-layout";
 import { Celebration } from "./Celebration";
 import { GoalNode } from "./GoalNode";
@@ -18,11 +19,14 @@ const nodeTypes = {
 	goalNode: GoalNode,
 };
 
+export type BoardViewMode = "focus" | "full";
+
 interface DagViewProps {
 	board: BoardResponse;
+	viewMode: BoardViewMode;
 }
 
-export function DagView({ board }: DagViewProps) {
+export function DagView({ board, viewMode }: DagViewProps) {
 	const { updateTask, deleteTask } = useTaskMutations(board.id);
 	const { createSubtask, updateSubtask, deleteSubtask } = useSubtaskMutations(board.id);
 	const { selectedTaskId, openTask, closeTask } = useTaskDetailPanel();
@@ -36,7 +40,13 @@ export function DagView({ board }: DagViewProps) {
 	}
 	prevIsCompleted.current = board.is_completed;
 
-	const { nodes, edges } = useMemo(() => getLayoutedElements(board), [board]);
+	const { nodes, edges } = useMemo(() => {
+		if (viewMode === "focus") {
+			const filtered = filterBoardForFocusView(board.tasks, board.edges);
+			return getLayoutedElements(filtered.tasks, filtered.edges, board.tasks);
+		}
+		return getLayoutedElements(board.tasks, board.edges, board.tasks);
+	}, [board, viewMode]);
 
 	const selectedTask = useMemo(() => {
 		if (!selectedTaskId) return null;

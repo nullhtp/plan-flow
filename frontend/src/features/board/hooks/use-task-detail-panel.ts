@@ -3,27 +3,21 @@ import { useCallback } from "react";
 
 export function useTaskDetailPanel() {
 	const navigate = useNavigate();
-	// Read the 'task' search parameter
-	const search = useSearch({ strict: false }) as { task?: string };
-	const selectedTaskId = search.task ?? null;
+	// Read search parameters (preserving all existing params like 'view')
+	const search = useSearch({ strict: false }) as Record<string, unknown>;
+	const selectedTaskId = (search.task as string) ?? null;
 
 	const openTask = useCallback(
 		(taskId: string) => {
-			const url = new URL(window.location.href);
-			url.searchParams.set("task", taskId);
-			window.history.pushState({}, "", url.toString());
-			// Force router to pick up the new search params
-			navigate({ to: ".", search: { task: taskId } as never });
+			navigate({ to: ".", search: { ...search, task: taskId } as never });
 		},
-		[navigate],
+		[navigate, search],
 	);
 
 	const closeTask = useCallback(() => {
-		const url = new URL(window.location.href);
-		url.searchParams.delete("task");
-		window.history.pushState({}, "", url.toString());
-		navigate({ to: ".", search: {} as never });
-	}, [navigate]);
+		const { task: _, ...rest } = search;
+		navigate({ to: ".", search: rest as never });
+	}, [navigate, search]);
 
 	return { selectedTaskId, openTask, closeTask };
 }

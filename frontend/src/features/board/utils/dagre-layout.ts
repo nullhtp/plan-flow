@@ -1,6 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import dagre from "dagre";
-import type { BoardResponse, TaskResponse } from "../types";
+import type { BoardResponse, EdgeResponse, TaskResponse } from "../types";
 
 const NODE_WIDTH = 280;
 const NODE_HEIGHT = 100;
@@ -14,7 +14,19 @@ export interface TaskNodeData {
 	[key: string]: unknown;
 }
 
-export function getLayoutedElements(board: BoardResponse): {
+/**
+ * Computes dagre layout for the given tasks and edges.
+ *
+ * @param tasks - Tasks to lay out (may be a filtered subset)
+ * @param edges - Edges to lay out (may be a filtered subset)
+ * @param allTasks - All tasks on the board (unfiltered), passed into node data
+ *                   so the TaskDetailPanel can show full dependency info
+ */
+export function getLayoutedElements(
+	tasks: TaskResponse[],
+	edges: EdgeResponse[],
+	allTasks: TaskResponse[],
+): {
 	nodes: Node<TaskNodeData>[];
 	edges: Edge[];
 } {
@@ -29,20 +41,20 @@ export function getLayoutedElements(board: BoardResponse): {
 	});
 
 	// Add nodes
-	for (const task of board.tasks) {
+	for (const task of tasks) {
 		const width = task.is_goal_node ? GOAL_NODE_WIDTH : NODE_WIDTH;
 		const height = task.is_goal_node ? GOAL_NODE_HEIGHT : NODE_HEIGHT;
 		g.setNode(task.id, { width, height });
 	}
 
 	// Add edges
-	for (const edge of board.edges) {
+	for (const edge of edges) {
 		g.setEdge(edge.source, edge.target);
 	}
 
 	dagre.layout(g);
 
-	const nodes: Node<TaskNodeData>[] = board.tasks.map((task) => {
+	const nodes: Node<TaskNodeData>[] = tasks.map((task) => {
 		const nodeWithPosition = g.node(task.id);
 		const width = task.is_goal_node ? GOAL_NODE_WIDTH : NODE_WIDTH;
 		const height = task.is_goal_node ? GOAL_NODE_HEIGHT : NODE_HEIGHT;
@@ -56,14 +68,14 @@ export function getLayoutedElements(board: BoardResponse): {
 			},
 			data: {
 				task,
-				allTasks: board.tasks,
+				allTasks,
 				has_sub_board: !!task.sub_board_id,
 			},
 		};
 	});
 
-	const edges: Edge[] = board.edges.map((edge) => {
-		const targetTask = board.tasks.find((t) => t.id === edge.target);
+	const layoutEdges: Edge[] = edges.map((edge) => {
+		const targetTask = tasks.find((t) => t.id === edge.target);
 		const isLocked = targetTask?.is_locked ?? false;
 
 		return {
@@ -83,5 +95,12 @@ export function getLayoutedElements(board: BoardResponse): {
 		};
 	});
 
-	return { nodes, edges };
+	return { nodes, edges: layoutEdges };
+}
+
+/**
+ * Convenience wrapper that takes a full BoardResponse (backward-compatible).
+ */
+export function getLayoutedElementsFromBoard(board: BoardResponse) {
+	return getLayoutedElements(board.tasks, board.edges, board.tasks);
 }
