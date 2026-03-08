@@ -452,3 +452,175 @@ async def test_create_board_from_private_template_by_other_user_rejected(
         json={},
     )
     assert resp.status_code == 404
+
+
+# ── Update Template Structure ────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_update_template_structure_success(
+    auth_client: AsyncClient,
+    session: AsyncSession,
+    answered_goal: Goal,
+) -> None:
+    """PUT /api/templates/:id/structure replaces the task structure."""
+    board, _ = await _create_board_with_tasks(session, answered_goal)
+    created = await _create_template(auth_client, board.id, "Editable")
+
+    # Original has 3 tasks, 2 edges
+    assert created["task_count"] == 3
+    assert len(created["tasks"]) == 3
+
+    # Replace with a simpler 2-task structure
+    new_tasks = [
+        {
+            "id": "a",
+            "title": "Step 1",
+            "description": "First step",
+            "is_goal_node": False,
+            "depends_on": [],
+            "subtasks": [{"title": "Sub A"}],
+        },
+        {
+            "id": "b",
+            "title": "Goal",
+            "description": "The goal",
+            "is_goal_node": True,
+            "depends_on": ["a"],
+            "subtasks": [],
+            "priority": "high",
+            "estimated_minutes": 60,
+        },
+    ]
+
+    resp = await auth_client.put(
+        f"/api/templates/{created['id']}/structure",
+        json={"tasks": new_tasks},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["task_count"] == 2
+    assert len(data["tasks"]) == 2
+    assert len(data["edges"]) == 1
+
+    # Verify task details
+    goal_task = next(t for t in data["tasks"] if t["is_goal_node"])
+    assert goal_task["title"] == "Goal"
+    assert goal_task["priority"] == "high"
+    assert goal_task["estimated_minutes"] == 60
+
+    step_task = next(t for t in data["tasks"] if not t["is_goal_node"])
+    assert step_task["title"] == "Step 1"
+    assert len(step_task["subtasks"]) == 1
+    assert step_task["subtasks"][0]["title"] == "Sub A"
+
+
+@pytest.mark.asyncio
+async def test_update_template_structure_by_non_creator_rejected(
+    auth_client: AsyncClient,
+    client: AsyncClient,
+    session: AsyncSession,
+    answered_goal: Goal,
+) -> None:
+    """PUT /api/templates/:id/structure by non-creator returns 404."""
+    board, _ = await _create_board_with_tasks(session, answered_goal)
+    created = await _create_template(auth_client, board.id, "Protected", "public")
+
+    other_user = User(
+        email="other5@example.com",
+        hashed_password=hash_password("password123"),
+    )
+    session.add(other_user)
+    await session.commit()
+    await session.refresh(other_user)
+    client.cookies.set("access_token", create_access_token(other_user.id))
+
+    resp = await client.put(
+        f"/api/templates/{created['id']}/structure",
+        json={
+            "tasks": [
+                {
+                    "id": "x",
+                    "title": "Hijack",
+                    "is_goal_node": True,
+                    "depends_on": [],
+                }
+            ]
+        },
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_template_structure_cycle_rejected(
+    auth_client: AsyncClient,
+    session: AsyncSession,
+    answered_goal: Goal,
+) -> None:
+    """PUT /api/templates/:id/structure with cycle returns 422."""
+    board, _ = await _create_board_with_tasks(session, answered_goal)
+    created = await _create_template(auth_client, board.id, "Cycle Test")
+
+    resp = await auth_client.put(
+        f"/api/templates/{created['id']}/structure",
+        json={
+            "tasks": [
+                {"id": "a", "title": "A", "is_goal_node": False, "depends_on": ["b"]},
+                {"id": "b", "title": "B", "is_goal_node": True, "depends_on": ["a"]},
+            ]
+        },
+    )
+    assert resp.status_code == 422
+    assert "cycle" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_update_template_structure_no_goal_node_rejected(
+    auth_client: AsyncClient,
+    session: AsyncSession,
+    answered_goal: Goal,
+) -> None:
+    """PUT /api/templates/:id/structure with no goal node returns 422."""
+    board, _ = await _create_board_with_tasks(session, answered_goal)
+    created = await _create_template(auth_client, board.id, "No Goal Test")
+
+    resp = await auth_client.put(
+        f"/api/templates/{created['id']}/structure",
+        json={
+            "tasks": [
+                {"id": "a", "title": "A", "is_goal_node": False, "depends_on": []},
+            ]
+        },
+    )
+    assert resp.status_code == 422
+    assert "goal node" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_update_template_structure_persists_after_reload(
+    auth_client: AsyncClient,
+    session: AsyncSession,
+    answered_goal: Goal,
+) -> None:
+    """Updated structure is returned correctly on subsequent GET."""
+    board, _ = await _create_board_with_tasks(session, answered_goal)
+    created = await _create_template(auth_client, board.id, "Persist Test")
+
+    new_tasks = [
+        {"id": "x", "title": "Only Task", "is_goal_node": True, "depends_on": []},
+    ]
+
+    resp = await auth_client.put(
+        f"/api/templates/{created['id']}/structure",
+        json={"tasks": new_tasks},
+    )
+    assert resp.status_code == 200
+
+    # Re-fetch to verify persistence
+    get_resp = await auth_client.get(f"/api/templates/{created['id']}")
+    assert get_resp.status_code == 200
+    data = get_resp.json()
+    assert data["task_count"] == 1
+    assert len(data["tasks"]) == 1
+    assert data["tasks"][0]["title"] == "Only Task"
+    assert len(data["edges"]) == 0

@@ -6,6 +6,7 @@ import type {
 	TemplateCreateRequest,
 	TemplateDetailResponse,
 	TemplateUpdateRequest,
+	UpdateTemplateStructureRequest,
 } from "../types";
 
 export function useCreateTemplate() {
@@ -74,6 +75,27 @@ export function useCreateBoardFromTemplate(templateId: string) {
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["boards"] });
+		},
+	});
+}
+
+export function useUpdateTemplateStructure(templateId: string) {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: async (body: UpdateTemplateStructureRequest) => {
+			const res = await customFetch<{ data: TemplateDetailResponse }>(
+				`/api/templates/${templateId}/structure`,
+				{
+					method: "PUT",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(body),
+				},
+			);
+			return res.data;
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["templates"] });
+			queryClient.invalidateQueries({ queryKey: ["template", templateId] });
 		},
 	});
 }

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.boards.board_repository import BoardRepository
@@ -386,6 +387,153 @@ async def create_board_from_template(
         "goal_id": goal.id,
         "title": board_title,
     }
+
+
+async def update_template_structure(
+    session: AsyncSession,
+    template_id: str,
+    user_id: str,
+    tasks_input: list[dict[str, Any]],
+) -> BoardTemplate:
+    """Replace the entire task structure of a template.
+
+    Validates ownership, validates DAG, deletes all existing tasks/deps/subtasks,
+    inserts the new structure, and updates task_count. Single transaction.
+    """
+    from app.domains.boards.dag_utils import (
+        CyclicDependencyError,
+        GoalNodeValidationError,
+        validate_dag,
+        validate_goal_node,
+    )
+
+    # Fetch template and validate ownership
+    repo = BoardTemplateRepository(session)
+    template = await repo.get_by_id(template_id)
+
+    if template is None or template.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+        )
+
+    # Build temporary IDs for DAG validation
+    task_ids = [t.get("id", f"t{i}") or f"t{i}" for i, t in enumerate(tasks_input)]
+    task_id_set = set(task_ids)
+    goal_flags = {
+        tid: t.get("is_goal_node", False)
+        for tid, t in zip(task_ids, tasks_input, strict=False)
+    }
+    edges: list[tuple[str, str]] = []
+    for tid, t in zip(task_ids, tasks_input, strict=False):
+        for dep_id in t.get("depends_on", []):
+            if dep_id in task_id_set:
+                edges.append((dep_id, tid))
+
+    try:
+        validate_dag(task_ids, edges)
+        validate_goal_node(task_ids, goal_flags, edges)
+    except CyclicDependencyError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Tasks contain a dependency cycle",
+        ) from None
+    except GoalNodeValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        ) from None
+
+    # Delete existing structure using bulk SQL (avoids ORM state issues)
+    from sqlalchemy import delete as sa_delete
+
+    # Delete subtasks (via template_task join)
+    existing_task_ids_stmt = select(TemplateTask.id).where(
+        TemplateTask.template_id == template_id
+    )
+    await session.execute(
+        sa_delete(TemplateSubtask).where(
+            TemplateSubtask.template_task_id.in_(existing_task_ids_stmt)
+        )
+    )
+    # Delete dependencies
+    await session.execute(
+        sa_delete(TemplateTaskDependency).where(
+            TemplateTaskDependency.template_id == template_id
+        )
+    )
+    # Delete tasks
+    await session.execute(
+        sa_delete(TemplateTask).where(TemplateTask.template_id == template_id)
+    )
+    await session.flush()
+
+    # Insert new tasks
+    task_repo = TemplateTaskRepository(session)
+    task_id_map: dict[str, str] = {}
+    new_tasks: list[TemplateTask] = []
+
+    for i, t in enumerate(tasks_input):
+        input_id = t.get("id", f"t{i}") or f"t{i}"
+        tt = TemplateTask(
+            template_id=template_id,
+            title=t["title"],
+            description=t.get("description", ""),
+            is_goal_node=t.get("is_goal_node", False),
+            priority=t.get("priority"),
+            estimated_minutes=t.get("estimated_minutes"),
+        )
+        new_tasks.append(tt)
+        task_id_map[input_id] = tt.id
+
+    await task_repo.bulk_create(new_tasks)
+
+    # Insert new dependencies
+    dep_repo = TemplateTaskDependencyRepository(session)
+    new_deps: list[TemplateTaskDependency] = []
+    for i, t in enumerate(tasks_input):
+        input_id = t.get("id", f"t{i}") or f"t{i}"
+        for dep_input_id in t.get("depends_on", []):
+            if dep_input_id in task_id_map:
+                new_deps.append(
+                    TemplateTaskDependency(
+                        template_id=template_id,
+                        dependent_task_id=task_id_map[input_id],
+                        dependency_task_id=task_id_map[dep_input_id],
+                    )
+                )
+
+    if new_deps:
+        await dep_repo.bulk_create(new_deps)
+
+    # Insert new subtasks
+    subtask_repo = TemplateSubtaskRepository(session)
+    new_subtasks: list[TemplateSubtask] = []
+    for i, t in enumerate(tasks_input):
+        input_id = t.get("id", f"t{i}") or f"t{i}"
+        new_task_id = task_id_map[input_id]
+        for j, st in enumerate(t.get("subtasks", [])):
+            new_subtasks.append(
+                TemplateSubtask(
+                    template_task_id=new_task_id,
+                    title=st["title"],
+                    position=str(j),
+                )
+            )
+
+    if new_subtasks:
+        await subtask_repo.bulk_create(new_subtasks)
+
+    # Update task_count and updated_at directly via SQL to avoid ORM state issues
+    from sqlalchemy import update as sa_update
+
+    await session.execute(
+        sa_update(BoardTemplate)
+        .where(BoardTemplate.id == template_id)
+        .values(task_count=len(tasks_input), updated_at=datetime.now(UTC))
+    )
+
+    await session.commit()
+    return template
 
 
 async def save_generated_template(

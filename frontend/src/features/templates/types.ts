@@ -96,6 +96,19 @@ export interface CreateBoardFromTemplateRequest {
 	title?: string | null;
 }
 
+export interface UpdateTemplateStructureRequest {
+	tasks: {
+		id: string;
+		title: string;
+		description: string;
+		is_goal_node: boolean;
+		depends_on: string[];
+		subtasks: { title: string }[];
+		priority?: string | null;
+		estimated_minutes?: number | null;
+	}[];
+}
+
 // ── Template Generation Types ────────────────────────
 
 export interface ContentExtractionResponse {

@@ -198,6 +198,7 @@ interface TemplateDagViewProps {
 	selectedTaskId: string | null;
 	onSelectTask: (taskId: string | null) => void;
 	onEdgesChange: (edges: Array<{ source: string; target: string }>) => void;
+	readOnly?: boolean;
 }
 
 export function TemplateDagView({
@@ -206,6 +207,7 @@ export function TemplateDagView({
 	selectedTaskId,
 	onSelectTask,
 	onEdgesChange,
+	readOnly = false,
 }: TemplateDagViewProps) {
 	const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
 	const [layoutKey, setLayoutKey] = useState(0);
@@ -252,6 +254,7 @@ export function TemplateDagView({
 	// Handle new connection (edge creation)
 	const onConnect = useCallback(
 		(connection: Connection) => {
+			if (readOnly) return;
 			if (!connection.source || !connection.target) return;
 			// Don't allow self-connections
 			if (connection.source === connection.target) return;
@@ -262,18 +265,19 @@ export function TemplateDagView({
 			const newEdges = [...taskEdges, { source: connection.source, target: connection.target }];
 			onEdgesChange(newEdges);
 		},
-		[taskEdges, onEdgesChange],
+		[taskEdges, onEdgesChange, readOnly],
 	);
 
 	// Handle edge click (delete edge)
 	const onEdgeClick: EdgeMouseHandler = useCallback(
 		(_event, edge) => {
+			if (readOnly) return;
 			const filtered = taskEdges.filter(
 				(e) => !(e.source === edge.source && e.target === edge.target),
 			);
 			onEdgesChange(filtered);
 		},
-		[taskEdges, onEdgesChange],
+		[taskEdges, onEdgesChange, readOnly],
 	);
 
 	// Highlight selected node
@@ -298,20 +302,20 @@ export function TemplateDagView({
 				nodeTypes={nodeTypes}
 				onNodeClick={onNodeClick}
 				onPaneClick={onPaneClick}
-				onConnect={onConnect}
-				onEdgeClick={onEdgeClick}
+				onConnect={readOnly ? undefined : onConnect}
+				onEdgeClick={readOnly ? undefined : onEdgeClick}
 				onInit={(instance: ReactFlowInstance) => {
 					rfInstanceRef.current = instance;
 				}}
 				fitView
 				fitViewOptions={{ padding: 0.2 }}
-				nodesDraggable={true}
-				nodesConnectable={true}
+				nodesDraggable={!readOnly}
+				nodesConnectable={!readOnly}
 				elementsSelectable={true}
 				minZoom={0.3}
 				maxZoom={1.5}
 				proOptions={{ hideAttribution: true }}
-				deleteKeyCode="Delete"
+				deleteKeyCode={null}
 				defaultEdgeOptions={{
 					style: { stroke: "#818cf8", strokeWidth: 2 },
 					markerEnd: { type: "arrowclosed" as const, color: "#818cf8" },
@@ -330,7 +334,7 @@ export function TemplateDagView({
 			</ReactFlow>
 
 			{/* DAG validation warnings */}
-			{!validation.valid && (
+			{!readOnly && !validation.valid && (
 				<div className="absolute top-3 left-3 z-10 max-w-xs rounded-lg border border-amber-300 bg-amber-50 p-3 shadow-md dark:border-amber-700 dark:bg-amber-950/90">
 					<div className="flex items-start gap-2">
 						<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -346,11 +350,13 @@ export function TemplateDagView({
 			)}
 
 			{/* Edge deletion hint */}
-			<div className="absolute bottom-3 left-3 z-10">
-				<p className="text-[10px] text-muted-foreground/60">
-					Click an edge to delete it. Drag from handle to handle to connect tasks.
-				</p>
-			</div>
+			{!readOnly && (
+				<div className="absolute bottom-3 left-3 z-10">
+					<p className="text-[10px] text-muted-foreground/60">
+						Click an edge to delete it. Drag from handle to handle to connect tasks.
+					</p>
+				</div>
+			)}
 		</div>
 	);
 }

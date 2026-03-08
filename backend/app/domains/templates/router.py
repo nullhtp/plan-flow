@@ -41,6 +41,7 @@ from app.domains.templates.schemas import (
     TemplateSubtaskResponse,
     TemplateTaskResponse,
     TemplateUpdateRequest,
+    UpdateTemplateStructureRequest,
 )
 from app.domains.templates.service import (
     create_board_from_template,
@@ -51,6 +52,7 @@ from app.domains.templates.service import (
     list_templates,
     save_generated_template,
     update_template,
+    update_template_structure,
 )
 
 logger = logging.getLogger(__name__)
@@ -552,6 +554,43 @@ async def get_template_endpoint(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TemplateDetailResponse:
     """Get template detail with tasks, subtasks, and edges."""
+    template = await get_template(session, template_id, current_user.id)
+    return _build_detail_response(template, current_user)
+
+
+@router.put("/{template_id}/structure", response_model=TemplateDetailResponse)
+async def update_template_structure_endpoint(
+    template_id: str,
+    body: UpdateTemplateStructureRequest,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TemplateDetailResponse:
+    """Replace the entire task structure of a template.
+
+    Validates ownership and DAG structure, then deletes all existing
+    tasks/deps/subtasks and inserts the new structure in a single transaction.
+    """
+    tasks_dicts = [
+        {
+            "id": t.id or f"t{i}",
+            "title": t.title,
+            "description": t.description,
+            "is_goal_node": t.is_goal_node,
+            "depends_on": t.depends_on,
+            "subtasks": [{"title": s.title} for s in t.subtasks],
+            "priority": t.priority,
+            "estimated_minutes": t.estimated_minutes,
+        }
+        for i, t in enumerate(body.tasks)
+    ]
+
+    await update_template_structure(
+        session,
+        template_id=template_id,
+        user_id=current_user.id,
+        tasks_input=tasks_dicts,
+    )
+
     template = await get_template(session, template_id, current_user.id)
     return _build_detail_response(template, current_user)
 

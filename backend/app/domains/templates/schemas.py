@@ -145,6 +145,37 @@ class CreateBoardFromTemplateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=200)
 
 
+class UpdateTemplateStructureSubtaskInput(BaseModel):
+    """A subtask in the update-structure request."""
+
+    title: str = Field(min_length=1, max_length=500)
+
+
+class UpdateTemplateStructureTaskInput(BaseModel):
+    """A task in the update-structure request."""
+
+    id: str | None = Field(
+        default=None, description="Temporary ID used for dependency resolution"
+    )
+    title: str = Field(min_length=1, max_length=500)
+    description: str = Field(default="", max_length=2000)
+    is_goal_node: bool = False
+    depends_on: list[str] = Field(default_factory=list)
+    subtasks: list[UpdateTemplateStructureSubtaskInput] = Field(default_factory=list)
+    priority: str | None = Field(
+        default=None, description="Task priority: low, medium, or high"
+    )
+    estimated_minutes: int | None = Field(
+        default=None, description="Estimated time in minutes"
+    )
+
+
+class UpdateTemplateStructureRequest(BaseModel):
+    """Request body for replacing a template's task structure."""
+
+    tasks: list[UpdateTemplateStructureTaskInput] = Field(min_length=1)
+
+
 # ── Template Generation Schemas ────────────────────────
 
 
