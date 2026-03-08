@@ -5,7 +5,14 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,6 +54,7 @@ from app.domains.templates.service import (
     create_board_from_template,
     create_template_from_board,
     delete_template,
+    generate_board_subtask_actions,
     get_template,
     list_categories,
     list_templates,
@@ -452,11 +460,17 @@ async def save_generated_template_endpoint(
 
     # Optionally create a board from the saved template
     if body.create_board:
-        await create_board_from_template(
+        board_result = await create_board_from_template(
             session,
             template_id=template.id,
             user_id=current_user.id,
             title=body.title,
+        )
+        # Generate AI actions for subtasks inline
+        await generate_board_subtask_actions(
+            session,
+            board_id=board_result["board_id"],
+            user_id=current_user.id,
         )
 
     full = await get_template(session, template.id, current_user.id)
@@ -616,7 +630,9 @@ async def update_template_endpoint(
     return _build_detail_response(template, current_user)
 
 
-@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{template_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None
+)
 async def delete_template_endpoint(
     template_id: str,
     current_user: CurrentUser,
@@ -643,6 +659,13 @@ async def create_board_from_template_endpoint(
         template_id=template_id,
         user_id=current_user.id,
         title=body.title,
+    )
+    # Generate AI actions for subtasks inline so they are
+    # available in the response without requiring a refresh.
+    await generate_board_subtask_actions(
+        session,
+        board_id=result["board_id"],
+        user_id=current_user.id,
     )
     return CreateBoardFromTemplateResponse(**result)
 

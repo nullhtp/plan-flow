@@ -43,5 +43,26 @@ class SubtaskRepository:
         result = await self.session.execute(stmt)
         return result.scalar()
 
+    async def batch_update_actions(
+        self,
+        updates: list[dict[str, str | None]],
+    ) -> None:
+        """Batch-update action fields on multiple subtasks.
+
+        Each dict in *updates* must contain ``id`` and optionally
+        ``action_label``, ``action_icon``, ``action_prompt``.
+        Loads each subtask by ID and sets the action fields directly.
+        """
+        if not updates:
+            return
+
+        for u in updates:
+            subtask = await self.session.get(Subtask, u["id"])
+            if subtask is not None:
+                subtask.action_label = u.get("action_label")
+                subtask.action_icon = u.get("action_icon")
+                subtask.action_prompt = u.get("action_prompt")
+                self.session.add(subtask)
+
 
 __all__ = ["SubtaskRepository"]

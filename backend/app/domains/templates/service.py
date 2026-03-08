@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -25,6 +27,8 @@ from app.domains.templates.repository import (
     TemplateTaskDependencyRepository,
     TemplateTaskRepository,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def list_categories(
@@ -664,3 +668,134 @@ async def save_generated_template(
 
     await session.commit()
     return template
+
+
+# ── Background Subtask Action Generation ─────────────────
+
+
+async def generate_board_subtask_actions(
+    session: AsyncSession,
+    board_id: str,
+    user_id: str,
+) -> None:
+    """Generate AI actions for all subtasks on a board.
+
+    Runs inline (before the HTTP response is sent) so the client
+    receives the board with action buttons already populated.
+    Each task's subtasks are processed in parallel via
+    ``asyncio.gather``.  Failures for individual tasks are logged
+    and skipped (graceful degradation).
+    """
+    from app.domains.ai.prompts.meta import resolve_user_context
+    from app.domains.ai.service import generate_subtask_actions
+    from app.domains.boards.subtask_repository import SubtaskRepository
+
+    logger.info("Starting subtask action generation for board %s", board_id)
+
+    try:
+        # Load board -> goal for user_context
+        board = await session.get(Board, board_id)
+        if board is None:
+            logger.warning(
+                "Board %s not found for action generation",
+                board_id,
+            )
+            return
+
+        goal = await session.get(Goal, board.goal_id) if board.goal_id else None
+        user_context = ""
+        if goal and goal.ai_context:
+            user_context = resolve_user_context(goal.ai_context.get("user_meta"))
+
+        # Load tasks with subtasks
+        from sqlalchemy.orm import selectinload
+
+        stmt = (
+            select(Task)
+            .where(Task.board_id == board_id)  # pyright: ignore[reportArgumentType]
+            .options(selectinload(Task.subtasks))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        )
+        result = await session.execute(stmt)
+        tasks = list(result.scalars().all())
+
+        # Filter to tasks that have subtasks
+        tasks_with_subtasks = [t for t in tasks if t.subtasks]
+        if not tasks_with_subtasks:
+            logger.info(
+                "Board %s has no tasks with subtasks, skipping action generation",
+                board_id,
+            )
+            return
+
+        logger.info(
+            "Generating actions for %d tasks on board %s",
+            len(tasks_with_subtasks),
+            board_id,
+        )
+
+        # Generate actions per task in parallel
+        async def _generate_for_task(
+            task: Task,
+        ) -> tuple[Task, list[object]]:
+            subtask_dicts = [{"title": s.title} for s in task.subtasks]
+            actions = await generate_subtask_actions(
+                task_title=task.title,
+                task_description=task.description or "",
+                task_status=task.status,
+                subtasks=subtask_dicts,
+                user_context=user_context,
+            )
+            return task, actions
+
+        results = await asyncio.gather(
+            *[_generate_for_task(t) for t in tasks_with_subtasks],
+            return_exceptions=True,
+        )
+
+        # Process results and batch-update subtask action fields
+        subtask_repo = SubtaskRepository(session)
+        all_updates: list[dict[str, str | None]] = []
+
+        for r in results:
+            if isinstance(r, BaseException):
+                logger.exception(
+                    "Subtask action generation failed for a task on board %s",
+                    board_id,
+                    exc_info=r,
+                )
+                continue
+
+            task, actions = r
+            # Build a case-insensitive map for robust title matching
+            action_map = {a.subtask_title.strip().lower(): a for a in actions}
+            for subtask in task.subtasks:
+                action = action_map.get(subtask.title.strip().lower())
+                if action and action.action_label is not None:
+                    all_updates.append(
+                        {
+                            "id": subtask.id,
+                            "action_label": action.action_label,
+                            "action_icon": action.action_icon,
+                            "action_prompt": action.action_prompt,
+                        }
+                    )
+
+        if all_updates:
+            await subtask_repo.batch_update_actions(all_updates)
+            await session.commit()
+            logger.info(
+                "Updated %d subtask actions on board %s",
+                len(all_updates),
+                board_id,
+            )
+        else:
+            logger.warning(
+                "No subtask actions generated for board %s "
+                "(LLM returned no automatable subtasks or all tasks failed)",
+                board_id,
+            )
+    except Exception:
+        logger.exception(
+            "Subtask action generation failed for board %s",
+            board_id,
+        )

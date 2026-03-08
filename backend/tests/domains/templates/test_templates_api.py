@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -387,10 +389,14 @@ async def test_create_board_from_template(
     board, _ = await _create_board_with_tasks(session, answered_goal)
     created = await _create_template(auth_client, board.id, "Reusable", "public")
 
-    resp = await auth_client.post(
-        f"/api/templates/{created['id']}/create-board",
-        json={"title": "My New Board"},
-    )
+    with patch(
+        "app.domains.templates.router.generate_board_subtask_actions",
+        new_callable=AsyncMock,
+    ):
+        resp = await auth_client.post(
+            f"/api/templates/{created['id']}/create-board",
+            json={"title": "My New Board"},
+        )
     assert resp.status_code == 201
     data = resp.json()
     assert data["title"] == "My New Board"
@@ -419,10 +425,14 @@ async def test_create_board_from_template_default_title(
     board, _ = await _create_board_with_tasks(session, answered_goal)
     created = await _create_template(auth_client, board.id, "Default Title", "public")
 
-    resp = await auth_client.post(
-        f"/api/templates/{created['id']}/create-board",
-        json={},
-    )
+    with patch(
+        "app.domains.templates.router.generate_board_subtask_actions",
+        new_callable=AsyncMock,
+    ):
+        resp = await auth_client.post(
+            f"/api/templates/{created['id']}/create-board",
+            json={},
+        )
     assert resp.status_code == 201
     assert resp.json()["title"] == "Default Title"
 

@@ -234,7 +234,11 @@ async def get_share_link_endpoint(
     return ShareLinkResponse(token=share.token, url=url, created_at=share.created_at)
 
 
-@router.delete("/{board_id}/share", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{board_id}/share",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 async def delete_share_link_endpoint(
     board_id: str,
     current_user: CurrentUser,
@@ -280,6 +284,7 @@ async def list_members_endpoint(
 @router.delete(
     "/{board_id}/members/{target_user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
 )
 async def revoke_member_endpoint(
     board_id: str,
