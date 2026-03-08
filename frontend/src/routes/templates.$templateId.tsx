@@ -230,7 +230,7 @@ function TemplateDetailPage() {
 					<button
 						type="button"
 						className="mb-1 text-sm text-muted-foreground hover:underline"
-						onClick={() => navigate({ to: "/templates" })}
+						onClick={() => navigate({ to: "/", search: { tab: "templates" } })}
 					>
 						&larr; Back to Templates
 					</button>

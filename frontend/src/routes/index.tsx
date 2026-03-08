@@ -1,72 +1,113 @@
 import { createRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useAuth, useLogout } from "@/features/auth/hooks/use-auth";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BoardCard } from "@/features/board/components/BoardCard";
 import { useBoardListData } from "@/features/board/hooks/use-board-list";
+import { TemplatesGallery } from "@/features/templates/components/TemplatesGallery";
+import { CreationCard } from "@/shared/components/creation-card";
+import { UserDropdown } from "@/shared/components/user-dropdown";
 import { authenticatedRoute } from "./_authenticated";
+
+type IndexSearchParams = {
+	tab?: "boards" | "templates";
+};
 
 export const indexRoute = createRoute({
 	getParentRoute: () => authenticatedRoute,
 	path: "/",
+	validateSearch: (search: Record<string, unknown>): IndexSearchParams => ({
+		tab: search.tab === "boards" || search.tab === "templates" ? search.tab : undefined,
+	}),
 	component: IndexPage,
 });
 
 function IndexPage() {
-	const { user } = useAuth();
-	const logout = useLogout();
 	const navigate = useNavigate();
-	const boards = useBoardListData();
-	const sharedBoards = useBoardListData(true);
+	const { tab } = indexRoute.useSearch();
+	const activeTab = tab ?? "boards";
 
 	return (
 		<div className="flex min-h-screen flex-col">
 			{/* Header */}
 			<header className="flex items-center justify-between border-b px-6 py-4">
 				<h1 className="text-2xl font-bold">PlanFlow</h1>
-				<div className="flex items-center gap-3">
-					{user && <span className="text-sm text-muted-foreground">{user.email}</span>}
-					<Button onClick={() => navigate({ to: "/goals/new" })}>New Goal</Button>
-					<Button variant="outline" onClick={() => navigate({ to: "/templates" })}>
-						Templates
-					</Button>
-					<Button variant="outline" onClick={() => navigate({ to: "/settings" })}>
-						Settings
-					</Button>
-					<Button variant="outline" onClick={() => logout.mutate()} disabled={logout.isPending}>
-						{logout.isPending ? "Logging out..." : "Log out"}
-					</Button>
-				</div>
+				<UserDropdown />
 			</header>
 
-			{/* Board List */}
+			{/* Tabbed Content */}
 			<main className="flex-1 p-6">
-				{boards.length > 0 ? (
-					<div>
-						<h2 className="mb-4 text-lg font-semibold">Your Boards</h2>
-						<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-							{boards.map((board) => (
-								<BoardCard key={board.id} board={board} />
-							))}
-						</div>
-					</div>
-				) : (
-					<div className="flex flex-col items-center justify-center gap-4 py-20">
-						<p className="text-muted-foreground">No boards yet. Create a goal to get started.</p>
-						<Button onClick={() => navigate({ to: "/goals/new" })}>New Goal</Button>
-					</div>
-				)}
+				<Tabs
+					value={activeTab}
+					onValueChange={(value) =>
+						navigate({
+							to: "/",
+							search: value === "boards" ? {} : { tab: value as "templates" },
+							replace: true,
+						})
+					}
+				>
+					<TabsList className="mb-6">
+						<TabsTrigger value="boards">Boards</TabsTrigger>
+						<TabsTrigger value="templates">Templates</TabsTrigger>
+					</TabsList>
 
-				{sharedBoards.length > 0 && (
-					<div className={boards.length > 0 ? "mt-8" : ""}>
-						<h2 className="mb-4 text-lg font-semibold">Shared with You</h2>
-						<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-							{sharedBoards.map((board) => (
-								<BoardCard key={board.id} board={board} />
-							))}
-						</div>
-					</div>
-				)}
+					<TabsContent value="boards">
+						<BoardsTabContent />
+					</TabsContent>
+
+					<TabsContent value="templates">
+						<TemplatesGallery />
+					</TabsContent>
+				</Tabs>
 			</main>
+		</div>
+	);
+}
+
+function BoardsTabContent() {
+	const [view, setView] = useState<"mine" | "shared">("mine");
+	const boards = useBoardListData();
+	const sharedBoards = useBoardListData(true);
+
+	return (
+		<div>
+			{/* Secondary toggle */}
+			<div className="mb-4 flex gap-2">
+				<Button
+					variant={view === "mine" ? "default" : "outline"}
+					size="sm"
+					onClick={() => setView("mine")}
+				>
+					My Boards
+				</Button>
+				<Button
+					variant={view === "shared" ? "default" : "outline"}
+					size="sm"
+					onClick={() => setView("shared")}
+				>
+					Shared with Me
+				</Button>
+			</div>
+
+			{view === "mine" ? (
+				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+					<CreationCard label="New Board" href="/goals/new" />
+					{boards.map((board) => (
+						<BoardCard key={board.id} board={board} />
+					))}
+				</div>
+			) : sharedBoards.length > 0 ? (
+				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+					{sharedBoards.map((board) => (
+						<BoardCard key={board.id} board={board} />
+					))}
+				</div>
+			) : (
+				<div className="flex flex-col items-center justify-center py-20">
+					<p className="text-muted-foreground">No shared boards yet.</p>
+				</div>
+			)}
 		</div>
 	);
 }
