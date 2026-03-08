@@ -7,7 +7,6 @@ import {
 	type Node,
 	type NodeMouseHandler,
 	ReactFlow,
-	type ReactFlowInstance,
 	useEdgesState,
 	useNodesState,
 } from "@xyflow/react";
@@ -209,7 +208,9 @@ export function TemplateDagView({
 	onEdgesChange,
 	readOnly = false,
 }: TemplateDagViewProps) {
-	const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
+	// biome-ignore lint: ReactFlow's onInit infers a narrower type than ReactFlowInstance
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const rfInstanceRef = useRef<any>(null);
 	const [layoutKey, setLayoutKey] = useState(0);
 
 	// Compute layout from tasks/edges
@@ -304,7 +305,7 @@ export function TemplateDagView({
 				onPaneClick={onPaneClick}
 				onConnect={readOnly ? undefined : onConnect}
 				onEdgeClick={readOnly ? undefined : onEdgeClick}
-				onInit={(instance: ReactFlowInstance) => {
+				onInit={(instance) => {
 					rfInstanceRef.current = instance;
 				}}
 				fitView

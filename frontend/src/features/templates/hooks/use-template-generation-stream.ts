@@ -123,11 +123,6 @@ interface TaskEnrichedData {
 	subtasks: Array<{ title: string }>;
 }
 
-interface GenerationCompleteData {
-	board_title: string;
-	failed_tasks: string[];
-}
-
 interface GenerationErrorData {
 	error: string;
 	message?: string;
@@ -302,7 +297,6 @@ export function useTemplateGenerationStream({
 						break;
 					}
 					case "generation_complete": {
-						const _data = event.data as GenerationCompleteData;
 						setState((prev) => ({
 							...prev,
 							phase: "complete",
