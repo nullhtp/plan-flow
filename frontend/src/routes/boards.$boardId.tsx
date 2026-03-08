@@ -15,7 +15,7 @@ import type { BoardResponse } from "@/features/board/types";
 import { isTaskHiddenInFocus } from "@/features/board/utils/board-filters";
 import { ErrorDisplay } from "@/features/goals/components/error-display";
 import { BoardMemorySidebar } from "@/features/memory/components/BoardMemorySidebar";
-import { SaveAsTemplateDialog } from "@/features/templates/components/SaveAsTemplateDialog";
+import { useCreateTemplate } from "@/features/templates/hooks/use-template-mutations";
 import { authenticatedRoute } from "./_authenticated";
 
 type BoardSearchParams = {
@@ -43,8 +43,8 @@ function BoardDetailPage() {
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 	const [editTitle, setEditTitle] = useState("");
 	const [showMemorySidebar, setShowMemorySidebar] = useState(false);
-	const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
 	const [showSharePanel, setShowSharePanel] = useState(false);
+	const createTemplate = useCreateTemplate();
 
 	// View mode: default is "focus" when view param is absent
 	const viewMode: BoardViewMode = search.view === "full" ? "full" : "focus";
@@ -190,12 +190,30 @@ function BoardDetailPage() {
 					variant="outline"
 					size="sm"
 					className="gap-1.5 shrink-0"
-					onClick={() => setShowSaveAsTemplate(true)}
+					onClick={() => {
+						createTemplate.mutate(
+							{
+								board_id: boardData.id,
+								title: boardData.title,
+								visibility: "private",
+							},
+							{
+								onSuccess: (template) => {
+									navigate({
+										to: "/templates/$templateId",
+										params: { templateId: template.id },
+									});
+								},
+							},
+						);
+					}}
 					title="Save as template"
-					disabled={!boardData.tasks || boardData.tasks.length === 0}
+					disabled={!boardData.tasks || boardData.tasks.length === 0 || createTemplate.isPending}
 				>
 					<Save className="h-4 w-4" />
-					<span className="hidden sm:inline">Save as Template</span>
+					<span className="hidden sm:inline">
+						{createTemplate.isPending ? "Saving..." : "Save as Template"}
+					</span>
 				</Button>
 				<Button
 					variant={showMemorySidebar ? "default" : "outline"}
@@ -218,15 +236,6 @@ function BoardDetailPage() {
 			{showMemorySidebar && (
 				<BoardMemorySidebar boardId={boardData.id} onClose={() => setShowMemorySidebar(false)} />
 			)}
-
-			{/* Save as Template Dialog */}
-			<SaveAsTemplateDialog
-				boardId={boardData.id}
-				boardTitle={boardData.title}
-				taskCount={boardData.tasks?.length ?? 0}
-				open={showSaveAsTemplate}
-				onClose={() => setShowSaveAsTemplate(false)}
-			/>
 
 			{/* Share Panel */}
 			{showSharePanel && (

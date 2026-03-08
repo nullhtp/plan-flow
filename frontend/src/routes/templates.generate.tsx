@@ -8,7 +8,6 @@ import { ErrorDisplay } from "@/features/goals/components/error-display";
 import { LoadingState } from "@/features/goals/components/loading-state";
 import { ReadinessIndicator } from "@/features/goals/components/readiness-indicator";
 import { VagueGoalRejection } from "@/features/goals/components/vague-goal-rejection";
-import { TemplateDagView } from "@/features/templates/components/TemplateDagView";
 import { useCategoriesData } from "@/features/templates/hooks/use-categories";
 import {
 	useExtractContent,
@@ -67,13 +66,6 @@ type PageState =
 			step: "generating";
 			classification: TemplateClassificationData;
 			rounds: TemplateRound[];
-	  }
-	| {
-			step: "preview";
-			classification: TemplateClassificationData;
-			suggestedTitle: string;
-			tasks: StreamedTemplateTask[];
-			edges: { source: string; target: string }[];
 	  }
 	| { step: "error"; message: string; retryAction: () => void };
 
@@ -491,50 +483,40 @@ function TemplatesGeneratePage() {
 				rawInput={rawInput}
 				content={extractedContent}
 				titleHint={titleHint}
-				onComplete={(title, tasks, edges) =>
-					setPageState({
-						step: "preview",
-						classification: pageState.classification,
-						suggestedTitle: title,
-						tasks,
-						edges,
-					})
-				}
-				onAbort={() => setPageState({ step: "input" })}
-			/>
-		);
-	}
-
-	if (pageState.step === "preview") {
-		return (
-			<TemplatePreviewStep
-				classification={pageState.classification}
-				suggestedTitle={pageState.suggestedTitle}
-				tasks={pageState.tasks}
-				edges={pageState.edges}
-				categories={categories}
-				onSave={async (title, description, categoryId, visibility, createBoard, saveTasks) => {
-					const result = await saveTemplate.mutateAsync({
-						title,
-						description,
-						category_id: categoryId,
-						visibility,
-						create_board: createBoard,
-						tasks: saveTasks.map((t) => ({
-							id: t.id,
-							title: t.title,
-							description: t.description,
-							is_goal_node: t.is_goal_node,
-							depends_on: t.depends_on,
-							subtasks: t.subtasks,
-							priority: t.priority,
-							estimated_minutes: t.estimated_minutes,
-						})),
-					});
-					navigate({ to: "/templates/$templateId", params: { templateId: result.id } });
+				onComplete={async (title, tasks) => {
+					// Auto-save with defaults and navigate to detail page
+					const matchedCategory = categories.find(
+						(c) => c.slug === pageState.classification.domain,
+					);
+					try {
+						const result = await saveTemplate.mutateAsync({
+							title,
+							category_id: matchedCategory?.id ?? null,
+							visibility: "private",
+							tasks: tasks.map((t) => ({
+								id: t.id,
+								title: t.title,
+								description: t.description,
+								is_goal_node: t.is_goal_node,
+								depends_on: t.depends_on,
+								subtasks: t.subtasks,
+								priority: t.priority,
+								estimated_minutes: t.estimated_minutes,
+							})),
+						});
+						navigate({
+							to: "/templates/$templateId",
+							params: { templateId: result.id },
+						});
+					} catch {
+						setPageState({
+							step: "error",
+							message: "Failed to save the generated template. Please try again.",
+							retryAction: () => setPageState({ step: "input" }),
+						});
+					}
 				}}
-				isSaving={saveTemplate.isPending}
-				onBack={() => setPageState({ step: "input" })}
+				onAbort={() => setPageState({ step: "input" })}
 			/>
 		);
 	}
@@ -779,11 +761,7 @@ interface TemplateGeneratingStepProps {
 	rawInput: string;
 	content: string | null;
 	titleHint: string;
-	onComplete: (
-		title: string,
-		tasks: StreamedTemplateTask[],
-		edges: { source: string; target: string }[],
-	) => void;
+	onComplete: (title: string, tasks: StreamedTemplateTask[]) => void;
 	onAbort: () => void;
 }
 
@@ -832,23 +810,18 @@ function TemplateGeneratingStep({
 		};
 	}, [stream.start, stream.abort]);
 
-	// Listen for completion — tasks and edges are captured by the stream hook
+	// Listen for completion — tasks are captured by the stream hook
 	useEffect(() => {
 		if (stream.phase === "complete" && !didCompleteRef.current) {
 			didCompleteRef.current = true;
 			setTimeout(() => {
-				onComplete(
-					stream.boardTitle || titleHint || classification.suggested_title,
-					stream.tasks,
-					stream.edges,
-				);
+				onComplete(stream.boardTitle || titleHint || classification.suggested_title, stream.tasks);
 			}, 1000);
 		}
 	}, [
 		stream.phase,
 		stream.boardTitle,
 		stream.tasks,
-		stream.edges,
 		onComplete,
 		titleHint,
 		classification.suggested_title,
@@ -910,258 +883,6 @@ function TemplateGeneratingStep({
 						<Button onClick={() => stream.start()}>Try Again</Button>
 					</div>
 				)}
-			</div>
-		</div>
-	);
-}
-
-// ── Preview Step Component ──────────────────────────────
-
-interface TemplatePreviewStepProps {
-	classification: TemplateClassificationData;
-	suggestedTitle: string;
-	tasks: StreamedTemplateTask[];
-	edges: { source: string; target: string }[];
-	categories: { id: string; name: string; slug: string }[];
-	onSave: (
-		title: string,
-		description: string | null,
-		categoryId: string | null,
-		visibility: string,
-		createBoard: boolean,
-		tasks: StreamedTemplateTask[],
-	) => Promise<void>;
-	isSaving: boolean;
-	onBack: () => void;
-}
-
-function TemplatePreviewStep({
-	suggestedTitle,
-	tasks: initialTasks,
-	edges: initialEdges,
-	categories,
-	onSave,
-	isSaving,
-	onBack,
-}: TemplatePreviewStepProps) {
-	const [title, setTitle] = useState(suggestedTitle);
-	const [description, setDescription] = useState("");
-	const [categoryId, setCategoryId] = useState<string | null>(null);
-	const [visibility, setVisibility] = useState("private");
-	const [createBoard, setCreateBoard] = useState(false);
-	const [tasks, setTasks] = useState<StreamedTemplateTask[]>(initialTasks);
-	const [edges, setEdges] = useState<{ source: string; target: string }[]>(initialEdges);
-
-	// Task editing
-	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-	const selectedTask = tasks.find((t) => t.id === selectedTaskId);
-
-	function updateTask(id: string, updates: Partial<StreamedTemplateTask>) {
-		setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
-	}
-
-	function removeTask(id: string) {
-		setTasks((prev) => {
-			const filtered = prev.filter((t) => t.id !== id);
-			return filtered.map((t) => ({
-				...t,
-				depends_on: t.depends_on.filter((d) => d !== id),
-			}));
-		});
-		// Remove edges involving this task
-		setEdges((prev) => prev.filter((e) => e.source !== id && e.target !== id));
-		if (selectedTaskId === id) setSelectedTaskId(null);
-	}
-
-	function addTask() {
-		const newId = `t_new_${Date.now()}`;
-		const newTask: StreamedTemplateTask = {
-			id: newId,
-			title: "New Task",
-			depends_on: [],
-			is_goal_node: false,
-			description: "",
-			priority: null,
-			estimated_minutes: null,
-			subtasks: [],
-		};
-		setTasks((prev) => [...prev, newTask]);
-		setSelectedTaskId(newId);
-	}
-
-	// Sync depends_on when edges change
-	function handleEdgesChange(newEdges: { source: string; target: string }[]) {
-		setEdges(newEdges);
-		// Rebuild depends_on for all tasks from edges
-		setTasks((prev) =>
-			prev.map((t) => ({
-				...t,
-				depends_on: newEdges.filter((e) => e.target === t.id).map((e) => e.source),
-			})),
-		);
-	}
-
-	return (
-		<div className="flex h-screen flex-col">
-			{/* Header */}
-			<div className="flex items-center justify-between border-b px-4 py-3">
-				<h1 className="text-xl font-bold">Preview Template</h1>
-				<div className="flex items-center gap-2">
-					<Button variant="outline" size="sm" onClick={addTask}>
-						Add Task
-					</Button>
-					<Button variant="outline" size="sm" onClick={onBack}>
-						Back
-					</Button>
-				</div>
-			</div>
-
-			<div className="flex flex-1 overflow-hidden">
-				{/* DAG View — fills available space */}
-				<div className="flex-1">
-					<TemplateDagView
-						tasks={tasks}
-						edges={edges}
-						selectedTaskId={selectedTaskId}
-						onSelectTask={setSelectedTaskId}
-						onEdgesChange={handleEdgesChange}
-					/>
-				</div>
-
-				{/* Right sidebar: task editor + save form */}
-				<div className="w-80 shrink-0 overflow-y-auto border-l bg-background p-4">
-					<div className="space-y-6">
-						{/* Task detail editor */}
-						{selectedTask && (
-							<div className="rounded-lg border p-4">
-								<h4 className="mb-3 font-semibold">Edit Task</h4>
-								<div className="space-y-3">
-									<div>
-										<Label>Title</Label>
-										<Input
-											value={selectedTask.title}
-											onChange={(e) => updateTask(selectedTask.id, { title: e.target.value })}
-										/>
-									</div>
-									<div>
-										<Label>Description</Label>
-										<Textarea
-											value={selectedTask.description}
-											onChange={(e) =>
-												updateTask(selectedTask.id, {
-													description: e.target.value,
-												})
-											}
-											rows={3}
-											className="resize-none"
-										/>
-									</div>
-									<div>
-										<Label>Priority</Label>
-										<select
-											value={selectedTask.priority || ""}
-											onChange={(e) =>
-												updateTask(selectedTask.id, {
-													priority: e.target.value || null,
-												})
-											}
-											className="w-full rounded-md border px-3 py-2 text-sm"
-										>
-											<option value="">None</option>
-											<option value="low">Low</option>
-											<option value="medium">Medium</option>
-											<option value="high">High</option>
-										</select>
-									</div>
-									<div>
-										<Label>Estimated minutes</Label>
-										<Input
-											type="number"
-											value={selectedTask.estimated_minutes ?? ""}
-											onChange={(e) =>
-												updateTask(selectedTask.id, {
-													estimated_minutes: e.target.value
-														? Number.parseInt(e.target.value)
-														: null,
-												})
-											}
-										/>
-									</div>
-									<Button
-										variant="destructive"
-										size="sm"
-										onClick={() => removeTask(selectedTask.id)}
-									>
-										Delete Task
-									</Button>
-								</div>
-							</div>
-						)}
-
-						{/* Save form */}
-						<div className="rounded-lg border p-4">
-							<h4 className="mb-3 font-semibold">Save Template</h4>
-							<div className="space-y-3">
-								<div>
-									<Label>Title</Label>
-									<Input value={title} onChange={(e) => setTitle(e.target.value)} />
-								</div>
-								<div>
-									<Label>Description</Label>
-									<Textarea
-										value={description}
-										onChange={(e) => setDescription(e.target.value)}
-										rows={2}
-										className="resize-none"
-									/>
-								</div>
-								<div>
-									<Label>Category</Label>
-									<select
-										value={categoryId || ""}
-										onChange={(e) => setCategoryId(e.target.value || null)}
-										className="w-full rounded-md border px-3 py-2 text-sm"
-									>
-										<option value="">None</option>
-										{categories.map((c) => (
-											<option key={c.id} value={c.id}>
-												{c.name}
-											</option>
-										))}
-									</select>
-								</div>
-								<div>
-									<Label>Visibility</Label>
-									<select
-										value={visibility}
-										onChange={(e) => setVisibility(e.target.value)}
-										className="w-full rounded-md border px-3 py-2 text-sm"
-									>
-										<option value="private">Private</option>
-										<option value="public">Public</option>
-									</select>
-								</div>
-								<label className="flex items-center gap-2">
-									<input
-										type="checkbox"
-										checked={createBoard}
-										onChange={(e) => setCreateBoard(e.target.checked)}
-									/>
-									<span className="text-sm">Also create a board from this template</span>
-								</label>
-								<Button
-									onClick={() =>
-										onSave(title, description || null, categoryId, visibility, createBoard, tasks)
-									}
-									disabled={!title.trim() || tasks.length === 0 || isSaving}
-									className="w-full"
-								>
-									{isSaving ? "Saving..." : "Save Template"}
-								</Button>
-							</div>
-						</div>
-					</div>
-				</div>
 			</div>
 		</div>
 	);

@@ -158,7 +158,7 @@ function TemplateDetailPage() {
 	);
 
 	const handleMetadataSave = useCallback(
-		(field: "title" | "description" | "category_id", value: string | null) => {
+		(field: "title" | "description" | "category_id" | "visibility", value: string | null) => {
 			updateTemplate.mutate({ [field]: value });
 		},
 		[updateTemplate],
@@ -278,7 +278,20 @@ function TemplateDetailPage() {
 						)}
 						<span>{template.task_count} tasks</span>
 						<span>by {template.creator.email}</span>
-						<span className="capitalize">{template.visibility}</span>
+						{isOwner ? (
+							<select
+								value={template.visibility}
+								onChange={(e) => {
+									handleMetadataSave("visibility", e.target.value);
+								}}
+								className="rounded-full bg-muted px-3 py-1 text-sm capitalize"
+							>
+								<option value="private">Private</option>
+								<option value="public">Public</option>
+							</select>
+						) : (
+							<span className="capitalize">{template.visibility}</span>
+						)}
 					</div>
 
 					{/* Description */}
