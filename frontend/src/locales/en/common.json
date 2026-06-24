@@ -1,0 +1,27 @@
+{
+	"loading": "Loading...",
+	"tabs": {
+		"boards": "Boards",
+		"templates": "Templates"
+	},
+	"boards": {
+		"mine": "My Boards",
+		"shared": "Shared with Me",
+		"noShared": "No shared boards yet.",
+		"newBoard": "New Board"
+	},
+	"userMenu": {
+		"settings": "Settings",
+		"logout": "Log out",
+		"loggingOut": "Logging out..."
+	},
+	"join": {
+		"invalidLink": "Invalid share link — no token provided.",
+		"joining": "Joining board...",
+		"failed": "Failed to join board. The link may be invalid or expired.",
+		"goDashboard": "Go to dashboard"
+	},
+	"fields": {
+		"other": "Other..."
+	}
+}

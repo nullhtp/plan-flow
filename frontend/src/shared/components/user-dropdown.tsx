@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { LogOut, Settings, User } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -11,6 +12,7 @@ import {
 import { useAuth, useLogout } from "@/features/auth/hooks/use-auth";
 
 export function UserDropdown() {
+	const { t } = useTranslation("common");
 	const { user } = useAuth();
 	const logout = useLogout();
 	const navigate = useNavigate();
@@ -26,12 +28,12 @@ export function UserDropdown() {
 			<DropdownMenuContent align="end">
 				<DropdownMenuItem onClick={() => navigate({ to: "/settings" })}>
 					<Settings className="mr-2 h-4 w-4" />
-					Settings
+					{t("userMenu.settings")}
 				</DropdownMenuItem>
 				<DropdownMenuSeparator />
 				<DropdownMenuItem onClick={() => logout.mutate()} disabled={logout.isPending}>
 					<LogOut className="mr-2 h-4 w-4" />
-					{logout.isPending ? "Logging out..." : "Log out"}
+					{logout.isPending ? t("userMenu.loggingOut") : t("userMenu.logout")}
 				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>

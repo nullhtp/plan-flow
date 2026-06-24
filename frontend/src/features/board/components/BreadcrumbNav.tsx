@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight, Home } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface BreadcrumbNavProps {
 	boardTitle: string;
@@ -12,6 +13,7 @@ function truncateTitle(title: string, maxLength = 40): string {
 }
 
 export function BreadcrumbNav({ boardTitle, parentBoard }: BreadcrumbNavProps) {
+	const { t } = useTranslation("board");
 	const navigate = useNavigate();
 
 	return (
@@ -23,7 +25,7 @@ export function BreadcrumbNav({ boardTitle, parentBoard }: BreadcrumbNavProps) {
 				className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
 			>
 				<Home className="h-3.5 w-3.5" />
-				<span>Home</span>
+				<span>{t("breadcrumbNav.home")}</span>
 			</button>
 
 			<ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />

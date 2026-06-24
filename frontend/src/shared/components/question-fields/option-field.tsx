@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { QuestionSchema } from "@/api/generated/model";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +30,7 @@ export function OptionField({
 	disabled: boolean;
 	compact?: boolean;
 }) {
+	const { t } = useTranslation("common");
 	const options = question.options ?? [];
 	const allowOther = question.allow_other !== false;
 	const isOtherActive =
@@ -73,7 +75,7 @@ export function OptionField({
 						className={cn(compact && "size-3.5")}
 					/>
 					<Input
-						placeholder="Other..."
+						placeholder={t("fields.other")}
 						value={otherText}
 						onChange={(e) => onOtherChange(e.target.value)}
 						onFocus={() => {

@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ExternalLink, Layers, Lock } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,10 +31,10 @@ export interface TaskDetailContentProps {
 	onNavigateAway?: () => void;
 }
 
-const statusLabel: Record<string, string> = {
-	not_started: "Not Started",
-	in_progress: "In Progress",
-	done: "Done",
+const statusLabelKey: Record<string, string> = {
+	not_started: "taskDetailContent.statusNotStarted",
+	in_progress: "taskDetailContent.statusInProgress",
+	done: "taskDetailContent.statusDone",
 };
 
 const statusColor: Record<string, string> = {
@@ -59,6 +60,7 @@ export function TaskDetailContent({
 	onDeleteSubtask,
 	onNavigateAway,
 }: TaskDetailContentProps) {
+	const { t } = useTranslation("board");
 	const navigate = useNavigate();
 	const [title, setTitle] = useState(task.title);
 	const [description, setDescription] = useState(task.description);
@@ -111,7 +113,7 @@ export function TaskDetailContent({
 		<>
 			{/* Status */}
 			<div>
-				<Label>Status</Label>
+				<Label>{t("taskDetailContent.status")}</Label>
 				<div className="mt-1 flex items-center gap-2">
 					<button
 						type="button"
@@ -122,16 +124,18 @@ export function TaskDetailContent({
 						} ${task.is_locked ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:opacity-80"}`}
 						title={
 							task.is_locked
-								? `Complete prerequisites first: ${unmetDeps.map((t) => t.title).join(", ")}`
-								: "Click to change status"
+								? t("taskDetailContent.completePrerequisitesFirst", {
+										deps: unmetDeps.map((d) => d.title).join(", "),
+									})
+								: t("taskDetailContent.clickToChangeStatus")
 						}
 					>
 						{task.is_locked && <Lock className="inline h-3 w-3 mr-1" />}
-						{statusLabel[task.status] ?? task.status}
+						{statusLabelKey[task.status] ? t(statusLabelKey[task.status]) : task.status}
 					</button>
 					{task.is_locked && (
 						<span className="text-xs text-muted-foreground">
-							Blocked by {unmetDeps.length} task{unmetDeps.length !== 1 ? "s" : ""}
+							{t("taskDetailContent.blockedBy", { count: unmetDeps.length })}
 						</span>
 					)}
 				</div>
@@ -139,7 +143,7 @@ export function TaskDetailContent({
 
 			{/* Title */}
 			<div>
-				<Label htmlFor="task-title">Title</Label>
+				<Label htmlFor="task-title">{t("taskDetailContent.title")}</Label>
 				<Input
 					id="task-title"
 					value={title}
@@ -151,7 +155,7 @@ export function TaskDetailContent({
 
 			{/* Description */}
 			<div>
-				<Label htmlFor="task-desc">Description</Label>
+				<Label htmlFor="task-desc">{t("taskDetailContent.description")}</Label>
 				<textarea
 					id="task-desc"
 					value={description}
@@ -165,21 +169,21 @@ export function TaskDetailContent({
 			{/* Metadata */}
 			<div className="grid grid-cols-2 gap-4">
 				<div>
-					<Label htmlFor="task-priority">Priority</Label>
+					<Label htmlFor="task-priority">{t("taskDetailContent.priority")}</Label>
 					<select
 						id="task-priority"
 						value={task.priority ?? ""}
 						onChange={(e) => onUpdateTask({ priority: e.target.value || null })}
 						className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
 					>
-						<option value="">None</option>
-						<option value="low">Low</option>
-						<option value="medium">Medium</option>
-						<option value="high">High</option>
+						<option value="">{t("taskDetailContent.priorityNone")}</option>
+						<option value="low">{t("taskDetailContent.priorityLow")}</option>
+						<option value="medium">{t("taskDetailContent.priorityMedium")}</option>
+						<option value="high">{t("taskDetailContent.priorityHigh")}</option>
 					</select>
 				</div>
 				<div>
-					<Label htmlFor="task-estimate">Estimate (min)</Label>
+					<Label htmlFor="task-estimate">{t("taskDetailContent.estimate")}</Label>
 					<Input
 						id="task-estimate"
 						type="number"
@@ -193,7 +197,7 @@ export function TaskDetailContent({
 				</div>
 			</div>
 			<div>
-				<Label htmlFor="task-due">Due Date</Label>
+				<Label htmlFor="task-due">{t("taskDetailContent.dueDate")}</Label>
 				<Input
 					id="task-due"
 					type="date"
@@ -206,14 +210,17 @@ export function TaskDetailContent({
 			{/* Subtasks or Sub-Board section */}
 			{hasSubBoard ? (
 				<div>
-					<Label>Sub-Board</Label>
+					<Label>{t("taskDetailContent.subBoard")}</Label>
 					<div className="mt-2 rounded-lg border border-violet-200 bg-violet-50/50 dark:border-violet-800 dark:bg-violet-950/20 p-3">
 						<div className="flex items-center gap-2 mb-2">
 							<Layers className="h-4 w-4 text-violet-600" />
 							<span className="font-medium text-sm">
 								{task.sub_board_progress
-									? `${task.sub_board_progress.completed_task_count}/${task.sub_board_progress.task_count} tasks completed`
-									: "Sub-board"}
+									? t("taskDetailContent.tasksCompleted", {
+											completed: task.sub_board_progress.completed_task_count,
+											total: task.sub_board_progress.task_count,
+										})
+									: t("taskDetailContent.subBoardFallback")}
 							</span>
 						</div>
 						<Button
@@ -228,7 +235,7 @@ export function TaskDetailContent({
 							}}
 						>
 							<ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-							Open Sub-Board
+							{t("taskDetailContent.openSubBoard")}
 						</Button>
 					</div>
 				</div>
@@ -256,7 +263,7 @@ export function TaskDetailContent({
 								}}
 							>
 								<Layers className="h-3.5 w-3.5 mr-1.5" />
-								Expand to Board
+								{t("taskDetailContent.expandToBoard")}
 							</Button>
 						</div>
 					)}
@@ -275,16 +282,17 @@ export function TaskDetailContent({
 			{showExpandConfirm && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
 					<div className="mx-4 max-w-sm rounded-lg bg-background p-6 shadow-xl">
-						<h3 className="text-lg font-semibold mb-2">Expand to Board</h3>
+						<h3 className="text-lg font-semibold mb-2">{t("taskDetailContent.expandToBoard")}</h3>
 						<p className="text-sm text-muted-foreground mb-4">
-							This task has {task.subtasks?.length ?? 0} subtask
-							{(task.subtasks?.length ?? 0) !== 1 ? "s" : ""}. Expanding to a board will{" "}
-							<span className="font-medium text-foreground">replace all subtasks</span> with an
-							AI-generated task board. This cannot be undone.
+							{t("taskDetailContentExpand.intro", { count: task.subtasks?.length ?? 0 })}
+							<span className="font-medium text-foreground">
+								{t("taskDetailContentExpand.replaceAllSubtasks")}
+							</span>
+							{t("taskDetailContentExpand.outro")}
 						</p>
 						<div className="flex justify-end gap-2">
 							<Button variant="outline" onClick={() => setShowExpandConfirm(false)}>
-								Cancel
+								{t("taskDetailContent.cancel")}
 							</Button>
 							<Button
 								className="bg-violet-600 hover:bg-violet-700 text-white"
@@ -293,7 +301,7 @@ export function TaskDetailContent({
 									navigateToExpansionPage();
 								}}
 							>
-								Continue
+								{t("taskDetailContent.continue")}
 							</Button>
 						</div>
 					</div>

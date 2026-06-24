@@ -12,6 +12,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { SubtaskResponse } from "@/features/board/types";
@@ -42,6 +43,7 @@ export function SubtaskChecklist({
 	onDelete,
 	onActionClick,
 }: SubtaskChecklistProps) {
+	const { t } = useTranslation("board");
 	const [newTitle, setNewTitle] = useState("");
 
 	const handleAdd = () => {
@@ -58,7 +60,7 @@ export function SubtaskChecklist({
 
 	return (
 		<div className="space-y-2">
-			<h4 className="text-sm font-medium">Subtasks</h4>
+			<h4 className="text-sm font-medium">{t("subtaskChecklist.subtasks")}</h4>
 			<div className="space-y-1">
 				{subtasks.map((subtask) => {
 					const hasAction = subtask.action_prompt != null;
@@ -94,9 +96,12 @@ export function SubtaskChecklist({
 									variant="outline"
 									size="sm"
 									className="ml-7 h-7 gap-1.5 border-violet-300 bg-violet-50 px-3 text-xs font-medium text-violet-700 shadow-sm hover:bg-violet-100 hover:text-violet-800 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-300 dark:hover:bg-violet-900"
-									title={subtask.action_label ?? "AI Action"}
+									title={subtask.action_label ?? t("subtaskChecklist.aiAction")}
 									onClick={() => {
-										const prompt = `Help me with subtask: ${subtask.title} -- ${subtask.action_prompt}`;
+										const prompt = t("subtaskChecklist.subtaskActionPrompt", {
+											title: subtask.title,
+											prompt: subtask.action_prompt,
+										});
 										onActionClick(prompt);
 									}}
 								>
@@ -110,7 +115,7 @@ export function SubtaskChecklist({
 			</div>
 			<div className="flex items-center gap-2">
 				<Input
-					placeholder="Add subtask..."
+					placeholder={t("subtaskChecklist.addSubtask")}
 					value={newTitle}
 					onChange={(e) => setNewTitle(e.target.value)}
 					onKeyDown={handleKeyDown}

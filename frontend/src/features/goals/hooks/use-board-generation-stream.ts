@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchSSE } from "@/api/sse";
 
@@ -101,9 +102,11 @@ interface UseBoardGenerationStreamOptions {
 	url: string;
 	/** Optional JSON body to send with the POST request */
 	body?: unknown;
+	/** Translation function from the "goals" namespace for user-facing log messages. */
+	t: TFunction<"goals">;
 }
 
-export function useBoardGenerationStream({ url, body }: UseBoardGenerationStreamOptions) {
+export function useBoardGenerationStream({ url, body, t }: UseBoardGenerationStreamOptions) {
 	const [state, setState] = useState<GenerationState>(initialState);
 	const abortRef = useRef<AbortController | null>(null);
 	// Keep a ref to task map so we can resolve titles in task_enriched
@@ -130,7 +133,7 @@ export function useBoardGenerationStream({ url, body }: UseBoardGenerationStream
 			log: [
 				{
 					id: nextLogId(),
-					message: "Connecting to generation service...",
+					message: t("stream.connecting"),
 					type: "info",
 					timestamp: Date.now(),
 				},
@@ -156,7 +159,7 @@ export function useBoardGenerationStream({ url, body }: UseBoardGenerationStream
 								totalResults: 0,
 								urlsFetched: 0,
 							},
-							log: addLog(prev, `Researching your goal (${data.query_count} searches)...`, "info"),
+							log: addLog(prev, t("stream.researchingGoal", { count: data.query_count }), "info"),
 						}));
 						break;
 					}
@@ -172,7 +175,7 @@ export function useBoardGenerationStream({ url, body }: UseBoardGenerationStream
 										totalResults: prev.researchProgress.totalResults + data.results_count,
 									}
 								: null,
-							log: addLog(prev, `Searching: ${data.query}`, "info"),
+							log: addLog(prev, t("stream.searching", { query: data.query }), "info"),
 						}));
 						break;
 					}
@@ -192,7 +195,10 @@ export function useBoardGenerationStream({ url, body }: UseBoardGenerationStream
 								: null,
 							log: addLog(
 								prev,
-								`Research complete: ${data.total_results} results from ${data.total_queries} searches`,
+								t("stream.researchComplete", {
+									results: data.total_results,
+									queries: data.total_queries,
+								}),
 								"success",
 							),
 						}));
@@ -214,13 +220,13 @@ export function useBoardGenerationStream({ url, body }: UseBoardGenerationStream
 							log: [
 								{
 									id: nextLogId(),
-									message: `Created ${data.tasks.length} tasks — adding details...`,
+									message: t("stream.createdTasks", { count: data.tasks.length }),
 									type: "success",
 									timestamp: Date.now(),
 								},
 								{
 									id: nextLogId(),
-									message: `Board structure ready: ${data.board_title}`,
+									message: t("stream.boardStructureReady", { title: data.board_title }),
 									type: "success",
 									timestamp: Date.now(),
 								},
@@ -231,11 +237,12 @@ export function useBoardGenerationStream({ url, body }: UseBoardGenerationStream
 					}
 					case "task_enriched": {
 						const data = event.data as TaskEnrichedData;
-						const title = taskMapRef.current.get(data.task_id) || data.title || "task";
+						const title =
+							taskMapRef.current.get(data.task_id) || data.title || t("stream.fallbackTask");
 						setState((prev) => ({
 							...prev,
 							enrichedCount: prev.enrichedCount + 1,
-							log: addLog(prev, `Enriched: ${title}`, "success"),
+							log: addLog(prev, t("stream.enriched", { title }), "success"),
 						}));
 						break;
 					}
@@ -245,7 +252,7 @@ export function useBoardGenerationStream({ url, body }: UseBoardGenerationStream
 							...prev,
 							phase: "complete",
 							boardId: data.board_id || prev.boardId,
-							log: addLog(prev, "Board generation complete!", "success"),
+							log: addLog(prev, t("stream.generationComplete"), "success"),
 						}));
 						break;
 					}
@@ -263,22 +270,18 @@ export function useBoardGenerationStream({ url, body }: UseBoardGenerationStream
 			},
 			onError: (error) => {
 				if (controller.signal.aborted) return;
-				const msg = error.message || "Connection failed";
+				const msg = error.message || t("stream.connectionFailed");
 				setState((prev) => ({
 					...prev,
 					phase: "error",
-					error: prev.boardId
-						? "Connection lost. Your board may have been partially created."
-						: msg,
+					error: prev.boardId ? t("stream.connectionLost") : msg,
 					log: addLog(prev, msg, "error"),
 				}));
 			},
 			onClose: () => {
 				setState((prev) => {
 					if (prev.phase === "complete" || prev.phase === "error") return prev;
-					const msg = prev.boardId
-						? "Connection lost. Your board may have been partially created."
-						: "Connection closed unexpectedly";
+					const msg = prev.boardId ? t("stream.connectionLost") : t("stream.connectionClosed");
 					return {
 						...prev,
 						phase: "error",
@@ -288,7 +291,7 @@ export function useBoardGenerationStream({ url, body }: UseBoardGenerationStream
 				});
 			},
 		});
-	}, [url, body]);
+	}, [url, body, t]);
 
 	const abort = useCallback(() => {
 		abortRef.current?.abort();

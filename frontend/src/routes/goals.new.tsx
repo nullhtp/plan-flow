@@ -1,5 +1,6 @@
 import { createRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type {
 	GoalCreate,
 	GoalQuestionsResponse,
@@ -49,6 +50,7 @@ export const goalsNewRoute = createRoute({
 });
 
 function GoalsNewPage() {
+	const { t } = useTranslation("goals");
 	const createGoal = useCreateGoal();
 	const submitAnswers = useSubmitAnswers();
 	const { resolveLocation } = useUserMeta();
@@ -58,9 +60,9 @@ function GoalsNewPage() {
 
 	function getErrorMessage(status: number): string {
 		if (status === 503 || status === 504) {
-			return "Our AI is taking longer than expected. Please try again.";
+			return t("newPage.aiTimeout");
 		}
-		return "Something went wrong while processing your goal. Please try again.";
+		return t("newPage.genericError");
 	}
 
 	async function handleCreateGoal(input: string) {

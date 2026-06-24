@@ -1,5 +1,6 @@
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useJoinBoard } from "@/features/board/hooks/use-share";
 import { authenticatedRoute } from "./_authenticated";
 
@@ -17,6 +18,7 @@ export const joinRoute = createRoute({
 });
 
 function JoinPage() {
+	const { t } = useTranslation("common");
 	const { token } = joinRoute.useSearch();
 	const navigate = useNavigate();
 	const joinBoard = useJoinBoard();
@@ -33,7 +35,7 @@ function JoinPage() {
 	if (!token) {
 		return (
 			<div className="flex min-h-screen items-center justify-center">
-				<p className="text-muted-foreground">Invalid share link — no token provided.</p>
+				<p className="text-muted-foreground">{t("join.invalidLink")}</p>
 			</div>
 		);
 	}
@@ -41,7 +43,7 @@ function JoinPage() {
 	if (joinBoard.isPending) {
 		return (
 			<div className="flex min-h-screen items-center justify-center">
-				<p className="text-muted-foreground">Joining board...</p>
+				<p className="text-muted-foreground">{t("join.joining")}</p>
 			</div>
 		);
 	}
@@ -49,11 +51,9 @@ function JoinPage() {
 	if (joinBoard.isError) {
 		return (
 			<div className="flex min-h-screen flex-col items-center justify-center gap-3">
-				<p className="text-destructive">
-					Failed to join board. The link may be invalid or expired.
-				</p>
+				<p className="text-destructive">{t("join.failed")}</p>
 				<button type="button" className="text-sm underline" onClick={() => navigate({ to: "/" })}>
-					Go to dashboard
+					{t("join.goDashboard")}
 				</button>
 			</div>
 		);

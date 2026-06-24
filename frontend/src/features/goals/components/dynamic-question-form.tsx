@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { QuestionSchema, ReadinessSchema } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,7 @@ function QuestionField({
 	onChange: (value: string | string[] | number) => void;
 	disabled: boolean;
 }) {
+	const { t } = useTranslation("goals");
 	const options = question.options ?? [];
 	const hasOptions = options.length > 0;
 
@@ -86,7 +88,7 @@ function QuestionField({
 					id={question.id}
 					value={stringValue}
 					onChange={(e) => onChange(e.target.value)}
-					placeholder="Type your answer..."
+					placeholder={t("questionForm.typeAnswer")}
 					disabled={disabled}
 				/>
 			</QuestionFieldWrapper>
@@ -157,12 +159,13 @@ function CompletedRound({
 	onEdit: (roundNum: number) => void;
 	simple?: boolean;
 }) {
+	const { t } = useTranslation("goals");
 	const [expanded, setExpanded] = useState(false);
 	const answeredCount = Object.keys(round.answers).length;
 
 	function formatAnswer(question: QuestionSchema): string {
 		const value = round.answers[question.id];
-		if (value === undefined || value === "") return "Not answered";
+		if (value === undefined || value === "") return t("questionForm.notAnswered");
 		if (Array.isArray(value)) return value.join(", ");
 		return String(value);
 	}
@@ -171,7 +174,7 @@ function CompletedRound({
 	if (simple) {
 		return (
 			<div className="space-y-3 rounded-lg border bg-muted/30 px-4 py-3">
-				<p className="text-sm font-medium text-muted-foreground">Your answers</p>
+				<p className="text-sm font-medium text-muted-foreground">{t("questionForm.yourAnswers")}</p>
 				{round.questions.map((q) => (
 					<div key={q.id} className="space-y-1">
 						<p className="text-sm font-medium">{q.text}</p>
@@ -190,9 +193,11 @@ function CompletedRound({
 					className="flex flex-1 items-center gap-2 text-left"
 					onClick={() => setExpanded(!expanded)}
 				>
-					<span className="text-sm font-medium">Round {round.round}</span>
+					<span className="text-sm font-medium">
+						{t("questionForm.round", { round: round.round })}
+					</span>
 					<span className="text-xs text-muted-foreground">
-						{answeredCount} question{answeredCount !== 1 ? "s" : ""} answered
+						{t("questionForm.questionsAnswered", { count: answeredCount })}
 					</span>
 					<svg
 						width="16"
@@ -202,7 +207,7 @@ function CompletedRound({
 						className={`ml-auto transform transition-transform ${expanded ? "rotate-180" : ""}`}
 						aria-hidden="true"
 					>
-						<title>Toggle</title>
+						<title>{t("questionForm.toggle")}</title>
 						<path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
 					</svg>
 				</button>
@@ -212,7 +217,7 @@ function CompletedRound({
 					className="ml-2 flex-shrink-0"
 					onClick={() => onEdit(round.round)}
 				>
-					Edit
+					{t("questionForm.edit")}
 				</Button>
 			</div>
 			{expanded && (
@@ -268,6 +273,7 @@ export function DynamicQuestionForm({
 	isPending,
 	isLoadingFollowUp,
 }: DynamicQuestionFormProps) {
+	const { t } = useTranslation("goals");
 	const { isSimpleMode } = useSimpleMode();
 	const newQuestionsRef = useRef<HTMLFormElement>(null);
 
@@ -318,9 +324,7 @@ export function DynamicQuestionForm({
 			<div className="mb-6">
 				<h1 className="text-2xl font-semibold tracking-tight">{goalTitle}</h1>
 				<p className="mt-1 text-sm text-muted-foreground">
-					{currentRound === 1
-						? "Help us understand your goal better by answering these questions."
-						: "Answer follow-up questions to improve your board, or generate now."}
+					{currentRound === 1 ? t("questionForm.helpUnderstand") : t("questionForm.answerFollowUp")}
 				</p>
 			</div>
 
@@ -345,7 +349,9 @@ export function DynamicQuestionForm({
 			{isLoadingFollowUp && (
 				<div className="flex items-center justify-center gap-2 py-12">
 					<div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-					<span className="text-sm text-muted-foreground">Generating follow-up questions...</span>
+					<span className="text-sm text-muted-foreground">
+						{t("questionForm.generatingFollowUp")}
+					</span>
 				</div>
 			)}
 
@@ -354,7 +360,9 @@ export function DynamicQuestionForm({
 				<form ref={newQuestionsRef} onSubmit={handleSubmit} className="space-y-6">
 					{currentRound > 1 && (
 						<p className="text-sm font-medium text-muted-foreground">
-							{isSimpleMode ? "A few more questions" : `Round ${currentRound}`}
+							{isSimpleMode
+								? t("questionForm.aFewMoreQuestions")
+								: t("questionForm.round", { round: currentRound })}
 						</p>
 					)}
 					{activeQuestions.map((question) => (
@@ -367,7 +375,7 @@ export function DynamicQuestionForm({
 						/>
 					))}
 					<Button type="submit" className="w-full" disabled={isPending || !isValid()}>
-						{isPending ? "Submitting..." : "Continue"}
+						{isPending ? t("questionForm.submitting") : t("questionForm.continue")}
 					</Button>
 				</form>
 			)}

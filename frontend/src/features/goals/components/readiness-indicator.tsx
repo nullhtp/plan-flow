@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { ReadinessSchema } from "@/api/generated/model";
 
 interface ReadinessIndicatorProps {
@@ -11,6 +12,7 @@ function getColor(score: number): { ring: string; text: string } {
 }
 
 export function ReadinessIndicator({ readiness }: ReadinessIndicatorProps) {
+	const { t } = useTranslation("goals");
 	const pct = Math.round(readiness.score * 100);
 	const color = getColor(readiness.score);
 
@@ -23,7 +25,7 @@ export function ReadinessIndicator({ readiness }: ReadinessIndicatorProps) {
 			{/* Progress ring */}
 			<div className="relative h-10 w-10 flex-shrink-0">
 				<svg width="40" height="40" viewBox="0 0 40 40" className="-rotate-90" aria-hidden="true">
-					<title>Readiness {pct}%</title>
+					<title>{t("readinessIndicator.title", { pct })}</title>
 					<circle
 						cx="20"
 						cy="20"
@@ -51,7 +53,7 @@ export function ReadinessIndicator({ readiness }: ReadinessIndicatorProps) {
 					{pct}%
 				</span>
 			</div>
-			<span className={`text-xs font-medium ${color.text}`}>Ready</span>
+			<span className={`text-xs font-medium ${color.text}`}>{t("readinessIndicator.ready")}</span>
 		</div>
 	);
 }

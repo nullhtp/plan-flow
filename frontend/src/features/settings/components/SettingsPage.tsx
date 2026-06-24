@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
 	getGetMemoriesApiMemoriesGetQueryKey,
@@ -24,22 +25,13 @@ import { Input } from "@/components/ui/input";
 
 const CATEGORIES = ["preference", "fact", "pattern", "context"] as const;
 
-const CATEGORY_TOOLTIPS: Record<string, string> = {
-	preference:
-		"Your preferences and answers from goal Q&A (e.g. language, budget, timeline). " +
-		"Used in: question generation, board planning, task enrichment, and chat.",
-	fact:
-		"Factual information about you or your situation (e.g. location, job role). " +
-		"Created manually. Used in: question generation, board planning, task enrichment, and chat.",
-	pattern:
-		"Summaries of boards you've generated (e.g. task count, plan type). " +
-		"Used in: question generation, board planning, task enrichment, and chat.",
-	context:
-		"Goal domains and key dimensions you've worked on (e.g. relocation, career change). " +
-		"Used in: question generation, board planning, task enrichment, and chat.",
-};
+const LANGUAGES = [
+	{ code: "ru", label: "Русский" },
+	{ code: "en", label: "English" },
+] as const;
 
 export function SettingsPage() {
+	const { t, i18n } = useTranslation("settings");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 
@@ -107,7 +99,7 @@ export function SettingsPage() {
 				onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKey }),
 				onError: () => {
 					writeSimpleMode(!next);
-					toast.error("Failed to update setting");
+					toast.error(t("updateFailed"));
 				},
 			},
 		);
@@ -132,14 +124,16 @@ export function SettingsPage() {
 	};
 
 	const handleDelete = (memoryId: string) => {
-		if (!confirm("Delete this memory?")) return;
+		if (!confirm(t("confirm.deleteMemory"))) return;
 		deleteMemory.mutate({ memoryId }, { onSuccess: invalidateMemories });
 	};
 
 	const handleBulkDelete = () => {
 		const msg = categoryFilter
-			? `Clear all "${categoryFilter}" memories?`
-			: "Clear ALL memories? This cannot be undone.";
+			? t("confirm.clearCategory", {
+					category: t(`categoryLabels.${categoryFilter}`, { defaultValue: categoryFilter }),
+				})
+			: t("confirm.clearAll");
 		if (!confirm(msg)) return;
 		bulkDelete.mutate(
 			{ data: { category: categoryFilter ?? null } },
@@ -152,29 +146,47 @@ export function SettingsPage() {
 			<header className="flex items-center justify-between border-b px-6 py-4">
 				<div className="flex items-center gap-4">
 					<Button variant="outline" onClick={() => navigate({ to: "/" })}>
-						Back
+						{t("back")}
 					</Button>
-					<h1 className="text-2xl font-bold">Settings</h1>
+					<h1 className="text-2xl font-bold">{t("title")}</h1>
 				</div>
 			</header>
 
 			<main className="mx-auto w-full max-w-4xl flex-1 space-y-6 p-6">
+				{/* Language */}
+				<Card className="p-6">
+					<div className="flex items-center justify-between">
+						<div>
+							<h2 className="text-lg font-semibold">{t("language.title")}</h2>
+							<p className="text-sm text-muted-foreground">{t("language.description")}</p>
+						</div>
+						<div className="flex gap-2">
+							{LANGUAGES.map((lang) => (
+								<Button
+									key={lang.code}
+									variant={i18n.language === lang.code ? "default" : "outline"}
+									onClick={() => i18n.changeLanguage(lang.code)}
+								>
+									{lang.label}
+								</Button>
+							))}
+						</div>
+					</div>
+				</Card>
+
 				{/* Simple Mode Toggle (master switch) */}
 				<Card className="p-6">
 					<div className="flex items-center justify-between">
 						<div>
-							<h2 className="text-lg font-semibold">Simple mode</h2>
-							<p className="text-sm text-muted-foreground">
-								Simplify the whole app — hide advanced controls and guide you step by step. Turn it
-								off to access the full interface.
-							</p>
+							<h2 className="text-lg font-semibold">{t("simpleMode.title")}</h2>
+							<p className="text-sm text-muted-foreground">{t("simpleMode.description")}</p>
 						</div>
 						<Button
 							variant={simpleMode ? "default" : "outline"}
 							onClick={handleToggleSimpleMode}
 							disabled={patchSettings.isPending}
 						>
-							{simpleMode ? "Enabled" : "Disabled"}
+							{simpleMode ? t("enabled") : t("disabled")}
 						</Button>
 					</div>
 				</Card>
@@ -183,18 +195,15 @@ export function SettingsPage() {
 				<Card className="p-6">
 					<div className="flex items-center justify-between">
 						<div>
-							<h2 className="text-lg font-semibold">AI Memory</h2>
-							<p className="text-sm text-muted-foreground">
-								When enabled, the AI remembers your preferences and past goals to personalize
-								responses.
-							</p>
+							<h2 className="text-lg font-semibold">{t("aiMemory.title")}</h2>
+							<p className="text-sm text-muted-foreground">{t("aiMemory.description")}</p>
 						</div>
 						<Button
 							variant={memoryEnabled ? "default" : "outline"}
 							onClick={handleToggleMemory}
 							disabled={patchSettings.isPending}
 						>
-							{memoryEnabled ? "Enabled" : "Disabled"}
+							{memoryEnabled ? t("enabled") : t("disabled")}
 						</Button>
 					</div>
 				</Card>
@@ -205,20 +214,22 @@ export function SettingsPage() {
 						{/* Memory Stats */}
 						{stats && (
 							<Card className="p-6">
-								<h3 className="mb-3 font-semibold">Memory Statistics</h3>
+								<h3 className="mb-3 font-semibold">{t("stats.title")}</h3>
 								<div className="flex gap-6 text-sm">
-									<div title="Total number of memories stored by the AI across all categories">
-										<span className="text-muted-foreground">Total: </span>
+									<div title={t("stats.totalTooltip")}>
+										<span className="text-muted-foreground">{t("stats.total")}</span>
 										<span className="font-medium">{stats.total as number}</span>
 									</div>
 									{Object.entries((stats.by_category ?? {}) as Record<string, number>).map(
 										([cat, count]) => (
 											<div
 												key={cat}
-												title={CATEGORY_TOOLTIPS[cat] ?? cat}
+												title={t(`categoryTooltips.${cat}`, { defaultValue: cat })}
 												className="cursor-help border-b border-dotted border-muted-foreground/40"
 											>
-												<span className="text-muted-foreground">{cat}: </span>
+												<span className="text-muted-foreground">
+													{t(`categoryLabels.${cat}`, { defaultValue: cat })}:{" "}
+												</span>
 												<span className="font-medium">{count as number}</span>
 											</div>
 										),
@@ -230,7 +241,7 @@ export function SettingsPage() {
 						{/* Memory List Controls */}
 						<div className="flex items-center gap-3">
 							<Input
-								placeholder="Search memories..."
+								placeholder={t("search")}
 								value={searchQuery}
 								onChange={(e) => {
 									setSearchQuery(e.target.value);
@@ -246,10 +257,10 @@ export function SettingsPage() {
 									setPage(1);
 								}}
 							>
-								<option value="">All categories</option>
+								<option value="">{t("allCategories")}</option>
 								{CATEGORIES.map((cat) => (
 									<option key={cat} value={cat}>
-										{cat}
+										{t(`categoryLabels.${cat}`, { defaultValue: cat })}
 									</option>
 								))}
 							</select>
@@ -259,7 +270,13 @@ export function SettingsPage() {
 								onClick={handleBulkDelete}
 								disabled={bulkDelete.isPending || totalMemories === 0}
 							>
-								{categoryFilter ? `Clear "${categoryFilter}"` : "Clear All Memories"}
+								{categoryFilter
+									? t("clearCategory", {
+											category: t(`categoryLabels.${categoryFilter}`, {
+												defaultValue: categoryFilter,
+											}),
+										})
+									: t("clearAll")}
 							</Button>
 						</div>
 
@@ -276,10 +293,10 @@ export function SettingsPage() {
 											/>
 											<div className="flex gap-2">
 												<Button size="sm" onClick={handleSaveEdit} disabled={patchMemory.isPending}>
-													Save
+													{t("save")}
 												</Button>
 												<Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
-													Cancel
+													{t("cancel")}
 												</Button>
 											</div>
 										</div>
@@ -288,14 +305,18 @@ export function SettingsPage() {
 											<div className="flex-1">
 												<p className="text-sm">{memory.content}</p>
 												<div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-													<span className="rounded bg-muted px-1.5 py-0.5">{memory.category}</span>
+													<span className="rounded bg-muted px-1.5 py-0.5">
+														{t(`categoryLabels.${memory.category}`, {
+															defaultValue: memory.category,
+														})}
+													</span>
 													<span>{memory.source_stage}</span>
 													<span>{new Date(memory.created_at).toLocaleDateString()}</span>
 												</div>
 											</div>
 											<div className="flex gap-1">
 												<Button size="sm" variant="outline" onClick={() => handleEdit(memory)}>
-													Edit
+													{t("edit")}
 												</Button>
 												<Button
 													size="sm"
@@ -303,7 +324,7 @@ export function SettingsPage() {
 													onClick={() => handleDelete(memory.id)}
 													disabled={deleteMemory.isPending}
 												>
-													Delete
+													{t("delete")}
 												</Button>
 											</div>
 										</div>
@@ -312,7 +333,7 @@ export function SettingsPage() {
 							))}
 							{memories.length === 0 && (
 								<p className="py-8 text-center text-muted-foreground">
-									{searchQuery ? "No memories match your search." : "No memories stored yet."}
+									{searchQuery ? t("noMatch") : t("noMemories")}
 								</p>
 							)}
 						</div>
@@ -326,10 +347,10 @@ export function SettingsPage() {
 									disabled={page <= 1}
 									onClick={() => setPage((p) => p - 1)}
 								>
-									Previous
+									{t("pagination.previous")}
 								</Button>
 								<span className="text-sm text-muted-foreground">
-									Page {page} of {totalPages}
+									{t("pagination.page", { page, total: totalPages })}
 								</span>
 								<Button
 									size="sm"
@@ -337,7 +358,7 @@ export function SettingsPage() {
 									disabled={page >= totalPages}
 									onClick={() => setPage((p) => p + 1)}
 								>
-									Next
+									{t("pagination.next")}
 								</Button>
 							</div>
 						)}

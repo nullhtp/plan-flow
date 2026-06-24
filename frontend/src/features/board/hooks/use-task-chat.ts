@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { taskChatApiTasksTaskIdChatPost } from "@/api/generated/ai/ai";
 import {
 	getGetBoardEndpointApiBoardsBoardIdGetQueryKey,
@@ -25,6 +26,7 @@ interface UseTaskChatReturn {
 let messageIdCounter = 0;
 
 export function useTaskChat(taskId: string, boardId: string) {
+	const { t } = useTranslation("board");
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
 	const queryClient = useQueryClient();
@@ -80,14 +82,14 @@ export function useTaskChat(taskId: string, boardId: string) {
 				const errorMsg: ChatMessage = {
 					id: `msg-${++messageIdCounter}`,
 					role: "assistant",
-					content: "Sorry, something went wrong. Please try again.",
+					content: t("taskChatHook.error"),
 				};
 				setMessages((prev) => [...prev, errorMsg]);
 			} finally {
 				setIsLoading(false);
 			}
 		},
-		[taskId, boardId, queryClient],
+		[taskId, boardId, queryClient, t],
 	);
 
 	return { messages, isLoading, sendMessage } satisfies UseTaskChatReturn;

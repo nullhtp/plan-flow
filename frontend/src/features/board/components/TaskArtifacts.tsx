@@ -1,5 +1,6 @@
 import { Copy, FileText, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -46,6 +47,7 @@ function ArtifactFullscreen({
 	onClose: () => void;
 	onDelete: (id: string) => void;
 }) {
+	const { t } = useTranslation("board");
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
 	useEffect(() => {
@@ -59,9 +61,9 @@ function ArtifactFullscreen({
 	const copyContent = async () => {
 		try {
 			await navigator.clipboard.writeText(artifact.content);
-			toast.success("Copied to clipboard");
+			toast.success(t("taskArtifacts.copiedToClipboard"));
 		} catch {
-			toast.error("Failed to copy");
+			toast.error(t("taskArtifacts.failedToCopy"));
 		}
 	};
 
@@ -77,7 +79,12 @@ function ArtifactFullscreen({
 					</span>
 				</div>
 				<div className="flex items-center gap-1 shrink-0">
-					<Button variant="ghost" size="sm" onClick={copyContent} title="Copy content">
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={copyContent}
+						title={t("taskArtifacts.copyContent")}
+					>
 						<Copy className="h-4 w-4" />
 					</Button>
 					{!showDeleteConfirm ? (
@@ -86,7 +93,7 @@ function ArtifactFullscreen({
 							size="sm"
 							onClick={() => setShowDeleteConfirm(true)}
 							className="text-destructive"
-							title="Delete artifact"
+							title={t("taskArtifacts.deleteArtifact")}
 						>
 							<Trash2 className="h-4 w-4" />
 						</Button>
@@ -100,14 +107,14 @@ function ArtifactFullscreen({
 									onClose();
 								}}
 							>
-								Delete
+								{t("taskArtifacts.delete")}
 							</Button>
 							<Button variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)}>
-								Cancel
+								{t("taskArtifacts.cancel")}
 							</Button>
 						</div>
 					)}
-					<Button variant="ghost" size="sm" onClick={onClose} title="Close">
+					<Button variant="ghost" size="sm" onClick={onClose} title={t("taskArtifacts.close")}>
 						<X className="h-4 w-4" />
 					</Button>
 				</div>
@@ -126,6 +133,7 @@ function ArtifactFullscreen({
 }
 
 export function TaskArtifacts({ taskId }: TaskArtifactsProps) {
+	const { t } = useTranslation("board");
 	const { artifacts, isLoading, deleteArtifact } = useArtifacts(taskId);
 	const [openArtifact, setOpenArtifact] = useState<ArtifactResponse | null>(null);
 
@@ -134,7 +142,7 @@ export function TaskArtifacts({ taskId }: TaskArtifactsProps) {
 			<div>
 				<Label className="flex items-center gap-1.5">
 					<FileText className="h-3.5 w-3.5" />
-					Artifacts
+					{t("taskArtifacts.artifacts")}
 				</Label>
 				<div className="mt-2 h-10 animate-pulse rounded-md bg-muted" />
 			</div>
@@ -150,7 +158,7 @@ export function TaskArtifacts({ taskId }: TaskArtifactsProps) {
 			<div>
 				<Label className="flex items-center gap-1.5">
 					<FileText className="h-3.5 w-3.5" />
-					Artifacts ({artifacts.length})
+					{t("taskArtifacts.artifactsCount", { num: artifacts.length })}
 				</Label>
 				<div className="mt-2 space-y-1">
 					{artifacts.map((artifact) => (

@@ -1,5 +1,6 @@
 import { createRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -21,6 +22,7 @@ export const registerRoute = createRoute({
 });
 
 function RegisterPage() {
+	const { t } = useTranslation("auth");
 	const navigate = useNavigate();
 	const { isAuthenticated } = useAuth();
 	const register = useRegister();
@@ -39,13 +41,13 @@ function RegisterPage() {
 	function validate(): boolean {
 		const errors: Record<string, string> = {};
 		if (!email.trim()) {
-			errors.email = "Email is required";
+			errors.email = t("register.errors.emailRequired");
 		}
 		if (password.length < 8) {
-			errors.password = "Password must be at least 8 characters";
+			errors.password = t("register.errors.passwordLength");
 		}
 		if (password !== confirmPassword) {
-			errors.confirmPassword = "Passwords do not match";
+			errors.confirmPassword = t("register.errors.passwordMismatch");
 		}
 		setValidationErrors(errors);
 		return Object.keys(errors).length === 0;
@@ -63,9 +65,9 @@ function RegisterPage() {
 		} catch (err: unknown) {
 			const apiError = err as { status?: number };
 			if (apiError.status === 409) {
-				setError("An account with this email already exists");
+				setError(t("register.errors.emailExists"));
 			} else {
-				setError("Registration failed. Please try again.");
+				setError(t("register.errors.failed"));
 			}
 		}
 	}
@@ -74,8 +76,8 @@ function RegisterPage() {
 		<div className="flex min-h-screen items-center justify-center">
 			<Card className="w-full max-w-md">
 				<CardHeader>
-					<CardTitle className="text-2xl">Create account</CardTitle>
-					<CardDescription>Enter your details to get started</CardDescription>
+					<CardTitle className="text-2xl">{t("register.title")}</CardTitle>
+					<CardDescription>{t("register.description")}</CardDescription>
 				</CardHeader>
 				<form onSubmit={handleSubmit}>
 					<CardContent className="space-y-4">
@@ -85,11 +87,11 @@ function RegisterPage() {
 							</div>
 						)}
 						<div className="space-y-2">
-							<Label htmlFor="email">Email</Label>
+							<Label htmlFor="email">{t("register.email")}</Label>
 							<Input
 								id="email"
 								type="email"
-								placeholder="you@example.com"
+								placeholder={t("emailPlaceholder")}
 								value={email}
 								onChange={(e) => setEmail(e.target.value)}
 								aria-invalid={!!validationErrors.email}
@@ -99,11 +101,11 @@ function RegisterPage() {
 							)}
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="password">Password</Label>
+							<Label htmlFor="password">{t("register.password")}</Label>
 							<Input
 								id="password"
 								type="password"
-								placeholder="At least 8 characters"
+								placeholder={t("register.passwordPlaceholder")}
 								value={password}
 								onChange={(e) => setPassword(e.target.value)}
 								aria-invalid={!!validationErrors.password}
@@ -113,11 +115,11 @@ function RegisterPage() {
 							)}
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="confirmPassword">Confirm password</Label>
+							<Label htmlFor="confirmPassword">{t("register.confirmPassword")}</Label>
 							<Input
 								id="confirmPassword"
 								type="password"
-								placeholder="Re-enter your password"
+								placeholder={t("register.confirmPasswordPlaceholder")}
 								value={confirmPassword}
 								onChange={(e) => setConfirmPassword(e.target.value)}
 								aria-invalid={!!validationErrors.confirmPassword}
@@ -129,10 +131,10 @@ function RegisterPage() {
 					</CardContent>
 					<CardFooter className="flex flex-col gap-4">
 						<Button type="submit" className="w-full" disabled={register.isPending}>
-							{register.isPending ? "Creating account..." : "Create account"}
+							{register.isPending ? t("register.submitting") : t("register.submit")}
 						</Button>
 						<p className="text-sm text-muted-foreground">
-							Already have an account?{" "}
+							{t("register.haveAccount")}{" "}
 							<a
 								href="/login"
 								className="text-primary underline-offset-4 hover:underline"
@@ -141,7 +143,7 @@ function RegisterPage() {
 									navigate({ to: "/login", search: { returnTo: undefined } });
 								}}
 							>
-								Log in
+								{t("register.login")}
 							</a>
 						</p>
 					</CardFooter>

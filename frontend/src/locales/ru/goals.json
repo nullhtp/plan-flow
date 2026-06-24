@@ -1,0 +1,100 @@
+{
+	"goalInput": {
+		"title": "Чего вы хотите достичь?",
+		"description": "Опишите свою цель, и наш ИИ поможет разбить её на понятный план действий.",
+		"goalLabel": "Ваша цель",
+		"placeholder": "например, Переехать из Берлина в Лиссабон за 6 месяцев",
+		"submitting": "Разбираемся в вашей цели...",
+		"submit": "Начать",
+		"examplesLabel": "Или попробуйте один из примеров:",
+		"examples": {
+			"move": "Переехать из Берлина в Лиссабон за 6 месяцев",
+			"mvp": "Запустить MVP моего SaaS-продукта",
+			"japanese": "Освоить разговорный японский за 6 месяцев",
+			"marathon": "Подготовиться и пробежать полумарафон",
+			"trip": "Спланировать двухнедельную поездку в Японию на ограниченный бюджет",
+			"novel": "Написать и самостоятельно издать художественный роман"
+		}
+	},
+	"loadingState": {
+		"defaultMessage": "Разбираемся в вашей цели..."
+	},
+	"errorDisplay": {
+		"defaultMessage": "Что-то пошло не так при обработке вашей цели. Попробуйте ещё раз.",
+		"retrying": "Повтор...",
+		"tryAgain": "Повторить",
+		"iconLabel": "Ошибка"
+	},
+	"vagueGoalRejection": {
+		"title": "Цели не хватает деталей",
+		"suggestionsLabel": "Попробуйте одну из этих более конкретных целей:",
+		"tryAgain": "Сформулировать другую цель"
+	},
+	"readinessIndicator": {
+		"ready": "Готово",
+		"title": "Готовность {{pct}}%"
+	},
+	"generateFooter": {
+		"readyToGenerate": "Готово к генерации",
+		"generating": "Создаём...",
+		"generateBoard": "Создать доску"
+	},
+	"goalSummary": {
+		"yourAnswers": "Ваши ответы",
+		"generateBoard": "Создать доску"
+	},
+	"questionForm": {
+		"typeAnswer": "Введите ваш ответ...",
+		"notAnswered": "Нет ответа",
+		"yourAnswers": "Ваши ответы",
+		"round": "Раунд {{round}}",
+		"questionsAnswered_one": "Отвечен {{count}} вопрос",
+		"questionsAnswered_few": "Отвечено {{count}} вопроса",
+		"questionsAnswered_many": "Отвечено {{count}} вопросов",
+		"toggle": "Переключить",
+		"edit": "Изменить",
+		"helpUnderstand": "Помогите нам лучше понять вашу цель, ответив на эти вопросы.",
+		"answerFollowUp": "Ответьте на уточняющие вопросы, чтобы улучшить доску, или создайте её сейчас.",
+		"generatingFollowUp": "Готовим уточняющие вопросы...",
+		"aFewMoreQuestions": "Ещё несколько вопросов",
+		"submitting": "Отправка...",
+		"continue": "Далее"
+	},
+	"boardProgress": {
+		"analyzing": "Анализируем вашу цель...",
+		"researchingProgress": "Исследуем ({{completed}}/{{total}})...",
+		"researching": "Исследуем...",
+		"creatingStructure": "Создаём структуру доски...",
+		"addingDetailsProgress": "Добавляем детали ({{enriched}}/{{total}})...",
+		"addingDetails": "Добавляем детали...",
+		"boardReady": "Доска готова!",
+		"generationFailed": "Не удалось создать доску",
+		"generatingBoard": "Создаём доску...",
+		"redirecting": "Доска готова — перенаправляем...",
+		"back": "Назад",
+		"tryAgain": "Повторить",
+		"checkBoard": "Открыть доску"
+	},
+	"detailPage": {
+		"loadingGoal": "Загрузка цели...",
+		"loadError": "Не удалось загрузить эту цель. Возможно, её не существует или у вас нет доступа."
+	},
+	"newPage": {
+		"aiTimeout": "Наш ИИ отвечает дольше обычного. Попробуйте ещё раз.",
+		"genericError": "Что-то пошло не так при обработке вашей цели. Попробуйте ещё раз."
+	},
+	"stream": {
+		"connecting": "Подключаемся к сервису генерации...",
+		"researchingGoal": "Исследуем вашу цель (поисков: {{count}})...",
+		"searching": "Поиск: {{query}}",
+		"researchComplete": "Исследование завершено: {{results}} результатов из {{queries}} поисков",
+		"createdTasks": "Создано задач: {{count}} — добавляем детали...",
+		"boardStructureReady": "Структура доски готова: {{title}}",
+		"enriched": "Дополнено: {{title}}",
+		"generationComplete": "Генерация доски завершена!",
+		"connectionFailed": "Не удалось подключиться",
+		"connectionLost": "Соединение потеряно. Возможно, ваша доска создана частично.",
+		"connectionClosed": "Соединение неожиданно закрыто",
+		"fallbackTask": "задача"
+	}
+}

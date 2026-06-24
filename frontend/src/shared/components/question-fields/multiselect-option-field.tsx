@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { QuestionSchema } from "@/api/generated/model";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,7 @@ export function MultiselectOptionField({
 	disabled: boolean;
 	compact?: boolean;
 }) {
+	const { t } = useTranslation("common");
 	const options = question.options ?? [];
 	const allowOther = question.allow_other !== false;
 	const hasOtherText = otherText.trim() !== "";
@@ -65,7 +67,7 @@ export function MultiselectOptionField({
 						className={cn(compact && "size-3.5")}
 					/>
 					<Input
-						placeholder="Other..."
+						placeholder={t("fields.other")}
 						value={otherText}
 						onChange={(e) => onOtherChange(e.target.value)}
 						disabled={disabled}

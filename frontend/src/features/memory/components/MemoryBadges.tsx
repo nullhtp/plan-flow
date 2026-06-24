@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Brain } from "lucide-react";
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	getGetMemoryByIdApiMemoriesMemoryIdGetQueryKey,
 	getMemoryByIdApiMemoriesMemoryIdGet,
@@ -21,6 +22,7 @@ interface MemoryBadgeProps {
 }
 
 function MemoryBadge({ memoryId }: MemoryBadgeProps) {
+	const { t } = useTranslation("memory");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const [expanded, setExpanded] = useState(false);
@@ -64,7 +66,7 @@ function MemoryBadge({ memoryId }: MemoryBadgeProps) {
 		return (
 			<span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground line-through">
 				<Brain className="h-3 w-3" />
-				Memory removed
+				{t("memoryRemoved")}
 			</span>
 		);
 	}
@@ -84,9 +86,9 @@ function MemoryBadge({ memoryId }: MemoryBadgeProps) {
 				{memory ? (
 					<span className="max-w-[120px] truncate">{memory.content}</span>
 				) : loading ? (
-					<span>Loading...</span>
+					<span>{t("loading")}</span>
 				) : (
-					<span className="max-w-[80px] truncate">Memory</span>
+					<span className="max-w-[80px] truncate">{t("memory")}</span>
 				)}
 			</button>
 
@@ -107,7 +109,7 @@ function MemoryBadge({ memoryId }: MemoryBadgeProps) {
 								navigate({ to: "/settings" });
 							}}
 						>
-							View in Settings
+							{t("viewInSettings")}
 						</Button>
 					</span>
 				</span>

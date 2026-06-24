@@ -1,5 +1,6 @@
 import { Clock, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,10 +15,10 @@ interface TemplateTaskDetailPanelProps {
 }
 
 const PRIORITY_OPTIONS = [
-	{ value: "", label: "None" },
-	{ value: "low", label: "Low" },
-	{ value: "medium", label: "Medium" },
-	{ value: "high", label: "High" },
+	{ value: "", labelKey: "detailPanel.priorityOptionNone" },
+	{ value: "low", labelKey: "detailPanel.priorityOptionLow" },
+	{ value: "medium", labelKey: "detailPanel.priorityOptionMedium" },
+	{ value: "high", labelKey: "detailPanel.priorityOptionHigh" },
 ];
 
 export function TemplateTaskDetailPanel({
@@ -27,6 +28,7 @@ export function TemplateTaskDetailPanel({
 	onDelete,
 	onClose,
 }: TemplateTaskDetailPanelProps) {
+	const { t } = useTranslation("templates");
 	const [title, setTitle] = useState(task.title);
 	const [description, setDescription] = useState(task.description);
 	const [priority, setPriority] = useState(task.priority ?? "");
@@ -116,7 +118,7 @@ export function TemplateTaskDetailPanel({
 			{/* Header */}
 			<div className="flex items-center justify-between border-b px-4 py-3">
 				<h3 className="text-sm font-semibold">
-					{task.is_goal_node ? "Goal Task" : "Task Details"}
+					{task.is_goal_node ? t("detailPanel.goalTask") : t("detailPanel.taskDetails")}
 				</h3>
 				<button type="button" onClick={onClose} className="rounded-md p-1 hover:bg-muted">
 					<X className="h-4 w-4" />
@@ -127,7 +129,7 @@ export function TemplateTaskDetailPanel({
 			<div className="flex-1 space-y-4 overflow-y-auto p-4">
 				{/* Title */}
 				<div>
-					<Label className="text-xs text-muted-foreground">Title</Label>
+					<Label className="text-xs text-muted-foreground">{t("detailPanel.title")}</Label>
 					{readOnly ? (
 						<p className="mt-1 text-sm font-medium">{task.title}</p>
 					) : (
@@ -142,10 +144,10 @@ export function TemplateTaskDetailPanel({
 
 				{/* Description */}
 				<div>
-					<Label className="text-xs text-muted-foreground">Description</Label>
+					<Label className="text-xs text-muted-foreground">{t("detailPanel.description")}</Label>
 					{readOnly ? (
 						<p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">
-							{task.description || "No description"}
+							{task.description || t("detailPanel.noDescription")}
 						</p>
 					) : (
 						<textarea
@@ -160,7 +162,7 @@ export function TemplateTaskDetailPanel({
 
 				{/* Priority */}
 				<div>
-					<Label className="text-xs text-muted-foreground">Priority</Label>
+					<Label className="text-xs text-muted-foreground">{t("detailPanel.priority")}</Label>
 					{readOnly ? (
 						<p className="mt-1 text-sm">
 							{task.priority ? (
@@ -168,7 +170,7 @@ export function TemplateTaskDetailPanel({
 									{task.priority}
 								</span>
 							) : (
-								<span className="text-muted-foreground">None</span>
+								<span className="text-muted-foreground">{t("detailPanel.priorityNone")}</span>
 							)}
 						</p>
 					) : (
@@ -179,7 +181,7 @@ export function TemplateTaskDetailPanel({
 						>
 							{PRIORITY_OPTIONS.map((opt) => (
 								<option key={opt.value} value={opt.value}>
-									{opt.label}
+									{t(opt.labelKey)}
 								</option>
 							))}
 						</select>
@@ -190,14 +192,14 @@ export function TemplateTaskDetailPanel({
 				<div>
 					<Label className="text-xs text-muted-foreground">
 						<Clock className="mr-1 inline h-3 w-3" />
-						Estimated Time (minutes)
+						{t("detailPanel.estimatedTime")}
 					</Label>
 					{readOnly ? (
 						<p className="mt-1 text-sm">
 							{task.estimated_minutes != null ? (
-								`${task.estimated_minutes} min`
+								t("detailPanel.minutesShort", { count: task.estimated_minutes })
 							) : (
-								<span className="text-muted-foreground">Not set</span>
+								<span className="text-muted-foreground">{t("detailPanel.notSet")}</span>
 							)}
 						</p>
 					) : (
@@ -206,7 +208,7 @@ export function TemplateTaskDetailPanel({
 							value={estimatedMinutes}
 							onChange={(e) => setEstimatedMinutes(e.target.value)}
 							onBlur={handleEstimatedMinutesBlur}
-							placeholder="e.g. 30"
+							placeholder={t("detailPanel.estimatedPlaceholder")}
 							className="mt-1"
 							min={0}
 						/>
@@ -215,7 +217,9 @@ export function TemplateTaskDetailPanel({
 
 				{/* Subtasks */}
 				<div>
-					<Label className="text-xs text-muted-foreground">Subtasks ({subtasks.length})</Label>
+					<Label className="text-xs text-muted-foreground">
+						{t("detailPanel.subtasks", { count: subtasks.length })}
+					</Label>
 					<div className="mt-1 space-y-1">
 						{subtasks.map((st, i) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: subtasks are plain strings without unique IDs
@@ -242,7 +246,7 @@ export function TemplateTaskDetailPanel({
 							</div>
 						))}
 						{subtasks.length === 0 && readOnly && (
-							<p className="text-sm text-muted-foreground">No subtasks</p>
+							<p className="text-sm text-muted-foreground">{t("detailPanel.noSubtasks")}</p>
 						)}
 					</div>
 					{!readOnly && (
@@ -256,7 +260,7 @@ export function TemplateTaskDetailPanel({
 										handleAddSubtask();
 									}
 								}}
-								placeholder="Add subtask..."
+								placeholder={t("detailPanel.addSubtaskPlaceholder")}
 								className="h-8 text-sm"
 							/>
 							<Button
@@ -278,13 +282,13 @@ export function TemplateTaskDetailPanel({
 				<div className="border-t p-4">
 					{showDeleteConfirm ? (
 						<div className="space-y-2">
-							<p className="text-sm text-destructive">Delete this task and its edges?</p>
+							<p className="text-sm text-destructive">{t("detailPanel.deleteConfirm")}</p>
 							<div className="flex gap-2">
 								<Button variant="destructive" size="sm" onClick={handleDelete}>
-									Delete
+									{t("detailPanel.delete")}
 								</Button>
 								<Button variant="outline" size="sm" onClick={() => setShowDeleteConfirm(false)}>
-									Cancel
+									{t("detailPanel.cancel")}
 								</Button>
 							</div>
 						</div>
@@ -296,14 +300,14 @@ export function TemplateTaskDetailPanel({
 							onClick={() => setShowDeleteConfirm(true)}
 						>
 							<Trash2 className="mr-1 h-3 w-3" />
-							Delete Task
+							{t("detailPanel.deleteTask")}
 						</Button>
 					)}
 				</div>
 			)}
 			{!readOnly && task.is_goal_node && (
 				<div className="border-t p-4">
-					<p className="text-xs text-muted-foreground">Goal node cannot be deleted.</p>
+					<p className="text-xs text-muted-foreground">{t("detailPanel.goalCannotDelete")}</p>
 				</div>
 			)}
 		</div>

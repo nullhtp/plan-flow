@@ -1,0 +1,99 @@
+{
+	"goalInput": {
+		"title": "What do you want to achieve?",
+		"description": "Describe your goal and our AI will help you break it down into an actionable plan.",
+		"goalLabel": "Your goal",
+		"placeholder": "e.g., Move from Berlin to Lisbon within 6 months",
+		"submitting": "Understanding your goal...",
+		"submit": "Get started",
+		"examplesLabel": "Or try one of these examples:",
+		"examples": {
+			"move": "Move from Berlin to Lisbon within 6 months",
+			"mvp": "Launch an MVP for my SaaS product",
+			"japanese": "Learn conversational Japanese in 6 months",
+			"marathon": "Train for and complete a half marathon",
+			"trip": "Plan a 2-week trip to Japan on a budget",
+			"novel": "Write and self-publish a fiction novel"
+		}
+	},
+	"loadingState": {
+		"defaultMessage": "Understanding your goal..."
+	},
+	"errorDisplay": {
+		"defaultMessage": "Something went wrong while processing your goal. Please try again.",
+		"retrying": "Retrying...",
+		"tryAgain": "Try Again",
+		"iconLabel": "Error"
+	},
+	"vagueGoalRejection": {
+		"title": "Goal needs more detail",
+		"suggestionsLabel": "Try one of these more specific goals:",
+		"tryAgain": "Write a different goal"
+	},
+	"readinessIndicator": {
+		"ready": "Ready",
+		"title": "Readiness {{pct}}%"
+	},
+	"generateFooter": {
+		"readyToGenerate": "Ready to generate",
+		"generating": "Generating...",
+		"generateBoard": "Generate Board"
+	},
+	"goalSummary": {
+		"yourAnswers": "Your answers",
+		"generateBoard": "Generate Board"
+	},
+	"questionForm": {
+		"typeAnswer": "Type your answer...",
+		"notAnswered": "Not answered",
+		"yourAnswers": "Your answers",
+		"round": "Round {{round}}",
+		"questionsAnswered_one": "{{count}} question answered",
+		"questionsAnswered_other": "{{count}} questions answered",
+		"toggle": "Toggle",
+		"edit": "Edit",
+		"helpUnderstand": "Help us understand your goal better by answering these questions.",
+		"answerFollowUp": "Answer follow-up questions to improve your board, or generate now.",
+		"generatingFollowUp": "Generating follow-up questions...",
+		"aFewMoreQuestions": "A few more questions",
+		"submitting": "Submitting...",
+		"continue": "Continue"
+	},
+	"boardProgress": {
+		"analyzing": "Analyzing your goal...",
+		"researchingProgress": "Researching ({{completed}}/{{total}})...",
+		"researching": "Researching...",
+		"creatingStructure": "Creating board structure...",
+		"addingDetailsProgress": "Adding details ({{enriched}}/{{total}})...",
+		"addingDetails": "Adding details...",
+		"boardReady": "Board ready!",
+		"generationFailed": "Generation failed",
+		"generatingBoard": "Generating board...",
+		"redirecting": "Board ready — redirecting...",
+		"back": "Back",
+		"tryAgain": "Try Again",
+		"checkBoard": "Check your board"
+	},
+	"detailPage": {
+		"loadingGoal": "Loading goal...",
+		"loadError": "Could not load this goal. It may not exist or you may not have access."
+	},
+	"newPage": {
+		"aiTimeout": "Our AI is taking longer than expected. Please try again.",
+		"genericError": "Something went wrong while processing your goal. Please try again."
+	},
+	"stream": {
+		"connecting": "Connecting to generation service...",
+		"researchingGoal": "Researching your goal ({{count}} searches)...",
+		"searching": "Searching: {{query}}",
+		"researchComplete": "Research complete: {{results}} results from {{queries}} searches",
+		"createdTasks": "Created {{count}} tasks — adding details...",
+		"boardStructureReady": "Board structure ready: {{title}}",
+		"enriched": "Enriched: {{title}}",
+		"generationComplete": "Board generation complete!",
+		"connectionFailed": "Connection failed",
+		"connectionLost": "Connection lost. Your board may have been partially created.",
+		"connectionClosed": "Connection closed unexpectedly",
+		"fallbackTask": "task"
+	}
+}

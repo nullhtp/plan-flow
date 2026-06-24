@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Brain, ExternalLink, Pencil, Trash2, X } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	getGetBoardMemoriesApiBoardsBoardIdMemoriesGetQueryKey,
 	getGetMemoriesApiMemoriesGetQueryKey,
@@ -27,6 +28,7 @@ interface BoardMemorySidebarProps {
 }
 
 export function BoardMemorySidebar({ boardId, onClose }: BoardMemorySidebarProps) {
+	const { t } = useTranslation("memory");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 
@@ -66,7 +68,7 @@ export function BoardMemorySidebar({ boardId, onClose }: BoardMemorySidebarProps
 	};
 
 	const handleDelete = (memoryId: string) => {
-		if (!confirm("Delete this memory?")) return;
+		if (!confirm(t("deleteConfirm"))) return;
 		deleteMemory.mutate({ memoryId }, { onSuccess: invalidateMemories });
 	};
 
@@ -76,7 +78,7 @@ export function BoardMemorySidebar({ boardId, onClose }: BoardMemorySidebarProps
 			<div className="flex items-center justify-between border-b p-4">
 				<div className="flex items-center gap-2">
 					<Brain className="h-4 w-4" />
-					<h2 className="text-sm font-semibold">Board Memories</h2>
+					<h2 className="text-sm font-semibold">{t("boardMemories")}</h2>
 					{memories.length > 0 && (
 						<span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
 							{memories.length}
@@ -91,12 +93,12 @@ export function BoardMemorySidebar({ boardId, onClose }: BoardMemorySidebarProps
 			{/* Content */}
 			<div className="flex-1 overflow-y-auto p-4 space-y-3">
 				{memoriesQuery.isLoading && (
-					<p className="py-6 text-center text-xs text-muted-foreground">Loading memories...</p>
+					<p className="py-6 text-center text-xs text-muted-foreground">{t("loadingMemories")}</p>
 				)}
 
 				{!memoriesQuery.isLoading && memories.length === 0 && (
 					<p className="py-6 text-center text-xs text-muted-foreground">
-						No relevant memories for this board.
+						{t("noRelevantMemories")}
 					</p>
 				)}
 
@@ -117,7 +119,7 @@ export function BoardMemorySidebar({ boardId, onClose }: BoardMemorySidebarProps
 										disabled={patchMemory.isPending}
 										className="h-7 text-xs"
 									>
-										Save
+										{t("save")}
 									</Button>
 									<Button
 										size="sm"
@@ -125,7 +127,7 @@ export function BoardMemorySidebar({ boardId, onClose }: BoardMemorySidebarProps
 										onClick={() => setEditingId(null)}
 										className="h-7 text-xs"
 									>
-										Cancel
+										{t("cancel")}
 									</Button>
 								</div>
 							</div>
@@ -146,7 +148,7 @@ export function BoardMemorySidebar({ boardId, onClose }: BoardMemorySidebarProps
 											variant="ghost"
 											size="icon-xs"
 											onClick={() => handleEdit(memory)}
-											title="Edit memory"
+											title={t("editMemory")}
 										>
 											<Pencil className="h-3 w-3" />
 										</Button>
@@ -155,7 +157,7 @@ export function BoardMemorySidebar({ boardId, onClose }: BoardMemorySidebarProps
 											size="icon-xs"
 											onClick={() => handleDelete(memory.id)}
 											disabled={deleteMemory.isPending}
-											title="Delete memory"
+											title={t("deleteMemory")}
 										>
 											<Trash2 className="h-3 w-3" />
 										</Button>
@@ -176,7 +178,7 @@ export function BoardMemorySidebar({ boardId, onClose }: BoardMemorySidebarProps
 					onClick={() => navigate({ to: "/settings" })}
 				>
 					<ExternalLink className="h-3 w-3" />
-					Manage all memories
+					{t("manageAllMemories")}
 				</Button>
 			</div>
 		</div>

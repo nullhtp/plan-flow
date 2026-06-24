@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,12 @@ import type { GenerateTemplateTaskResponse } from "../types";
 type Step = "input" | "generating" | "preview";
 type InputTab = "text" | "document" | "url";
 
+const INPUT_TAB_LABEL_KEYS: Record<InputTab, string> = {
+	text: "generateDialog.tabText",
+	document: "generateDialog.tabDocument",
+	url: "generateDialog.tabUrl",
+};
+
 const ACCEPTED_FILE_TYPES = ".pdf,.docx,.txt,.md";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -23,6 +30,7 @@ interface GenerateTemplateDialogProps {
 }
 
 export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialogProps) {
+	const { t } = useTranslation("templates");
 	const navigate = useNavigate();
 	const categories = useCategoriesData();
 	const extractContent = useExtractContent();
@@ -77,7 +85,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 				content = textContent;
 			} else if (inputTab === "document" && selectedFile) {
 				if (selectedFile.size > MAX_FILE_SIZE) {
-					setError("File exceeds 10 MB limit");
+					setError(t("generateDialog.errorFileSize"));
 					return;
 				}
 				const result = await extractContent.mutateAsync({
@@ -88,12 +96,12 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 				const result = await extractContent.mutateAsync({ url: urlValue });
 				content = result.content;
 			} else {
-				setError("Please provide content to generate from");
+				setError(t("generateDialog.errorNoContent"));
 				return;
 			}
 
 			if (content.length < 20) {
-				setError("Content is too short (minimum 20 characters)");
+				setError(t("generateDialog.errorTooShort"));
 				return;
 			}
 
@@ -119,7 +127,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 				err && typeof err === "object" && "data" in err
 					? (err as { data?: { detail?: string } }).data?.detail
 					: undefined;
-			setError(detail || "Generation failed. Please try again.");
+			setError(detail || t("generateDialog.errorGenerationFailed"));
 		}
 	};
 
@@ -145,7 +153,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 				params: { templateId: result.id },
 			});
 		} catch {
-			setError("Failed to save template. Please try again.");
+			setError(t("generateDialog.errorSaveFailed"));
 		}
 	};
 
@@ -163,9 +171,9 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 				{/* Header */}
 				<div className="flex items-center justify-between border-b px-6 py-4">
 					<h3 className="text-lg font-semibold">
-						{step === "input" && "Generate Template"}
-						{step === "generating" && "Generating..."}
-						{step === "preview" && "Preview & Edit"}
+						{step === "input" && t("generateDialog.titleInput")}
+						{step === "generating" && t("generateDialog.titleGenerating")}
+						{step === "preview" && t("generateDialog.titlePreview")}
 					</h3>
 					<button
 						type="button"
@@ -188,12 +196,12 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 					{step === "input" && (
 						<>
 							<div className="mb-4">
-								<Label htmlFor="title-hint">Title (optional)</Label>
+								<Label htmlFor="title-hint">{t("generateDialog.titleHintLabel")}</Label>
 								<Input
 									id="title-hint"
 									value={titleHint}
 									onChange={(e) => setTitleHint(e.target.value)}
-									placeholder="e.g., Wedding Planning Template"
+									placeholder={t("generateDialog.titleHintPlaceholder")}
 									maxLength={200}
 								/>
 							</div>
@@ -211,7 +219,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 												: "text-muted-foreground hover:text-foreground"
 										}`}
 									>
-										{tab}
+										{t(INPUT_TAB_LABEL_KEYS[tab])}
 									</button>
 								))}
 							</div>
@@ -219,17 +227,17 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 							{/* Text Tab */}
 							{inputTab === "text" && (
 								<div>
-									<Label htmlFor="text-content">Paste or type your content</Label>
+									<Label htmlFor="text-content">{t("generateDialog.textLabel")}</Label>
 									<textarea
 										id="text-content"
 										value={textContent}
 										onChange={(e) => setTextContent(e.target.value)}
-										placeholder="e.g., Steps to plan a wedding: book venue, choose catering, send invitations..."
+										placeholder={t("generateDialog.textPlaceholder")}
 										className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[200px] resize-y"
 										maxLength={50000}
 									/>
 									<p className="mt-1 text-xs text-muted-foreground">
-										{textContent.length.toLocaleString()} / 50,000 characters
+										{t("generateDialog.charCount", { count: textContent.length.toLocaleString() })}
 									</p>
 								</div>
 							)}
@@ -237,7 +245,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 							{/* Document Tab */}
 							{inputTab === "document" && (
 								<div>
-									<Label>Upload a document</Label>
+									<Label>{t("generateDialog.documentLabel")}</Label>
 									<button
 										type="button"
 										className="mt-1 flex w-full flex-col items-center justify-center rounded-md border-2 border-dashed border-input p-8 cursor-pointer hover:border-primary/50 bg-transparent"
@@ -257,9 +265,11 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 											<p className="text-sm">{selectedFile.name}</p>
 										) : (
 											<>
-												<p className="text-sm text-muted-foreground">Click to select a file</p>
+												<p className="text-sm text-muted-foreground">
+													{t("generateDialog.clickToSelect")}
+												</p>
 												<p className="mt-1 text-xs text-muted-foreground">
-													PDF, DOCX, TXT, or Markdown (max 10 MB)
+													{t("generateDialog.fileTypes")}
 												</p>
 											</>
 										)}
@@ -270,16 +280,16 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 							{/* URL Tab */}
 							{inputTab === "url" && (
 								<div>
-									<Label htmlFor="url-input">Enter a URL</Label>
+									<Label htmlFor="url-input">{t("generateDialog.urlLabel")}</Label>
 									<Input
 										id="url-input"
 										value={urlValue}
 										onChange={(e) => setUrlValue(e.target.value)}
-										placeholder="https://example.com/project-guide"
+										placeholder={t("generateDialog.urlPlaceholder")}
 										type="url"
 									/>
 									<p className="mt-1 text-xs text-muted-foreground">
-										Content will be extracted from the webpage
+										{t("generateDialog.urlHint")}
 									</p>
 								</div>
 							)}
@@ -290,7 +300,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 					{step === "generating" && (
 						<div className="flex flex-col items-center justify-center py-12">
 							<div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-							<p className="text-muted-foreground">AI is generating your template...</p>
+							<p className="text-muted-foreground">{t("generateDialog.generatingMessage")}</p>
 						</div>
 					)}
 
@@ -300,7 +310,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 							{/* Metadata fields */}
 							<div className="mb-4 grid gap-3 sm:grid-cols-2">
 								<div>
-									<Label htmlFor="gen-title">Title</Label>
+									<Label htmlFor="gen-title">{t("generateDialog.genTitleLabel")}</Label>
 									<Input
 										id="gen-title"
 										value={suggestedTitle}
@@ -310,14 +320,14 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 									/>
 								</div>
 								<div>
-									<Label htmlFor="gen-category">Category</Label>
+									<Label htmlFor="gen-category">{t("generateDialog.genCategoryLabel")}</Label>
 									<select
 										id="gen-category"
 										value={categoryId}
 										onChange={(e) => setCategoryId(e.target.value)}
 										className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
 									>
-										<option value="">None</option>
+										<option value="">{t("generateDialog.categoryNone")}</option>
 										{categories.map((cat) => (
 											<option key={cat.id} value={cat.id}>
 												{cat.name}
@@ -327,7 +337,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 								</div>
 							</div>
 							<div className="mb-4">
-								<Label htmlFor="gen-description">Description</Label>
+								<Label htmlFor="gen-description">{t("generateDialog.genDescriptionLabel")}</Label>
 								<Input
 									id="gen-description"
 									value={suggestedDescription}
@@ -336,7 +346,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 								/>
 							</div>
 							<div className="mb-4">
-								<Label>Visibility</Label>
+								<Label>{t("generateDialog.visibilityLabel")}</Label>
 								<div className="mt-1 flex gap-3">
 									<label className="flex items-center gap-1.5 text-sm">
 										<input
@@ -345,7 +355,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 											checked={visibility === "private"}
 											onChange={() => setVisibility("private")}
 										/>
-										Private
+										{t("generateDialog.private")}
 									</label>
 									<label className="flex items-center gap-1.5 text-sm">
 										<input
@@ -354,13 +364,15 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 											checked={visibility === "public"}
 											onChange={() => setVisibility("public")}
 										/>
-										Public
+										{t("generateDialog.public")}
 									</label>
 								</div>
 							</div>
 
 							{/* Task list */}
-							<h4 className="mb-2 font-medium">Tasks ({tasks.length})</h4>
+							<h4 className="mb-2 font-medium">
+								{t("generateDialog.tasksHeading", { count: tasks.length })}
+							</h4>
 							<div className="space-y-2">
 								{tasks
 									.filter((t) => !t.is_goal_node)
@@ -375,7 +387,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 												value={task.description}
 												onChange={(e) => updateTaskDescription(task.id, e.target.value)}
 												className="text-sm text-muted-foreground"
-												placeholder="Description"
+												placeholder={t("generateDialog.descriptionPlaceholder")}
 											/>
 											{task.subtasks.length > 0 && (
 												<div className="mt-2 space-y-0.5 pl-3">
@@ -391,7 +403,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 											)}
 											{task.depends_on.length > 0 && (
 												<p className="mt-1 text-xs text-muted-foreground">
-													Depends on:{" "}
+													{t("generateDialog.dependsOn")}{" "}
 													{task.depends_on
 														.map((depId) => tasks.find((t) => t.id === depId)?.title ?? depId)
 														.join(", ")}
@@ -405,7 +417,9 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 									.filter((t) => t.is_goal_node)
 									.map((task) => (
 										<div key={task.id} className="rounded-md border-2 border-primary/30 p-3">
-											<div className="mb-1 text-xs font-medium uppercase text-primary">Goal</div>
+											<div className="mb-1 text-xs font-medium uppercase text-primary">
+												{t("generateDialog.goal")}
+											</div>
 											<Input
 												value={task.title}
 												onChange={(e) => updateTaskTitle(task.id, e.target.value)}
@@ -421,7 +435,7 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 				{/* Footer */}
 				<div className="flex justify-end gap-2 border-t px-6 py-4">
 					<Button variant="outline" onClick={handleClose}>
-						Cancel
+						{t("generateDialog.cancel")}
 					</Button>
 					{step === "input" && (
 						<Button
@@ -434,7 +448,9 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 								(inputTab === "url" && !urlValue)
 							}
 						>
-							{extractContent.isPending ? "Extracting..." : "Generate"}
+							{extractContent.isPending
+								? t("generateDialog.extracting")
+								: t("generateDialog.generate")}
 						</Button>
 					)}
 					{step === "preview" && (
@@ -446,10 +462,12 @@ export function GenerateTemplateDialog({ open, onClose }: GenerateTemplateDialog
 									setError(null);
 								}}
 							>
-								Back
+								{t("generateDialog.back")}
 							</Button>
 							<Button onClick={handleSave} disabled={saveTemplate.isPending || !suggestedTitle}>
-								{saveTemplate.isPending ? "Saving..." : "Save Template"}
+								{saveTemplate.isPending
+									? t("generateDialog.saving")
+									: t("generateDialog.saveTemplate")}
 							</Button>
 						</>
 					)}

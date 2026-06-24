@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { generateSubtaskActionApiTasksTaskIdSubtasksSubtaskIdActionsGeneratePost } from "@/api/generated/ai/ai";
 import {
@@ -10,6 +11,7 @@ import {
 import type { BoardResponse } from "../types";
 
 export function useSubtaskMutations(boardId: string) {
+	const { t } = useTranslation("board");
 	const queryClient = useQueryClient();
 	const boardQueryKey = getGetBoardEndpointApiBoardsBoardIdGetQueryKey(boardId);
 
@@ -46,21 +48,21 @@ export function useSubtaskMutations(boardId: string) {
 					}
 				}
 			},
-			onError: () => toast.error("Failed to create subtask"),
+			onError: () => toast.error(t("subtaskMutations.failedToCreate")),
 		},
 	});
 
 	const updateSubtask = useUpdateSubtaskEndpointApiSubtasksSubtaskIdPatch({
 		mutation: {
 			onSuccess: invalidateBoard,
-			onError: () => toast.error("Failed to update subtask"),
+			onError: () => toast.error(t("subtaskMutations.failedToUpdate")),
 		},
 	});
 
 	const deleteSubtask = useDeleteSubtaskEndpointApiSubtasksSubtaskIdDelete({
 		mutation: {
 			onSuccess: invalidateBoard,
-			onError: () => toast.error("Failed to delete subtask"),
+			onError: () => toast.error(t("subtaskMutations.failedToDelete")),
 		},
 	});
 

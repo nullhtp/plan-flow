@@ -2,6 +2,7 @@ import { Controls, MiniMap, type NodeMouseHandler, ReactFlow } from "@xyflow/rea
 import "@xyflow/react/dist/style.css";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useSubtaskMutations } from "../hooks/use-subtask-mutations";
 import { useTaskDetailPanel } from "../hooks/use-task-detail-panel";
@@ -27,6 +28,7 @@ interface DagViewProps {
 }
 
 export function DagView({ board, viewMode }: DagViewProps) {
+	const { t } = useTranslation("board");
 	const { updateTask, deleteTask } = useTaskMutations(board.id);
 	const { createSubtask, updateSubtask, deleteSubtask } = useSubtaskMutations(board.id);
 	const { selectedTaskId, openTask, closeTask } = useTaskDetailPanel();
@@ -69,7 +71,7 @@ export function DagView({ board, viewMode }: DagViewProps) {
 	const handleStatusToggle = useCallback(
 		(task: TaskResponse) => {
 			if (task.is_locked) {
-				toast.info("Complete prerequisites first");
+				toast.info(t("dagView.completePrerequisitesFirst"));
 				return;
 			}
 
@@ -85,7 +87,7 @@ export function DagView({ board, viewMode }: DagViewProps) {
 
 			updateTask.mutate({ taskId: task.id, data: { status: newStatus } });
 		},
-		[updateTask],
+		[updateTask, t],
 	);
 
 	return (

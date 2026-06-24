@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import type { QuestionSchema } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +25,7 @@ export function GoalSummary({
 	qaPairs,
 	onGenerateBoard,
 }: GoalSummaryProps) {
+	const { t } = useTranslation("goals");
 	const navigate = useNavigate();
 	const boards = useBoardListData();
 
@@ -51,7 +53,7 @@ export function GoalSummary({
 			</CardHeader>
 			<CardContent className="space-y-6">
 				<div className="space-y-4">
-					<h3 className="text-sm font-medium">Your answers</h3>
+					<h3 className="text-sm font-medium">{t("goalSummary.yourAnswers")}</h3>
 					{qaPairs.map(({ question, answer }) => (
 						<div key={question.id} className="space-y-1 rounded-lg border p-3">
 							<p className="text-sm font-medium">{question.text}</p>
@@ -60,7 +62,7 @@ export function GoalSummary({
 					))}
 				</div>
 				<Button className="w-full" onClick={handleGenerateBoard}>
-					Generate Board
+					{t("goalSummary.generateBoard")}
 				</Button>
 			</CardContent>
 		</Card>

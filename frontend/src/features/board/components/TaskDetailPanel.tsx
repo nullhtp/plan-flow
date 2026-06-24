@@ -1,5 +1,6 @@
 import { Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import type { TaskResponse } from "@/features/board/types";
 import { TaskDetailContent } from "./TaskDetailContent";
@@ -38,6 +39,7 @@ export function TaskDetailPanel({
 	onAddSubtask,
 	onDeleteSubtask,
 }: TaskDetailPanelProps) {
+	const { t } = useTranslation("board");
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
 	useEffect(() => {
@@ -55,7 +57,7 @@ export function TaskDetailPanel({
 	return (
 		<div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l bg-background shadow-xl">
 			<div className="flex items-center justify-between border-b p-4">
-				<h2 className="text-lg font-semibold">Task Details</h2>
+				<h2 className="text-lg font-semibold">{t("taskDetailPanel.taskDetails")}</h2>
 				<div className="flex items-center gap-1">
 					<Button
 						variant="ghost"
@@ -89,23 +91,22 @@ export function TaskDetailPanel({
 			{showDeleteConfirm && (
 				<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
 					<div className="mx-4 max-w-sm rounded-lg bg-background p-6 shadow-xl">
-						<h3 className="text-lg font-semibold mb-2">Delete Task</h3>
+						<h3 className="text-lg font-semibold mb-2">{t("taskDetailPanel.deleteTask")}</h3>
 						{dependentTasks.length > 0 ? (
 							<p className="text-sm text-muted-foreground mb-4">
-								This task is a prerequisite for {dependentTasks.length} other task
-								{dependentTasks.length !== 1 ? "s" : ""}. Deleting it will unblock them.
+								{t("taskDetailPanel.prerequisiteFor", { count: dependentTasks.length })}
 							</p>
 						) : (
 							<p className="text-sm text-muted-foreground mb-4">
-								Are you sure you want to delete this task?
+								{t("taskDetailPanel.confirmDelete")}
 							</p>
 						)}
 						<div className="flex justify-end gap-2">
 							<Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
-								Cancel
+								{t("taskDetailPanel.cancel")}
 							</Button>
 							<Button variant="destructive" onClick={onDeleteTask}>
-								Delete
+								{t("taskDetailPanel.delete")}
 							</Button>
 						</div>
 					</div>

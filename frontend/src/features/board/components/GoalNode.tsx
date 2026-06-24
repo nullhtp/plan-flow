@@ -1,5 +1,6 @@
 import { Handle, Position } from "@xyflow/react";
 import { CheckCircle2, Lock, Trophy } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { TaskNodeData } from "../utils/dagre-layout";
 
 interface GoalNodeProps {
@@ -7,6 +8,7 @@ interface GoalNodeProps {
 }
 
 export function GoalNode({ data }: GoalNodeProps) {
+	const { t } = useTranslation("board");
 	const { task, allTasks } = data;
 	const isLocked = task.is_locked;
 	const isDone = task.status === "done";
@@ -51,7 +53,7 @@ export function GoalNode({ data }: GoalNodeProps) {
 							/>
 						</div>
 						<span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-							{completedTasks}/{totalTasks} tasks
+							{t("goalNode.tasks", { completed: completedTasks, total: totalTasks })}
 						</span>
 					</div>
 				</div>

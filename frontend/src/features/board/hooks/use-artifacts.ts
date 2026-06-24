@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
 	getListArtifactsEndpointApiTasksTaskIdArtifactsGetQueryKey,
@@ -8,6 +9,7 @@ import {
 import type { ArtifactResponse } from "@/api/generated/model";
 
 export function useArtifacts(taskId: string) {
+	const { t } = useTranslation("board");
 	const queryClient = useQueryClient();
 	const artifactsQueryKey = getListArtifactsEndpointApiTasksTaskIdArtifactsGetQueryKey(taskId);
 
@@ -26,10 +28,10 @@ export function useArtifacts(taskId: string) {
 		mutation: {
 			onSuccess: () => {
 				invalidateArtifacts();
-				toast.success("Artifact deleted");
+				toast.success(t("artifactMutations.deleted"));
 			},
 			onError: () => {
-				toast.error("Failed to delete artifact");
+				toast.error(t("artifactMutations.failedToDelete"));
 			},
 		},
 	});

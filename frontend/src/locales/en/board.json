@@ -1,0 +1,217 @@
+{
+	"boardCard": {
+		"shared": "Shared",
+		"done": "{{progress}}% done",
+		"complete": "{{progress}}% complete",
+		"tasks": "{{completed}}/{{total}} tasks"
+	},
+	"boardMetaInfo": {
+		"generatedOn": "Generated on {{date}}"
+	},
+	"boardSkeleton": {
+		"loading": "Loading board..."
+	},
+	"breadcrumbNav": {
+		"home": "Home"
+	},
+	"celebration": {
+		"goalComplete": "Goal Complete!",
+		"congratulations": "Congratulations on achieving your goal!"
+	},
+	"dagView": {
+		"completePrerequisitesFirst": "Complete prerequisites first"
+	},
+	"goalNode": {
+		"tasks": "{{completed}}/{{total}} tasks"
+	},
+	"sharePanel": {
+		"shareBoard": "Share Board",
+		"shareLink": "Share Link",
+		"copied": "Copied",
+		"copy": "Copy",
+		"regenerate": "Regenerate",
+		"removeLink": "Remove Link",
+		"creating": "Creating...",
+		"createShareLink": "Create Share Link",
+		"members": "Members ({{num}})",
+		"loading": "Loading...",
+		"removeMember": "Remove member"
+	},
+	"stepCard": {
+		"lockedComplete": "Locked — complete first: {{deps}}",
+		"prerequisites": "prerequisites",
+		"startTask": "Start task",
+		"markAsDone": "Mark as done",
+		"reset": "Reset",
+		"completed": "Completed",
+		"reopen": "Reopen",
+		"noDescription": "No description.",
+		"tasksCompleted": "{{completed}}/{{total}} tasks completed",
+		"subBoard": "Sub-board",
+		"openSubBoard": "Open Sub-Board",
+		"subtasks": "Subtasks",
+		"askAi": "Ask AI",
+		"subtaskActionPrompt": "Help me with subtask: {{title}} -- {{prompt}}"
+	},
+	"stepperView": {
+		"completePrerequisitesFirst": "Complete prerequisites first",
+		"noTasksYet": "No tasks yet",
+		"noTasksDescription": "This board has no tasks to step through.",
+		"noTasksDescriptionWithDag": " Open the full DAG to see the whole plan.",
+		"viewFullDag": "View full DAG",
+		"backToDashboard": "Back to dashboard",
+		"allDone": "All done!",
+		"allDoneDescription": "Every task on this board is complete. Nice work reaching your goal.",
+		"done": "{{done}}/{{total}} done",
+		"step": "Step {{current}} of {{total}}",
+		"completeToContinue": "Complete this task to continue",
+		"previousTask": "Previous task",
+		"previous": "Previous",
+		"nextTask": "Next task",
+		"next": "Next"
+	},
+	"subBoardCreationFlow": {
+		"failedQuestions": "Failed to generate questions. Please try again.",
+		"subBoardCreated": "Sub-board created successfully!",
+		"failedSubBoard": "Failed to generate sub-board. Please try again.",
+		"expandToBoard": "Expand to Board",
+		"preparingQuestions": "Preparing questions...",
+		"answerQuestions": "Answer a few questions to help generate a task board for this work.",
+		"cancel": "Cancel",
+		"generateBoard": "Generate Board",
+		"generatingBoard": "Generating your board...",
+		"generatingDescription": "Creating tasks, dependencies, and enrichments",
+		"boardCreated": "Board created!",
+		"boardCreatedDescription": "The task has been expanded into a full board.",
+		"done": "Done",
+		"typeAnswer": "Type your answer..."
+	},
+	"subtaskChecklist": {
+		"subtasks": "Subtasks",
+		"aiAction": "AI Action",
+		"addSubtask": "Add subtask...",
+		"subtaskActionPrompt": "Help me with subtask: {{title}} -- {{prompt}}"
+	},
+	"taskArtifacts": {
+		"copiedToClipboard": "Copied to clipboard",
+		"failedToCopy": "Failed to copy",
+		"copyContent": "Copy content",
+		"deleteArtifact": "Delete artifact",
+		"delete": "Delete",
+		"cancel": "Cancel",
+		"close": "Close",
+		"artifacts": "Artifacts",
+		"artifactsCount": "Artifacts ({{num}})"
+	},
+	"taskChat": {
+		"actionConfirmed": "Action confirmed",
+		"failedToConfirm": "Failed to confirm action",
+		"actionRejected": "Action rejected",
+		"failedToReject": "Failed to reject action",
+		"actionConfirmedState": "Action confirmed",
+		"actionRejectedState": "Action rejected",
+		"confirmAction": "Confirm action?",
+		"confirm": "Confirm",
+		"reject": "Reject",
+		"aiChat": "AI Chat",
+		"emptyPrompt": "Ask AI anything about this task, or use a subtask action.",
+		"askAi": "Ask AI..."
+	},
+	"taskDetailContent": {
+		"status": "Status",
+		"completePrerequisitesFirst": "Complete prerequisites first: {{deps}}",
+		"clickToChangeStatus": "Click to change status",
+		"blockedBy_one": "Blocked by {{count}} task",
+		"blockedBy_other": "Blocked by {{count}} tasks",
+		"statusNotStarted": "Not Started",
+		"statusInProgress": "In Progress",
+		"statusDone": "Done",
+		"title": "Title",
+		"description": "Description",
+		"priority": "Priority",
+		"priorityNone": "None",
+		"priorityLow": "Low",
+		"priorityMedium": "Medium",
+		"priorityHigh": "High",
+		"estimate": "Estimate (min)",
+		"dueDate": "Due Date",
+		"subBoard": "Sub-Board",
+		"tasksCompleted": "{{completed}}/{{total}} tasks completed",
+		"subBoardFallback": "Sub-board",
+		"openSubBoard": "Open Sub-Board",
+		"expandToBoard": "Expand to Board",
+		"cancel": "Cancel",
+		"continue": "Continue"
+	},
+	"taskDetailContentExpand": {
+		"intro_one": "This task has {{count}} subtask. Expanding to a board will ",
+		"intro_other": "This task has {{count}} subtasks. Expanding to a board will ",
+		"replaceAllSubtasks": "replace all subtasks",
+		"outro": " with an AI-generated task board. This cannot be undone."
+	},
+	"taskDetailPanel": {
+		"taskDetails": "Task Details",
+		"deleteTask": "Delete Task",
+		"prerequisiteFor_one": "This task is a prerequisite for {{count}} other task. Deleting it will unblock them.",
+		"prerequisiteFor_other": "This task is a prerequisite for {{count}} other tasks. Deleting it will unblock them.",
+		"confirmDelete": "Are you sure you want to delete this task?",
+		"cancel": "Cancel",
+		"delete": "Delete"
+	},
+	"taskNode": {
+		"blockedBy": "Blocked by: {{names}}",
+		"tasks": "{{completed}}/{{total}} tasks"
+	},
+	"taskMutations": {
+		"failedToUpdate": "Failed to update task",
+		"failedToDelete": "Failed to delete task"
+	},
+	"artifactMutations": {
+		"deleted": "Artifact deleted",
+		"failedToDelete": "Failed to delete artifact"
+	},
+	"subtaskMutations": {
+		"failedToCreate": "Failed to create subtask",
+		"failedToUpdate": "Failed to update subtask",
+		"failedToDelete": "Failed to delete subtask"
+	},
+	"taskChatHook": {
+		"error": "Sorry, something went wrong. Please try again."
+	},
+	"boardDetail": {
+		"couldNotLoad": "Could not load this board.",
+		"guidedView": "Guided one-task-at-a-time view",
+		"simple": "Simple",
+		"fullTaskGraph": "Full task graph",
+		"advanced": "Advanced",
+		"showActionableOnly": "Show actionable tasks only",
+		"focus": "Focus",
+		"showAllTasks": "Show all tasks",
+		"fullDag": "Full DAG",
+		"shareBoard": "Share board",
+		"share": "Share",
+		"sharedWithYou": "Shared with you",
+		"saving": "Saving...",
+		"saveAsTemplate": "Save as Template",
+		"saveAsTemplateTitle": "Save as template",
+		"boardMemories": "Board memories",
+		"memories": "Memories"
+	},
+	"boardExpand": {
+		"subBoardExists": "A sub-board already exists for this task.",
+		"subBoardsCannotBeNested": "Sub-boards cannot be nested. This task belongs to a sub-board.",
+		"failedQuestions": "Failed to generate questions. Please try again.",
+		"couldNotLoadBoard": "Could not load the board. The task may not exist or you may not have access.",
+		"taskNotFound": "Task not found on this board.",
+		"defaultTaskTitle": "Task",
+		"defaultBoardTitle": "Board",
+		"typeAnswer": "Type your answer...",
+		"expandingTaskFrom": "Expanding task from {{board}}",
+		"loading": "Loading...",
+		"preparingQuestions": "Preparing questions...",
+		"answerQuestions": "Answer a few questions to help generate a detailed task board.",
+		"cancel": "Cancel",
+		"generateBoard": "Generate Board",
+		"backToBoard": "Back to Board"
+	}
+}

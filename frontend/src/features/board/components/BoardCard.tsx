@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { BoardListResponse } from "@/features/board/types";
 
@@ -9,6 +10,7 @@ interface BoardCardProps {
 }
 
 export function BoardCard({ board, simple = false }: BoardCardProps) {
+	const { t } = useTranslation("board");
 	const navigate = useNavigate();
 
 	const progress =
@@ -31,7 +33,7 @@ export function BoardCard({ board, simple = false }: BoardCardProps) {
 					<CardTitle className="min-w-0 truncate text-base">{board.title}</CardTitle>
 					{board.role === "collaborator" && (
 						<span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-							Shared
+							{t("boardCard.shared")}
 						</span>
 					)}
 				</div>
@@ -41,13 +43,16 @@ export function BoardCard({ board, simple = false }: BoardCardProps) {
 			</CardHeader>
 			<CardContent>
 				{simple ? (
-					<span className="text-sm text-muted-foreground">{progress}% done</span>
+					<span className="text-sm text-muted-foreground">{t("boardCard.done", { progress })}</span>
 				) : (
 					<>
 						<div className="flex items-center justify-between text-sm text-muted-foreground">
-							<span>{progress}% complete</span>
+							<span>{t("boardCard.complete", { progress })}</span>
 							<span>
-								{board.completed_task_count}/{board.task_count} tasks
+								{t("boardCard.tasks", {
+									completed: board.completed_task_count,
+									total: board.task_count,
+								})}
 							</span>
 						</div>
 						<div className="mt-2 h-1.5 w-full rounded-full bg-muted">

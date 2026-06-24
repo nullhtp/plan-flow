@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Check, ExternalLink, Layers, Lock, Sparkles } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import type { TaskResponse } from "@/features/board/types";
 import { TaskArtifacts } from "./TaskArtifacts";
@@ -21,6 +22,7 @@ interface StepCardProps {
  * status buttons. Completing the task advances to the next step.
  */
 export function StepCard({ task, allTasks, boardId, onSetStatus, onToggleSubtask }: StepCardProps) {
+	const { t } = useTranslation("board");
 	const navigate = useNavigate();
 	const [chatPrompt, setChatPrompt] = useState<string | null>(null);
 	const chatRef = useRef<HTMLDivElement>(null);
@@ -45,29 +47,31 @@ export function StepCard({ task, allTasks, boardId, onSetStatus, onToggleSubtask
 					<div className="flex items-center gap-2 text-sm text-muted-foreground">
 						<Lock className="h-4 w-4" />
 						<span>
-							Locked — complete first: {unmetDeps.map((t) => t.title).join(", ") || "prerequisites"}
+							{t("stepCard.lockedComplete", {
+								deps: unmetDeps.map((d) => d.title).join(", ") || t("stepCard.prerequisites"),
+							})}
 						</span>
 					</div>
 				) : task.status === "not_started" ? (
-					<Button onClick={() => onSetStatus("in_progress")}>Start task</Button>
+					<Button onClick={() => onSetStatus("in_progress")}>{t("stepCard.startTask")}</Button>
 				) : task.status === "in_progress" ? (
 					<div className="flex flex-wrap gap-2">
 						<Button onClick={() => onSetStatus("done")}>
 							<Check className="mr-1.5 h-4 w-4" />
-							Mark as done
+							{t("stepCard.markAsDone")}
 						</Button>
 						<Button variant="outline" onClick={() => onSetStatus("not_started")}>
-							Reset
+							{t("stepCard.reset")}
 						</Button>
 					</div>
 				) : (
 					<div className="flex flex-wrap items-center gap-3">
 						<span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">
 							<Check className="h-4 w-4" />
-							Completed
+							{t("stepCard.completed")}
 						</span>
 						<Button variant="outline" size="sm" onClick={() => onSetStatus("in_progress")}>
-							Reopen
+							{t("stepCard.reopen")}
 						</Button>
 					</div>
 				)}
@@ -82,7 +86,7 @@ export function StepCard({ task, allTasks, boardId, onSetStatus, onToggleSubtask
 					{task.description}
 				</p>
 			) : (
-				<p className="text-sm italic text-muted-foreground">No description.</p>
+				<p className="text-sm italic text-muted-foreground">{t("stepCard.noDescription")}</p>
 			)}
 
 			{/* Subtasks (toggle only) or Sub-Board CTA */}
@@ -92,8 +96,11 @@ export function StepCard({ task, allTasks, boardId, onSetStatus, onToggleSubtask
 						<Layers className="h-4 w-4 text-violet-600" />
 						<span className="text-sm font-medium">
 							{task.sub_board_progress
-								? `${task.sub_board_progress.completed_task_count}/${task.sub_board_progress.task_count} tasks completed`
-								: "Sub-board"}
+								? t("stepCard.tasksCompleted", {
+										completed: task.sub_board_progress.completed_task_count,
+										total: task.sub_board_progress.task_count,
+									})
+								: t("stepCard.subBoard")}
 						</span>
 					</div>
 					<Button
@@ -107,12 +114,12 @@ export function StepCard({ task, allTasks, boardId, onSetStatus, onToggleSubtask
 						}}
 					>
 						<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-						Open Sub-Board
+						{t("stepCard.openSubBoard")}
 					</Button>
 				</div>
 			) : subtasks.length > 0 ? (
 				<div className="space-y-2">
-					<h3 className="text-sm font-medium">Subtasks</h3>
+					<h3 className="text-sm font-medium">{t("stepCard.subtasks")}</h3>
 					<div className="space-y-1">
 						{subtasks.map((st) => (
 							<div key={st.id} className="space-y-1">
@@ -134,13 +141,18 @@ export function StepCard({ task, allTasks, boardId, onSetStatus, onToggleSubtask
 										variant="outline"
 										size="sm"
 										className="ml-7 h-7 gap-1.5 border-violet-300 bg-violet-50 px-3 text-xs font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-300"
-										title={st.action_label ?? "Ask AI"}
+										title={st.action_label ?? t("stepCard.askAi")}
 										onClick={() =>
-											handleAction(`Help me with subtask: ${st.title} -- ${st.action_prompt}`)
+											handleAction(
+												t("stepCard.subtaskActionPrompt", {
+													title: st.title,
+													prompt: st.action_prompt,
+												}),
+											)
 										}
 									>
 										<Sparkles className="h-3 w-3" />
-										{st.action_label ?? "Ask AI"}
+										{st.action_label ?? t("stepCard.askAi")}
 									</Button>
 								)}
 							</div>

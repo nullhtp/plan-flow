@@ -1,6 +1,8 @@
 import { useNavigate } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { Check, CircleAlert, CircleDot, Loader2, Search } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
 	type LogEntry,
@@ -23,32 +25,41 @@ interface BoardGenerationProgressProps {
 	onComplete?: (boardId: string) => void;
 }
 
-function getPhaseText(stream: ReturnType<typeof useBoardGenerationStream>): string {
+function getPhaseText(
+	stream: ReturnType<typeof useBoardGenerationStream>,
+	t: TFunction<"goals">,
+): string {
 	switch (stream.phase) {
 		case "idle":
 		case "connecting":
-			return "Analyzing your goal...";
+			return t("boardProgress.analyzing");
 		case "researching": {
 			const rp = stream.researchProgress;
 			if (rp) {
-				return `Researching (${rp.queriesCompleted}/${rp.totalQueries})...`;
+				return t("boardProgress.researchingProgress", {
+					completed: rp.queriesCompleted,
+					total: rp.totalQueries,
+				});
 			}
-			return "Researching...";
+			return t("boardProgress.researching");
 		}
 		case "skeleton":
-			return "Creating board structure...";
+			return t("boardProgress.creatingStructure");
 		case "enriching": {
 			if (stream.totalCount > 0) {
-				return `Adding details (${stream.enrichedCount}/${stream.totalCount})...`;
+				return t("boardProgress.addingDetailsProgress", {
+					enriched: stream.enrichedCount,
+					total: stream.totalCount,
+				});
 			}
-			return "Adding details...";
+			return t("boardProgress.addingDetails");
 		}
 		case "complete":
-			return "Board ready!";
+			return t("boardProgress.boardReady");
 		case "error":
-			return "Generation failed";
+			return t("boardProgress.generationFailed");
 		default:
-			return "Generating board...";
+			return t("boardProgress.generatingBoard");
 	}
 }
 
@@ -59,8 +70,9 @@ export function BoardGenerationProgress({
 	onAbort,
 	onComplete,
 }: BoardGenerationProgressProps) {
+	const { t } = useTranslation("goals");
 	const url = sseUrl ?? `/api/goals/${goalId}/generate-board/stream`;
-	const streamOptions = useMemo(() => ({ url, body: sseBody }), [url, sseBody]);
+	const streamOptions = useMemo(() => ({ url, body: sseBody, t }), [url, sseBody, t]);
 	const stream = useBoardGenerationStream(streamOptions);
 	const navigate = useNavigate();
 	const navTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -121,7 +133,7 @@ export function BoardGenerationProgress({
 	const showEnrichmentProgress = stream.phase === "enriching" && stream.totalCount > 0;
 	const showResearchProgress = stream.phase === "researching" && stream.researchProgress !== null;
 
-	const phaseText = getPhaseText(stream);
+	const phaseText = getPhaseText(stream, t);
 
 	// Compute progress bar percentage across all phases
 	const progressPercent = (() => {
@@ -164,7 +176,7 @@ export function BoardGenerationProgress({
 					)}
 
 					{stream.phase === "complete" && (
-						<p className="text-sm text-green-500 font-medium">Board ready — redirecting...</p>
+						<p className="text-sm text-green-500 font-medium">{t("boardProgress.redirecting")}</p>
 					)}
 				</div>
 
@@ -197,11 +209,11 @@ export function BoardGenerationProgress({
 				{stream.phase === "error" && (
 					<div className="flex items-center justify-center gap-3 pt-2">
 						<Button variant="outline" size="sm" onClick={handleAbort}>
-							Back
+							{t("boardProgress.back")}
 						</Button>
 						{!stream.boardId && (
 							<Button size="sm" onClick={handleRetry}>
-								Try Again
+								{t("boardProgress.tryAgain")}
 							</Button>
 						)}
 						{stream.boardId && (
@@ -216,7 +228,7 @@ export function BoardGenerationProgress({
 									})
 								}
 							>
-								Check your board
+								{t("boardProgress.checkBoard")}
 							</Button>
 						)}
 					</div>

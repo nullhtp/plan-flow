@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, MessageSquare, Send, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
 	confirmPendingActionApiActionsActionIdConfirmPost,
@@ -41,6 +42,7 @@ function ToolActionCard({ action }: { action: ToolAction }) {
 }
 
 function PendingActionCard({ actionId, boardId }: { actionId: string; boardId: string }) {
+	const { t } = useTranslation("board");
 	const [isConfirming, setIsConfirming] = useState(false);
 	const [isRejecting, setIsRejecting] = useState(false);
 	const [resolved, setResolved] = useState<string | null>(null);
@@ -54,10 +56,10 @@ function PendingActionCard({ actionId, boardId }: { actionId: string; boardId: s
 				setResolved("confirmed");
 				const boardQueryKey = getGetBoardEndpointApiBoardsBoardIdGetQueryKey(boardId);
 				queryClient.invalidateQueries({ queryKey: boardQueryKey });
-				toast.success("Action confirmed");
+				toast.success(t("taskChat.actionConfirmed"));
 			}
 		} catch {
-			toast.error("Failed to confirm action");
+			toast.error(t("taskChat.failedToConfirm"));
 		} finally {
 			setIsConfirming(false);
 		}
@@ -69,10 +71,10 @@ function PendingActionCard({ actionId, boardId }: { actionId: string; boardId: s
 			const res = await rejectPendingActionApiActionsActionIdRejectPost(actionId);
 			if (res.status === 200) {
 				setResolved("rejected");
-				toast.success("Action rejected");
+				toast.success(t("taskChat.actionRejected"));
 			}
 		} catch {
-			toast.error("Failed to reject action");
+			toast.error(t("taskChat.failedToReject"));
 		} finally {
 			setIsRejecting(false);
 		}
@@ -81,14 +83,16 @@ function PendingActionCard({ actionId, boardId }: { actionId: string; boardId: s
 	if (resolved) {
 		return (
 			<div className="rounded border bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
-				Action {resolved}
+				{resolved === "confirmed"
+					? t("taskChat.actionConfirmedState")
+					: t("taskChat.actionRejectedState")}
 			</div>
 		);
 	}
 
 	return (
 		<div className="flex items-center gap-2 rounded border border-yellow-300 bg-yellow-50 px-2 py-1.5">
-			<span className="text-xs font-medium">Confirm action?</span>
+			<span className="text-xs font-medium">{t("taskChat.confirmAction")}</span>
 			<Button
 				variant="outline"
 				size="sm"
@@ -101,7 +105,7 @@ function PendingActionCard({ actionId, boardId }: { actionId: string; boardId: s
 				) : (
 					<Check className="h-3 w-3" />
 				)}
-				Confirm
+				{t("taskChat.confirm")}
 			</Button>
 			<Button
 				variant="ghost"
@@ -111,7 +115,7 @@ function PendingActionCard({ actionId, boardId }: { actionId: string; boardId: s
 				disabled={isConfirming || isRejecting}
 			>
 				{isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
-				Reject
+				{t("taskChat.reject")}
 			</Button>
 		</div>
 	);
@@ -211,6 +215,7 @@ function ChatMessageBubble({
 }
 
 export function TaskChat({ taskId, boardId, initialPrompt }: TaskChatProps) {
+	const { t } = useTranslation("board");
 	const { messages, isLoading, sendMessage } = useTaskChat(taskId, boardId);
 	const [input, setInput] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -256,7 +261,7 @@ export function TaskChat({ taskId, boardId, initialPrompt }: TaskChatProps) {
 		<div>
 			<Label className="flex items-center gap-1.5">
 				<MessageSquare className="h-3.5 w-3.5" />
-				AI Chat
+				{t("taskChat.aiChat")}
 			</Label>
 
 			<div className="mt-2 rounded-md border">
@@ -264,7 +269,7 @@ export function TaskChat({ taskId, boardId, initialPrompt }: TaskChatProps) {
 				<div className="max-h-80 min-h-[120px] overflow-y-auto p-3 space-y-3">
 					{messages.length === 0 && !isLoading && (
 						<p className="text-center text-xs text-muted-foreground py-6">
-							Ask AI anything about this task, or use a subtask action.
+							{t("taskChat.emptyPrompt")}
 						</p>
 					)}
 					{messages.map((msg) => (
@@ -291,7 +296,7 @@ export function TaskChat({ taskId, boardId, initialPrompt }: TaskChatProps) {
 					<Input
 						value={input}
 						onChange={(e) => setInput(e.target.value)}
-						placeholder="Ask AI..."
+						placeholder={t("taskChat.askAi")}
 						className="h-8 text-sm"
 						disabled={isLoading}
 					/>

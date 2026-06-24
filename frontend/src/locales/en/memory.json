@@ -1,0 +1,15 @@
+{
+	"memory": "Memory",
+	"loading": "Loading...",
+	"memoryRemoved": "Memory removed",
+	"viewInSettings": "View in Settings",
+	"boardMemories": "Board Memories",
+	"loadingMemories": "Loading memories...",
+	"noRelevantMemories": "No relevant memories for this board.",
+	"save": "Save",
+	"cancel": "Cancel",
+	"editMemory": "Edit memory",
+	"deleteMemory": "Delete memory",
+	"deleteConfirm": "Delete this memory?",
+	"manageAllMemories": "Manage all memories"
+}

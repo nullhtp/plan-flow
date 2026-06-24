@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import type { TemplateCategoryResponse } from "../types";
 
@@ -8,6 +9,7 @@ interface CategoryFilterProps {
 }
 
 export function CategoryFilter({ categories, selected, onSelect }: CategoryFilterProps) {
+	const { t } = useTranslation("templates");
 	return (
 		<div className="flex flex-wrap gap-2">
 			<Button
@@ -15,7 +17,7 @@ export function CategoryFilter({ categories, selected, onSelect }: CategoryFilte
 				size="sm"
 				onClick={() => onSelect(null)}
 			>
-				All
+				{t("categoryFilter.all")}
 			</Button>
 			{categories.map((cat) => (
 				<Button

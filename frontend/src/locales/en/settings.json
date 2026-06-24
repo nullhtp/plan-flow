@@ -1,0 +1,56 @@
+{
+	"back": "Back",
+	"title": "Settings",
+	"language": {
+		"title": "Language",
+		"description": "Choose the interface language."
+	},
+	"simpleMode": {
+		"title": "Simple mode",
+		"description": "Simplify the whole app — hide advanced controls and guide you step by step. Turn it off to access the full interface."
+	},
+	"aiMemory": {
+		"title": "AI Memory",
+		"description": "When enabled, the AI remembers your preferences and past goals to personalize responses."
+	},
+	"enabled": "Enabled",
+	"disabled": "Disabled",
+	"updateFailed": "Failed to update setting",
+	"stats": {
+		"title": "Memory Statistics",
+		"totalTooltip": "Total number of memories stored by the AI across all categories",
+		"total": "Total: "
+	},
+	"categoryTooltips": {
+		"preference": "Your preferences and answers from goal Q&A (e.g. language, budget, timeline). Used in: question generation, board planning, task enrichment, and chat.",
+		"fact": "Factual information about you or your situation (e.g. location, job role). Created manually. Used in: question generation, board planning, task enrichment, and chat.",
+		"pattern": "Summaries of boards you've generated (e.g. task count, plan type). Used in: question generation, board planning, task enrichment, and chat.",
+		"context": "Goal domains and key dimensions you've worked on (e.g. relocation, career change). Used in: question generation, board planning, task enrichment, and chat."
+	},
+	"categoryLabels": {
+		"preference": "preference",
+		"fact": "fact",
+		"pattern": "pattern",
+		"context": "context"
+	},
+	"search": "Search memories...",
+	"allCategories": "All categories",
+	"clearCategory": "Clear \"{{category}}\"",
+	"clearAll": "Clear All Memories",
+	"save": "Save",
+	"cancel": "Cancel",
+	"edit": "Edit",
+	"delete": "Delete",
+	"noMatch": "No memories match your search.",
+	"noMemories": "No memories stored yet.",
+	"pagination": {
+		"previous": "Previous",
+		"page": "Page {{page}} of {{total}}",
+		"next": "Next"
+	},
+	"confirm": {
+		"deleteMemory": "Delete this memory?",
+		"clearCategory": "Clear all \"{{category}}\" memories?",
+		"clearAll": "Clear ALL memories? This cannot be undone."
+	}
+}

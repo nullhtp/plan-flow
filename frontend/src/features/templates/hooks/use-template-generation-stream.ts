@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { fetchSSE } from "@/api/sse";
 
 /**
@@ -137,6 +138,7 @@ export function useTemplateGenerationStream({
 	sseUrl,
 	sseBody,
 }: UseTemplateGenerationStreamOptions) {
+	const { t } = useTranslation("templates");
 	const [state, setState] = useState<StreamState>(initialState);
 	const abortRef = useRef<AbortController | null>(null);
 	// Skeleton task map for merging enrichment data
@@ -160,7 +162,7 @@ export function useTemplateGenerationStream({
 			log: [
 				{
 					id: nextLogId(),
-					message: "Connecting to generation service...",
+					message: t("stream.connecting"),
 					type: "info",
 					timestamp: Date.now(),
 				},
@@ -185,7 +187,7 @@ export function useTemplateGenerationStream({
 								totalResults: 0,
 								urlsFetched: 0,
 							},
-							log: addLog(prev, `Researching (${data.query_count} searches)...`, "info"),
+							log: addLog(prev, t("stream.researching", { count: data.query_count }), "info"),
 						}));
 						break;
 					}
@@ -201,7 +203,7 @@ export function useTemplateGenerationStream({
 										totalResults: prev.researchProgress.totalResults + data.results_count,
 									}
 								: null,
-							log: addLog(prev, `Searching: ${data.query}`, "info"),
+							log: addLog(prev, t("stream.searching", { query: data.query }), "info"),
 						}));
 						break;
 					}
@@ -219,7 +221,11 @@ export function useTemplateGenerationStream({
 										currentQuery: null,
 									}
 								: null,
-							log: addLog(prev, `Research complete: ${data.total_results} results`, "success"),
+							log: addLog(
+								prev,
+								t("stream.researchComplete", { count: data.total_results }),
+								"success",
+							),
 						}));
 						break;
 					}
@@ -251,13 +257,13 @@ export function useTemplateGenerationStream({
 							log: [
 								{
 									id: nextLogId(),
-									message: `Created ${data.tasks.length} tasks — adding details...`,
+									message: t("stream.tasksCreated", { count: data.tasks.length }),
 									type: "success",
 									timestamp: Date.now(),
 								},
 								{
 									id: nextLogId(),
-									message: `Template structure ready: ${data.board_title}`,
+									message: t("stream.structureReady", { title: data.board_title }),
 									type: "success",
 									timestamp: Date.now(),
 								},
@@ -292,7 +298,7 @@ export function useTemplateGenerationStream({
 										}
 									: t,
 							),
-							log: addLog(prev, `Enriched: ${title}`, "success"),
+							log: addLog(prev, t("stream.enriched", { title }), "success"),
 						}));
 						break;
 					}
@@ -300,7 +306,7 @@ export function useTemplateGenerationStream({
 						setState((prev) => ({
 							...prev,
 							phase: "complete",
-							log: addLog(prev, "Template generation complete!", "success"),
+							log: addLog(prev, t("stream.generationComplete"), "success"),
 						}));
 						break;
 					}
@@ -319,7 +325,7 @@ export function useTemplateGenerationStream({
 			},
 			onError: (error) => {
 				if (controller.signal.aborted) return;
-				const msg = error.message || "Connection failed";
+				const msg = error.message || t("stream.connectionFailed");
 				setState((prev) => ({
 					...prev,
 					phase: "error",
@@ -333,13 +339,13 @@ export function useTemplateGenerationStream({
 					return {
 						...prev,
 						phase: "error",
-						error: "Connection closed unexpectedly",
-						log: addLog(prev, "Connection closed unexpectedly", "error"),
+						error: t("stream.connectionClosed"),
+						log: addLog(prev, t("stream.connectionClosed"), "error"),
 					};
 				});
 			},
 		});
-	}, [sseUrl, sseBody]);
+	}, [sseUrl, sseBody, t]);
 
 	const abort = useCallback(() => {
 		abortRef.current?.abort();

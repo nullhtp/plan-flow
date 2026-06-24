@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, X } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
 	getGetBoardEndpointApiBoardsBoardIdGetQueryKey,
@@ -77,6 +78,7 @@ function CompactQuestionField({
 	onChange: (value: string | string[] | number) => void;
 	disabled: boolean;
 }) {
+	const { t } = useTranslation("board");
 	const options = question.options ?? [];
 	const hasOptions = options.length > 0;
 
@@ -93,7 +95,7 @@ function CompactQuestionField({
 					id={question.id}
 					value={stringValue}
 					onChange={(e) => onChange(e.target.value)}
-					placeholder="Type your answer..."
+					placeholder={t("subBoardCreationFlow.typeAnswer")}
 					disabled={disabled}
 					className="h-8 text-xs"
 				/>
@@ -164,6 +166,7 @@ export function SubBoardCreationFlow({
 	onComplete,
 	onCancel,
 }: SubBoardCreationFlowProps) {
+	const { t } = useTranslation("board");
 	const queryClient = useQueryClient();
 	const [flowState, setFlowState] = useState<FlowState>("loading-questions");
 	const [questions, setQuestions] = useState<QuestionSchema[]>([]);
@@ -179,7 +182,7 @@ export function SubBoardCreationFlow({
 				setFlowState("questions");
 			},
 			onError: () => {
-				toast.error("Failed to generate questions. Please try again.");
+				toast.error(t("subBoardCreationFlow.failedQuestions"));
 				onCancel();
 			},
 		},
@@ -193,10 +196,10 @@ export function SubBoardCreationFlow({
 				// Invalidate the board query to refresh the DAG with sub-board data
 				const boardQueryKey = getGetBoardEndpointApiBoardsBoardIdGetQueryKey(boardId);
 				queryClient.invalidateQueries({ queryKey: boardQueryKey });
-				toast.success("Sub-board created successfully!");
+				toast.success(t("subBoardCreationFlow.subBoardCreated"));
 			},
 			onError: () => {
-				toast.error("Failed to generate sub-board. Please try again.");
+				toast.error(t("subBoardCreationFlow.failedSubBoard"));
 				setFlowState("questions");
 			},
 		},
@@ -244,7 +247,7 @@ export function SubBoardCreationFlow({
 			<div className="rounded-lg border border-violet-200 bg-violet-50/30 dark:border-violet-800 dark:bg-violet-950/20 p-4">
 				<div className="flex items-center justify-between mb-3">
 					<h4 className="text-sm font-medium text-violet-700 dark:text-violet-300">
-						Expand to Board
+						{t("subBoardCreationFlow.expandToBoard")}
 					</h4>
 					<Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onCancel}>
 						<X className="h-3.5 w-3.5" />
@@ -252,7 +255,9 @@ export function SubBoardCreationFlow({
 				</div>
 				<div className="flex items-center justify-center py-6">
 					<Loader2 className="h-5 w-5 animate-spin text-violet-500 mr-2" />
-					<span className="text-sm text-muted-foreground">Preparing questions...</span>
+					<span className="text-sm text-muted-foreground">
+						{t("subBoardCreationFlow.preparingQuestions")}
+					</span>
 				</div>
 			</div>
 		);
@@ -264,14 +269,14 @@ export function SubBoardCreationFlow({
 			<div className="rounded-lg border border-violet-200 bg-violet-50/30 dark:border-violet-800 dark:bg-violet-950/20 p-4">
 				<div className="flex items-center justify-between mb-3">
 					<h4 className="text-sm font-medium text-violet-700 dark:text-violet-300">
-						Expand to Board
+						{t("subBoardCreationFlow.expandToBoard")}
 					</h4>
 					<Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onCancel}>
 						<X className="h-3.5 w-3.5" />
 					</Button>
 				</div>
 				<p className="text-xs text-muted-foreground mb-3">
-					Answer a few questions to help generate a task board for this work.
+					{t("subBoardCreationFlow.answerQuestions")}
 				</p>
 				<form onSubmit={handleSubmit} className="space-y-4">
 					{questions.map((question) => (
@@ -285,7 +290,7 @@ export function SubBoardCreationFlow({
 					))}
 					<div className="flex gap-2">
 						<Button type="button" variant="outline" size="sm" className="flex-1" onClick={onCancel}>
-							Cancel
+							{t("subBoardCreationFlow.cancel")}
 						</Button>
 						<Button
 							type="submit"
@@ -293,7 +298,7 @@ export function SubBoardCreationFlow({
 							className="flex-1 bg-violet-600 hover:bg-violet-700 text-white"
 							disabled={!isValid()}
 						>
-							Generate Board
+							{t("subBoardCreationFlow.generateBoard")}
 						</Button>
 					</div>
 				</form>
@@ -307,15 +312,15 @@ export function SubBoardCreationFlow({
 			<div className="rounded-lg border border-violet-200 bg-violet-50/30 dark:border-violet-800 dark:bg-violet-950/20 p-4">
 				<div className="flex items-center justify-between mb-3">
 					<h4 className="text-sm font-medium text-violet-700 dark:text-violet-300">
-						Expand to Board
+						{t("subBoardCreationFlow.expandToBoard")}
 					</h4>
 				</div>
 				<div className="flex flex-col items-center justify-center py-6 gap-3">
 					<Loader2 className="h-6 w-6 animate-spin text-violet-500" />
 					<div className="text-center">
-						<p className="text-sm font-medium">Generating your board...</p>
+						<p className="text-sm font-medium">{t("subBoardCreationFlow.generatingBoard")}</p>
 						<p className="text-xs text-muted-foreground mt-1">
-							Creating tasks, dependencies, and enrichments
+							{t("subBoardCreationFlow.generatingDescription")}
 						</p>
 					</div>
 				</div>
@@ -329,9 +334,11 @@ export function SubBoardCreationFlow({
 			<div className="flex flex-col items-center justify-center py-4 gap-3">
 				<CheckCircle2 className="h-8 w-8 text-green-600" />
 				<div className="text-center">
-					<p className="text-sm font-medium text-green-700 dark:text-green-300">Board created!</p>
+					<p className="text-sm font-medium text-green-700 dark:text-green-300">
+						{t("subBoardCreationFlow.boardCreated")}
+					</p>
 					<p className="text-xs text-muted-foreground mt-1">
-						The task has been expanded into a full board.
+						{t("subBoardCreationFlow.boardCreatedDescription")}
 					</p>
 				</div>
 				<Button
@@ -340,7 +347,7 @@ export function SubBoardCreationFlow({
 					className="border-green-300 text-green-700 hover:bg-green-100"
 					onClick={onComplete}
 				>
-					Done
+					{t("subBoardCreationFlow.done")}
 				</Button>
 			</div>
 		</div>

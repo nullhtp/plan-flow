@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
 	getGetBoardEndpointApiBoardsBoardIdGetQueryKey,
@@ -7,6 +8,7 @@ import {
 } from "@/api/generated/boards/boards";
 
 export function useTaskMutations(boardId: string) {
+	const { t } = useTranslation("board");
 	const queryClient = useQueryClient();
 	const boardQueryKey = getGetBoardEndpointApiBoardsBoardIdGetQueryKey(boardId);
 
@@ -21,8 +23,8 @@ export function useTaskMutations(boardId: string) {
 				const message =
 					error && typeof error === "object" && "response" in error
 						? ((error as { response?: { data?: { detail?: string } } }).response?.data?.detail ??
-							"Failed to update task")
-						: "Failed to update task";
+							t("taskMutations.failedToUpdate"))
+						: t("taskMutations.failedToUpdate");
 				toast.error(message);
 				invalidateBoard();
 			},
@@ -33,7 +35,7 @@ export function useTaskMutations(boardId: string) {
 		mutation: {
 			onSuccess: invalidateBoard,
 			onError: () => {
-				toast.error("Failed to delete task");
+				toast.error(t("taskMutations.failedToDelete"));
 				invalidateBoard();
 			},
 		},

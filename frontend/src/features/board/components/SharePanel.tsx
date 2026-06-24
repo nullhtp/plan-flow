@@ -1,5 +1,6 @@
 import { Copy, Link, RefreshCw, Trash2, UserMinus, Users, X } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
 	useBoardMembers,
@@ -15,6 +16,7 @@ interface SharePanelProps {
 }
 
 export function SharePanel({ boardId, onClose }: SharePanelProps) {
+	const { t } = useTranslation("board");
 	const shareQuery = useShareLink(boardId);
 	const membersQuery = useBoardMembers(boardId);
 	const createShare = useCreateShareLink(boardId);
@@ -48,7 +50,7 @@ export function SharePanel({ boardId, onClose }: SharePanelProps) {
 				<div className="flex items-center justify-between mb-4">
 					<h2 className="text-lg font-semibold flex items-center gap-2">
 						<Users className="h-5 w-5" />
-						Share Board
+						{t("sharePanel.shareBoard")}
 					</h2>
 					<button
 						type="button"
@@ -61,7 +63,7 @@ export function SharePanel({ boardId, onClose }: SharePanelProps) {
 
 				{/* Share Link Section */}
 				<div className="space-y-3 mb-5">
-					<h3 className="text-sm font-medium">Share Link</h3>
+					<h3 className="text-sm font-medium">{t("sharePanel.shareLink")}</h3>
 					{shareLink ? (
 						<div className="space-y-2">
 							<div className="flex items-center gap-2 rounded border px-3 py-2 text-sm bg-muted/50">
@@ -74,7 +76,7 @@ export function SharePanel({ boardId, onClose }: SharePanelProps) {
 									onClick={handleCopy}
 								>
 									<Copy className="h-3 w-3" />
-									{copied ? "Copied" : "Copy"}
+									{copied ? t("sharePanel.copied") : t("sharePanel.copy")}
 								</Button>
 							</div>
 							<div className="flex gap-2">
@@ -86,7 +88,7 @@ export function SharePanel({ boardId, onClose }: SharePanelProps) {
 									disabled={createShare.isPending}
 								>
 									<RefreshCw className="h-3 w-3" />
-									Regenerate
+									{t("sharePanel.regenerate")}
 								</Button>
 								<Button
 									variant="outline"
@@ -96,7 +98,7 @@ export function SharePanel({ boardId, onClose }: SharePanelProps) {
 									disabled={deleteShare.isPending}
 								>
 									<Trash2 className="h-3 w-3" />
-									Remove Link
+									{t("sharePanel.removeLink")}
 								</Button>
 							</div>
 						</div>
@@ -108,16 +110,18 @@ export function SharePanel({ boardId, onClose }: SharePanelProps) {
 							disabled={createShare.isPending}
 						>
 							<Link className="h-3 w-3" />
-							{createShare.isPending ? "Creating..." : "Create Share Link"}
+							{createShare.isPending ? t("sharePanel.creating") : t("sharePanel.createShareLink")}
 						</Button>
 					)}
 				</div>
 
 				{/* Members Section */}
 				<div className="space-y-3">
-					<h3 className="text-sm font-medium">Members ({members.length})</h3>
+					<h3 className="text-sm font-medium">
+						{t("sharePanel.members", { num: members.length })}
+					</h3>
 					{membersQuery.isLoading ? (
-						<p className="text-sm text-muted-foreground">Loading...</p>
+						<p className="text-sm text-muted-foreground">{t("sharePanel.loading")}</p>
 					) : (
 						<ul className="space-y-2">
 							{members.map((m) => (
@@ -133,7 +137,7 @@ export function SharePanel({ boardId, onClose }: SharePanelProps) {
 											type="button"
 											className="shrink-0 p-1 text-muted-foreground hover:text-destructive"
 											onClick={() => revokeMember.mutate(m.user_id)}
-											title="Remove member"
+											title={t("sharePanel.removeMember")}
 										>
 											<UserMinus className="h-4 w-4" />
 										</button>

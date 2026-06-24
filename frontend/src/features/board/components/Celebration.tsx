@@ -1,11 +1,13 @@
 import confetti from "canvas-confetti";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface CelebrationProps {
 	show: boolean;
 }
 
 export function Celebration({ show }: CelebrationProps) {
+	const { t } = useTranslation("board");
 	const [visible, setVisible] = useState(false);
 
 	const fireCelebration = useCallback(() => {
@@ -62,9 +64,9 @@ export function Celebration({ show }: CelebrationProps) {
 			<div className="rounded-2xl bg-white/90 dark:bg-gray-900/90 px-12 py-8 shadow-2xl text-center animate-in zoom-in-95 fade-in duration-300">
 				<p className="text-5xl mb-3">🏆</p>
 				<h2 className="text-3xl font-bold text-amber-600 dark:text-amber-400 mb-2">
-					Goal Complete!
+					{t("celebration.goalComplete")}
 				</h2>
-				<p className="text-muted-foreground">Congratulations on achieving your goal!</p>
+				<p className="text-muted-foreground">{t("celebration.congratulations")}</p>
 			</div>
 		</button>
 	);

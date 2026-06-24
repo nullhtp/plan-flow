@@ -1,5 +1,6 @@
 import { createRoute, Navigate, useNavigate, useSearch } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -24,6 +25,7 @@ export const loginRoute = createRoute({
 });
 
 function LoginPage() {
+	const { t } = useTranslation("auth");
 	const navigate = useNavigate();
 	const { returnTo } = useSearch({ from: "/login" });
 	const { isAuthenticated } = useAuth();
@@ -42,10 +44,10 @@ function LoginPage() {
 	function validate(): boolean {
 		const errors: Record<string, string> = {};
 		if (!email.trim()) {
-			errors.email = "Email is required";
+			errors.email = t("login.errors.emailRequired");
 		}
 		if (!password) {
-			errors.password = "Password is required";
+			errors.password = t("login.errors.passwordRequired");
 		}
 		setValidationErrors(errors);
 		return Object.keys(errors).length === 0;
@@ -61,7 +63,7 @@ function LoginPage() {
 			await login.mutateAsync({ data: { email, password } });
 			navigate({ to: returnTo ?? "/" });
 		} catch {
-			setError("Invalid email or password");
+			setError(t("login.errors.invalid"));
 		}
 	}
 
@@ -69,8 +71,8 @@ function LoginPage() {
 		<div className="flex min-h-screen items-center justify-center">
 			<Card className="w-full max-w-md">
 				<CardHeader>
-					<CardTitle className="text-2xl">Log in</CardTitle>
-					<CardDescription>Enter your credentials to access your account</CardDescription>
+					<CardTitle className="text-2xl">{t("login.title")}</CardTitle>
+					<CardDescription>{t("login.description")}</CardDescription>
 				</CardHeader>
 				<form onSubmit={handleSubmit}>
 					<CardContent className="space-y-4">
@@ -80,11 +82,11 @@ function LoginPage() {
 							</div>
 						)}
 						<div className="space-y-2">
-							<Label htmlFor="email">Email</Label>
+							<Label htmlFor="email">{t("login.email")}</Label>
 							<Input
 								id="email"
 								type="email"
-								placeholder="you@example.com"
+								placeholder={t("emailPlaceholder")}
 								value={email}
 								onChange={(e) => setEmail(e.target.value)}
 								aria-invalid={!!validationErrors.email}
@@ -94,7 +96,7 @@ function LoginPage() {
 							)}
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="password">Password</Label>
+							<Label htmlFor="password">{t("login.password")}</Label>
 							<Input
 								id="password"
 								type="password"
@@ -109,10 +111,10 @@ function LoginPage() {
 					</CardContent>
 					<CardFooter className="flex flex-col gap-4">
 						<Button type="submit" className="w-full" disabled={login.isPending}>
-							{login.isPending ? "Logging in..." : "Log in"}
+							{login.isPending ? t("login.submitting") : t("login.submit")}
 						</Button>
 						<p className="text-sm text-muted-foreground">
-							Don&apos;t have an account?{" "}
+							{t("login.noAccount")}{" "}
 							<a
 								href="/register"
 								className="text-primary underline-offset-4 hover:underline"
@@ -121,7 +123,7 @@ function LoginPage() {
 									navigate({ to: "/register" });
 								}}
 							>
-								Register
+								{t("login.register")}
 							</a>
 						</p>
 					</CardFooter>

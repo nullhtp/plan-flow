@@ -1,0 +1,223 @@
+{
+	"boardCard": {
+		"shared": "Совместный",
+		"done": "{{progress}}% готово",
+		"complete": "{{progress}}% выполнено",
+		"tasks": "{{completed}}/{{total}} задач"
+	},
+	"boardMetaInfo": {
+		"generatedOn": "Создано {{date}}"
+	},
+	"boardSkeleton": {
+		"loading": "Загрузка доски..."
+	},
+	"breadcrumbNav": {
+		"home": "Главная"
+	},
+	"celebration": {
+		"goalComplete": "Цель достигнута!",
+		"congratulations": "Поздравляем с достижением цели!"
+	},
+	"dagView": {
+		"completePrerequisitesFirst": "Сначала выполните предусловия"
+	},
+	"goalNode": {
+		"tasks": "{{completed}}/{{total}} задач"
+	},
+	"sharePanel": {
+		"shareBoard": "Поделиться доской",
+		"shareLink": "Ссылка для доступа",
+		"copied": "Скопировано",
+		"copy": "Копировать",
+		"regenerate": "Создать заново",
+		"removeLink": "Удалить ссылку",
+		"creating": "Создание...",
+		"createShareLink": "Создать ссылку",
+		"members": "Участники ({{num}})",
+		"loading": "Загрузка...",
+		"removeMember": "Удалить участника"
+	},
+	"stepCard": {
+		"lockedComplete": "Заблокировано — сначала выполните: {{deps}}",
+		"prerequisites": "предусловия",
+		"startTask": "Начать задачу",
+		"markAsDone": "Отметить выполненной",
+		"reset": "Сбросить",
+		"completed": "Выполнено",
+		"reopen": "Открыть заново",
+		"noDescription": "Нет описания.",
+		"tasksCompleted": "{{completed}}/{{total}} задач выполнено",
+		"subBoard": "Вложенная доска",
+		"openSubBoard": "Открыть вложенную доску",
+		"subtasks": "Подзадачи",
+		"askAi": "Спросить ИИ",
+		"subtaskActionPrompt": "Помоги мне с подзадачей: {{title}} -- {{prompt}}"
+	},
+	"stepperView": {
+		"completePrerequisitesFirst": "Сначала выполните предусловия",
+		"noTasksYet": "Задач пока нет",
+		"noTasksDescription": "На этой доске нет задач для прохождения.",
+		"noTasksDescriptionWithDag": " Откройте полный граф, чтобы увидеть весь план.",
+		"viewFullDag": "Открыть полный граф",
+		"backToDashboard": "На главную",
+		"allDone": "Всё готово!",
+		"allDoneDescription": "Все задачи на этой доске выполнены. Отличная работа — вы достигли цели.",
+		"done": "{{done}}/{{total}} готово",
+		"step": "Шаг {{current}} из {{total}}",
+		"completeToContinue": "Выполните эту задачу, чтобы продолжить",
+		"previousTask": "Предыдущая задача",
+		"previous": "Назад",
+		"nextTask": "Следующая задача",
+		"next": "Далее"
+	},
+	"subBoardCreationFlow": {
+		"failedQuestions": "Не удалось сгенерировать вопросы. Попробуйте ещё раз.",
+		"subBoardCreated": "Вложенная доска успешно создана!",
+		"failedSubBoard": "Не удалось создать вложенную доску. Попробуйте ещё раз.",
+		"expandToBoard": "Развернуть в доску",
+		"preparingQuestions": "Подготовка вопросов...",
+		"answerQuestions": "Ответьте на несколько вопросов, чтобы сгенерировать доску задач для этой работы.",
+		"cancel": "Отмена",
+		"generateBoard": "Создать доску",
+		"generatingBoard": "Создаём вашу доску...",
+		"generatingDescription": "Создаём задачи, зависимости и дополнения",
+		"boardCreated": "Доска создана!",
+		"boardCreatedDescription": "Задача развёрнута в полноценную доску.",
+		"done": "Готово",
+		"typeAnswer": "Введите ответ..."
+	},
+	"subtaskChecklist": {
+		"subtasks": "Подзадачи",
+		"aiAction": "Действие ИИ",
+		"addSubtask": "Добавить подзадачу...",
+		"subtaskActionPrompt": "Помоги мне с подзадачей: {{title}} -- {{prompt}}"
+	},
+	"taskArtifacts": {
+		"copiedToClipboard": "Скопировано в буфер обмена",
+		"failedToCopy": "Не удалось скопировать",
+		"copyContent": "Копировать содержимое",
+		"deleteArtifact": "Удалить артефакт",
+		"delete": "Удалить",
+		"cancel": "Отмена",
+		"close": "Закрыть",
+		"artifacts": "Артефакты",
+		"artifactsCount": "Артефакты ({{num}})"
+	},
+	"taskChat": {
+		"actionConfirmed": "Действие подтверждено",
+		"failedToConfirm": "Не удалось подтвердить действие",
+		"actionRejected": "Действие отклонено",
+		"failedToReject": "Не удалось отклонить действие",
+		"actionConfirmedState": "Действие подтверждено",
+		"actionRejectedState": "Действие отклонено",
+		"confirmAction": "Подтвердить действие?",
+		"confirm": "Подтвердить",
+		"reject": "Отклонить",
+		"aiChat": "Чат с ИИ",
+		"emptyPrompt": "Спросите ИИ что угодно об этой задаче или используйте действие подзадачи.",
+		"askAi": "Спросить ИИ..."
+	},
+	"taskDetailContent": {
+		"status": "Статус",
+		"completePrerequisitesFirst": "Сначала выполните предусловия: {{deps}}",
+		"clickToChangeStatus": "Нажмите, чтобы изменить статус",
+		"blockedBy_one": "Заблокировано {{count}} задачей",
+		"blockedBy_few": "Заблокировано {{count}} задачами",
+		"blockedBy_many": "Заблокировано {{count}} задачами",
+		"blockedBy_other": "Заблокировано {{count}} задачами",
+		"statusNotStarted": "Не начато",
+		"statusInProgress": "В работе",
+		"statusDone": "Готово",
+		"title": "Название",
+		"description": "Описание",
+		"priority": "Приоритет",
+		"priorityNone": "Нет",
+		"priorityLow": "Низкий",
+		"priorityMedium": "Средний",
+		"priorityHigh": "Высокий",
+		"estimate": "Оценка (мин)",
+		"dueDate": "Срок",
+		"subBoard": "Вложенная доска",
+		"tasksCompleted": "{{completed}}/{{total}} задач выполнено",
+		"subBoardFallback": "Вложенная доска",
+		"openSubBoard": "Открыть вложенную доску",
+		"expandToBoard": "Развернуть в доску",
+		"cancel": "Отмена",
+		"continue": "Продолжить"
+	},
+	"taskDetailContentExpand": {
+		"intro_one": "У этой задачи {{count}} подзадача. Разворачивание в доску ",
+		"intro_few": "У этой задачи {{count}} подзадачи. Разворачивание в доску ",
+		"intro_many": "У этой задачи {{count}} подзадач. Разворачивание в доску ",
+		"intro_other": "У этой задачи {{count}} подзадач. Разворачивание в доску ",
+		"replaceAllSubtasks": "заменит все подзадачи",
+		"outro": " доской задач, сгенерированной ИИ. Это действие нельзя отменить."
+	},
+	"taskDetailPanel": {
+		"taskDetails": "Детали задачи",
+		"deleteTask": "Удалить задачу",
+		"prerequisiteFor_one": "Эта задача является предусловием для {{count}} другой задачи. Её удаление разблокирует их.",
+		"prerequisiteFor_few": "Эта задача является предусловием для {{count}} других задач. Её удаление разблокирует их.",
+		"prerequisiteFor_many": "Эта задача является предусловием для {{count}} других задач. Её удаление разблокирует их.",
+		"prerequisiteFor_other": "Эта задача является предусловием для {{count}} других задач. Её удаление разблокирует их.",
+		"confirmDelete": "Вы уверены, что хотите удалить эту задачу?",
+		"cancel": "Отмена",
+		"delete": "Удалить"
+	},
+	"taskNode": {
+		"blockedBy": "Заблокировано: {{names}}",
+		"tasks": "{{completed}}/{{total}} задач"
+	},
+	"taskMutations": {
+		"failedToUpdate": "Не удалось обновить задачу",
+		"failedToDelete": "Не удалось удалить задачу"
+	},
+	"artifactMutations": {
+		"deleted": "Артефакт удалён",
+		"failedToDelete": "Не удалось удалить артефакт"
+	},
+	"subtaskMutations": {
+		"failedToCreate": "Не удалось создать подзадачу",
+		"failedToUpdate": "Не удалось обновить подзадачу",
+		"failedToDelete": "Не удалось удалить подзадачу"
+	},
+	"taskChatHook": {
+		"error": "Извините, что-то пошло не так. Попробуйте ещё раз."
+	},
+	"boardDetail": {
+		"couldNotLoad": "Не удалось загрузить эту доску.",
+		"guidedView": "Пошаговый режим: по одной задаче за раз",
+		"simple": "Простой",
+		"fullTaskGraph": "Полный граф задач",
+		"advanced": "Расширенный",
+		"showActionableOnly": "Показывать только доступные задачи",
+		"focus": "Фокус",
+		"showAllTasks": "Показывать все задачи",
+		"fullDag": "Полный граф",
+		"shareBoard": "Поделиться доской",
+		"share": "Поделиться",
+		"sharedWithYou": "Вам открыли доступ",
+		"saving": "Сохранение...",
+		"saveAsTemplate": "Сохранить как шаблон",
+		"saveAsTemplateTitle": "Сохранить как шаблон",
+		"boardMemories": "Память доски",
+		"memories": "Память"
+	},
+	"boardExpand": {
+		"subBoardExists": "Для этой задачи уже существует вложенная доска.",
+		"subBoardsCannotBeNested": "Вложенные доски нельзя вкладывать друг в друга. Эта задача принадлежит вложенной доске.",
+		"failedQuestions": "Не удалось сгенерировать вопросы. Попробуйте ещё раз.",
+		"couldNotLoadBoard": "Не удалось загрузить доску. Задача может не существовать, или у вас нет доступа.",
+		"taskNotFound": "Задача на этой доске не найдена.",
+		"defaultTaskTitle": "Задача",
+		"defaultBoardTitle": "Доска",
+		"typeAnswer": "Введите ответ...",
+		"expandingTaskFrom": "Разворачивание задачи из доски «{{board}}»",
+		"loading": "Загрузка...",
+		"preparingQuestions": "Подготовка вопросов...",
+		"answerQuestions": "Ответьте на несколько вопросов, чтобы сгенерировать подробную доску задач.",
+		"cancel": "Отмена",
+		"generateBoard": "Создать доску",
+		"backToBoard": "Назад к доске"
+	}
+}

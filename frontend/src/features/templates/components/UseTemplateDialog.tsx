@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +19,7 @@ export function UseTemplateDialog({
 	open,
 	onClose,
 }: UseTemplateDialogProps) {
+	const { t } = useTranslation("templates");
 	const [title, setTitle] = useState(templateTitle);
 	const createBoard = useCreateBoardFromTemplate(templateId);
 	const navigate = useNavigate();
@@ -34,13 +36,11 @@ export function UseTemplateDialog({
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
 			<div className="w-full max-w-md rounded-lg bg-background p-6 shadow-lg">
-				<h3 className="mb-4 text-lg font-semibold">Use Template</h3>
-				<p className="mb-4 text-sm text-muted-foreground">
-					This will create a new board from the template. You can optionally customize the title.
-				</p>
+				<h3 className="mb-4 text-lg font-semibold">{t("useDialog.title")}</h3>
+				<p className="mb-4 text-sm text-muted-foreground">{t("useDialog.description")}</p>
 				<form onSubmit={handleSubmit}>
 					<div className="mb-4">
-						<Label htmlFor="board-title">Board Title</Label>
+						<Label htmlFor="board-title">{t("useDialog.boardTitle")}</Label>
 						<Input
 							id="board-title"
 							value={title}
@@ -50,10 +50,10 @@ export function UseTemplateDialog({
 					</div>
 					<div className="flex justify-end gap-2">
 						<Button type="button" variant="outline" onClick={onClose}>
-							Cancel
+							{t("useDialog.cancel")}
 						</Button>
 						<Button type="submit" disabled={createBoard.isPending}>
-							{createBoard.isPending ? "Creating..." : "Create Board"}
+							{createBoard.isPending ? t("useDialog.creating") : t("useDialog.createBoard")}
 						</Button>
 					</div>
 				</form>

@@ -1,4 +1,5 @@
 import { CalendarDays, MapPin } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { UserMetaResponse } from "../types";
 
 interface BoardMetaInfoProps {
@@ -31,6 +32,7 @@ function formatLocation(
  * Non-intrusive informational element shown on the board detail page.
  */
 export function BoardMetaInfo({ userMeta }: BoardMetaInfoProps) {
+	const { t } = useTranslation("board");
 	const formattedDate = userMeta.current_datetime ? formatDate(userMeta.current_datetime) : null;
 	const locationText = formatLocation(userMeta.location);
 
@@ -41,7 +43,7 @@ export function BoardMetaInfo({ userMeta }: BoardMetaInfoProps) {
 			{formattedDate && (
 				<span className="flex items-center gap-1">
 					<CalendarDays className="h-3 w-3" />
-					Generated on {formattedDate}
+					{t("boardMetaInfo.generatedOn", { date: formattedDate })}
 				</span>
 			)}
 			{locationText && (

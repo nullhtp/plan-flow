@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CreationCard } from "@/shared/components/creation-card";
@@ -11,6 +12,7 @@ import { TemplateCard } from "./TemplateCard";
 import { UseTemplateDialog } from "./UseTemplateDialog";
 
 export function TemplatesGallery() {
+	const { t } = useTranslation("templates");
 	const { isSimpleMode } = useSimpleMode();
 	const [tab, setTab] = useState<"public" | "mine">("public");
 	const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export function TemplatesGallery() {
 						setPage(1);
 					}}
 				>
-					Public Templates
+					{t("gallery.publicTemplates")}
 				</Button>
 				<Button
 					variant={tab === "mine" ? "default" : "outline"}
@@ -60,14 +62,14 @@ export function TemplatesGallery() {
 						setPage(1);
 					}}
 				>
-					My Templates
+					{t("gallery.myTemplates")}
 				</Button>
 			</div>
 
 			{/* Search */}
 			<div className="mb-4">
 				<Input
-					placeholder="Search templates..."
+					placeholder={t("gallery.searchPlaceholder")}
 					value={search}
 					onChange={(e) => handleSearch(e.target.value)}
 					className="max-w-sm"
@@ -85,12 +87,14 @@ export function TemplatesGallery() {
 
 			{/* Template grid */}
 			{isLoading ? (
-				<p className="text-muted-foreground">Loading templates...</p>
+				<p className="text-muted-foreground">{t("gallery.loading")}</p>
 			) : (
 				<>
 					<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 						{/* Authoring a template is hidden in Simple mode. */}
-						{!isSimpleMode && <CreationCard label="Create Template" href="/templates/generate" />}
+						{!isSimpleMode && (
+							<CreationCard label={t("gallery.createTemplate")} href="/templates/generate" />
+						)}
 						{data?.items.map((template) => (
 							<TemplateCard
 								key={template.id}
@@ -102,7 +106,7 @@ export function TemplatesGallery() {
 
 					{data && data.items.length === 0 && (
 						<p className="mt-8 text-center text-muted-foreground">
-							{tab === "mine" ? "You haven't created any templates yet." : "No templates found."}
+							{tab === "mine" ? t("gallery.emptyMine") : t("gallery.emptyPublic")}
 						</p>
 					)}
 
@@ -115,10 +119,10 @@ export function TemplatesGallery() {
 								disabled={page <= 1}
 								onClick={() => setPage(page - 1)}
 							>
-								Previous
+								{t("gallery.previous")}
 							</Button>
 							<span className="text-sm text-muted-foreground">
-								Page {data.page} of {data.total_pages}
+								{t("gallery.pageOf", { page: data.page, total: data.total_pages })}
 							</span>
 							<Button
 								variant="outline"
@@ -126,7 +130,7 @@ export function TemplatesGallery() {
 								disabled={page >= data.total_pages}
 								onClick={() => setPage(page + 1)}
 							>
-								Next
+								{t("gallery.next")}
 							</Button>
 						</div>
 					)}

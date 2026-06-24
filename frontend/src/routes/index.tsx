@@ -1,5 +1,6 @@
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BoardCard } from "@/features/board/components/BoardCard";
@@ -24,6 +25,7 @@ export const indexRoute = createRoute({
 });
 
 function IndexPage() {
+	const { t } = useTranslation("common");
 	const navigate = useNavigate();
 	const { tab } = indexRoute.useSearch();
 	const activeTab = tab ?? "boards";
@@ -49,8 +51,8 @@ function IndexPage() {
 					}
 				>
 					<TabsList className="mb-6">
-						<TabsTrigger value="boards">Boards</TabsTrigger>
-						<TabsTrigger value="templates">Templates</TabsTrigger>
+						<TabsTrigger value="boards">{t("tabs.boards")}</TabsTrigger>
+						<TabsTrigger value="templates">{t("tabs.templates")}</TabsTrigger>
 					</TabsList>
 
 					<TabsContent value="boards">
@@ -67,6 +69,7 @@ function IndexPage() {
 }
 
 function BoardsTabContent() {
+	const { t } = useTranslation("common");
 	const { isSimpleMode } = useSimpleMode();
 	const [view, setView] = useState<"mine" | "shared">("mine");
 	const boards = useBoardListData();
@@ -85,14 +88,14 @@ function BoardsTabContent() {
 						size="sm"
 						onClick={() => setView("mine")}
 					>
-						My Boards
+						{t("boards.mine")}
 					</Button>
 					<Button
 						variant={view === "shared" ? "default" : "outline"}
 						size="sm"
 						onClick={() => setView("shared")}
 					>
-						Shared with Me
+						{t("boards.shared")}
 					</Button>
 				</div>
 			)}
@@ -106,12 +109,12 @@ function BoardsTabContent() {
 					</div>
 				) : (
 					<div className="flex flex-col items-center justify-center py-20">
-						<p className="text-muted-foreground">No shared boards yet.</p>
+						<p className="text-muted-foreground">{t("boards.noShared")}</p>
 					</div>
 				)
 			) : (
 				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-					<CreationCard label="New Board" href="/goals/new" />
+					<CreationCard label={t("boards.newBoard")} href="/goals/new" />
 					{boards.map((board) => (
 						<BoardCard key={board.id} board={board} simple={isSimpleMode} />
 					))}

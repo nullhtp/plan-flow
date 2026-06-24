@@ -12,8 +12,10 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
+import type { TFunction } from "i18next";
 import { AlertTriangle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { StreamedTemplateTask } from "../hooks/use-template-generation-stream";
 import { TemplateGoalNode } from "./TemplateGoalNode";
 import { TemplateTaskNode } from "./TemplateTaskNode";
@@ -28,6 +30,7 @@ interface DagValidation {
 function validateTemplateDag(
 	tasks: StreamedTemplateTask[],
 	edges: Array<{ source: string; target: string }>,
+	t: TFunction<"templates">,
 ): DagValidation {
 	const warnings: string[] = [];
 	const taskIds = new Set(tasks.map((t) => t.id));
@@ -35,9 +38,9 @@ function validateTemplateDag(
 	// Check goal node
 	const goalNodes = tasks.filter((t) => t.is_goal_node);
 	if (goalNodes.length === 0) {
-		warnings.push("No goal node found. One task should be marked as the goal.");
+		warnings.push(t("dagView.warningNoGoal"));
 	} else if (goalNodes.length > 1) {
-		warnings.push(`Multiple goal nodes found (${goalNodes.length}). Only one is allowed.`);
+		warnings.push(t("dagView.warningMultipleGoals", { count: goalNodes.length }));
 	}
 
 	// Check goal node has no outgoing edges (nothing depends on it)
@@ -45,7 +48,7 @@ function validateTemplateDag(
 		const goalId = goalNodes[0].id;
 		const goalHasOutgoing = edges.some((e) => e.source === goalId);
 		if (goalHasOutgoing) {
-			warnings.push("Goal node should be the final task — nothing should depend on it.");
+			warnings.push(t("dagView.warningGoalOutgoing"));
 		}
 	}
 
@@ -66,7 +69,9 @@ function validateTemplateDag(
 	for (const e of edges) {
 		if (e.source === e.target) {
 			warnings.push(
-				`Self-dependency detected on task "${tasks.find((t) => t.id === e.source)?.title ?? e.source}".`,
+				t("dagView.warningSelfDependency", {
+					title: tasks.find((t) => t.id === e.source)?.title ?? e.source,
+				}),
 			);
 		}
 	}
@@ -86,7 +91,7 @@ function validateTemplateDag(
 		}
 	}
 	if (visited < tasks.length) {
-		warnings.push("Cycle detected in task dependencies. Remove circular edges.");
+		warnings.push(t("dagView.warningCycle"));
 	}
 
 	// Check for disconnected tasks (no edges at all)
@@ -98,7 +103,7 @@ function validateTemplateDag(
 	const disconnected = tasks.filter((t) => !connectedIds.has(t.id) && tasks.length > 1);
 	if (disconnected.length > 0) {
 		const names = disconnected.map((t) => `"${t.title}"`).join(", ");
-		warnings.push(`Disconnected tasks: ${names}. Connect them with edges.`);
+		warnings.push(t("dagView.warningDisconnected", { names }));
 	}
 
 	return { valid: warnings.length === 0, warnings };
@@ -208,6 +213,7 @@ export function TemplateDagView({
 	onEdgesChange,
 	readOnly = false,
 }: TemplateDagViewProps) {
+	const { t } = useTranslation("templates");
 	// biome-ignore lint: ReactFlow's onInit infers a narrower type than ReactFlowInstance
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const rfInstanceRef = useRef<any>(null);
@@ -292,7 +298,7 @@ export function TemplateDagView({
 	);
 
 	// DAG validation
-	const validation = useMemo(() => validateTemplateDag(tasks, taskEdges), [tasks, taskEdges]);
+	const validation = useMemo(() => validateTemplateDag(tasks, taskEdges, t), [tasks, taskEdges, t]);
 
 	return (
 		<div className="relative h-full w-full">
@@ -353,9 +359,7 @@ export function TemplateDagView({
 			{/* Edge deletion hint */}
 			{!readOnly && (
 				<div className="absolute bottom-3 left-3 z-10">
-					<p className="text-[10px] text-muted-foreground/60">
-						Click an edge to delete it. Drag from handle to handle to connect tasks.
-					</p>
+					<p className="text-[10px] text-muted-foreground/60">{t("dagView.edgeHint")}</p>
 				</div>
 			)}
 		</div>

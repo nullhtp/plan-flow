@@ -1,5 +1,6 @@
 import { Handle, Position } from "@xyflow/react";
 import { Calendar, CheckCircle2, Circle, Clock, Layers, Lock, PlayCircle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { TaskNodeData } from "../utils/dagre-layout";
 
 const priorityDots: Record<string, string> = {
@@ -19,6 +20,7 @@ interface TaskNodeProps {
 }
 
 export function TaskNode({ data }: TaskNodeProps) {
+	const { t } = useTranslation("board");
 	const { task, allTasks, has_sub_board } = data;
 	const isLocked = task.is_locked;
 	const subtaskCount = task.subtasks?.length ?? 0;
@@ -52,7 +54,7 @@ export function TaskNode({ data }: TaskNodeProps) {
 				isLocked ? "opacity-60" : ""
 			}`}
 			style={{ width: 280 }}
-			title={isLocked ? `Blocked by: ${blockedByNames.join(", ")}` : undefined}
+			title={isLocked ? t("taskNode.blockedBy", { names: blockedByNames.join(", ") }) : undefined}
 		>
 			{/* Sub-board indicator icon */}
 			{has_sub_board && (
@@ -103,7 +105,10 @@ export function TaskNode({ data }: TaskNodeProps) {
 						{has_sub_board && subBoardProgress ? (
 							<span className="flex items-center gap-1 text-xs text-violet-600 font-medium">
 								<Layers className="h-3 w-3" />
-								{subBoardProgress.completed_task_count}/{subBoardProgress.task_count} tasks
+								{t("taskNode.tasks", {
+									completed: subBoardProgress.completed_task_count,
+									total: subBoardProgress.task_count,
+								})}
 							</span>
 						) : (
 							subtaskCount > 0 && (

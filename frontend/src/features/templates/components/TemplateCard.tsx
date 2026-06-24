@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { TemplateListItemResponse } from "../types";
 
@@ -12,6 +13,7 @@ interface TemplateCardProps {
 }
 
 export function TemplateCard({ template, onSelect }: TemplateCardProps) {
+	const { t } = useTranslation("templates");
 	const navigate = useNavigate();
 
 	const activate = () => {
@@ -45,8 +47,8 @@ export function TemplateCard({ template, onSelect }: TemplateCardProps) {
 					<p className="mb-2 line-clamp-2 text-sm text-muted-foreground">{template.description}</p>
 				)}
 				<div className="flex items-center justify-between text-xs text-muted-foreground">
-					<span>{template.task_count} tasks</span>
-					<span>by {template.creator.email}</span>
+					<span>{t("card.taskCount", { count: template.task_count })}</span>
+					<span>{t("card.byCreator", { email: template.creator.email })}</span>
 				</div>
 			</CardContent>
 		</Card>

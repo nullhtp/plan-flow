@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -7,11 +8,8 @@ interface ErrorDisplayProps {
 	isRetrying?: boolean;
 }
 
-export function ErrorDisplay({
-	message = "Something went wrong while processing your goal. Please try again.",
-	onRetry,
-	isRetrying = false,
-}: ErrorDisplayProps) {
+export function ErrorDisplay({ message, onRetry, isRetrying = false }: ErrorDisplayProps) {
+	const { t } = useTranslation("goals");
 	return (
 		<Card className="w-full max-w-2xl">
 			<CardContent className="flex flex-col items-center gap-4 py-12">
@@ -22,9 +20,9 @@ export function ErrorDisplay({
 						stroke="currentColor"
 						viewBox="0 0 24 24"
 						role="img"
-						aria-label="Error"
+						aria-label={t("errorDisplay.iconLabel")}
 					>
-						<title>Error</title>
+						<title>{t("errorDisplay.iconLabel")}</title>
 						<path
 							strokeLinecap="round"
 							strokeLinejoin="round"
@@ -33,9 +31,11 @@ export function ErrorDisplay({
 						/>
 					</svg>
 				</div>
-				<p className="text-center text-sm text-muted-foreground">{message}</p>
+				<p className="text-center text-sm text-muted-foreground">
+					{message ?? t("errorDisplay.defaultMessage")}
+				</p>
 				<Button onClick={onRetry} disabled={isRetrying}>
-					{isRetrying ? "Retrying..." : "Try Again"}
+					{isRetrying ? t("errorDisplay.retrying") : t("errorDisplay.tryAgain")}
 				</Button>
 			</CardContent>
 		</Card>

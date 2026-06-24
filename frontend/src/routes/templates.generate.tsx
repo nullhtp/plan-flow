@@ -1,5 +1,6 @@
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -79,6 +80,7 @@ export const templatesGenerateRoute = createRoute({
 });
 
 function TemplatesGeneratePage() {
+	const { t } = useTranslation("templates");
 	const navigate = useNavigate();
 	const classify = useTemplateClassify();
 	const submitAnswers = useTemplateSubmitAnswers();
@@ -106,9 +108,9 @@ function TemplatesGeneratePage() {
 
 	function getErrorMessage(status: number): string {
 		if (status === 503 || status === 504) {
-			return "Our AI is taking longer than expected. Please try again.";
+			return t("generate.errorAiSlow");
 		}
-		return "Something went wrong. Please try again.";
+		return t("generate.errorGeneric");
 	}
 
 	// ── Input Step ──────────────────────────────────────
@@ -134,7 +136,7 @@ function TemplatesGeneratePage() {
 			} catch {
 				setPageState({
 					step: "error",
-					message: "Failed to extract content from URL. Please try again.",
+					message: t("generate.errorUrlExtract"),
 					retryAction: handleClassify,
 				});
 				return;
@@ -161,7 +163,7 @@ function TemplatesGeneratePage() {
 					if (data.is_rejected) {
 						setPageState({
 							step: "rejected",
-							reason: data.rejection_reason || "Input is too vague.",
+							reason: data.rejection_reason || t("generate.rejectionFallback"),
 							suggestions: data.refinement_suggestions,
 						});
 						return;
@@ -320,12 +322,12 @@ function TemplatesGeneratePage() {
 		return (
 			<div className="mx-auto min-h-screen max-w-2xl px-4 py-8">
 				<div className="mb-6 flex items-center justify-between">
-					<h1 className="text-2xl font-bold">Generate Template</h1>
+					<h1 className="text-2xl font-bold">{t("generate.title")}</h1>
 					<Button
 						variant="outline"
 						onClick={() => navigate({ to: "/", search: { tab: "templates" } })}
 					>
-						Cancel
+						{t("generate.cancel")}
 					</Button>
 				</div>
 
@@ -343,12 +345,12 @@ function TemplatesGeneratePage() {
 							}`}
 						>
 							{tab === "describe"
-								? "Describe"
+								? t("generate.tabDescribe")
 								: tab === "text"
-									? "Text"
+									? t("generate.tabText")
 									: tab === "document"
-										? "Document"
-										: "URL"}
+										? t("generate.tabDocument")
+										: t("generate.tabUrl")}
 						</button>
 					))}
 				</div>
@@ -357,9 +359,9 @@ function TemplatesGeneratePage() {
 				<div className="space-y-4">
 					{inputTab === "describe" && (
 						<div className="space-y-2">
-							<Label>Describe the template you want</Label>
+							<Label>{t("generate.describeLabel")}</Label>
 							<Textarea
-								placeholder="e.g., A template for launching a SaaS product, covering market research, MVP development, beta testing, and go-to-market strategy..."
+								placeholder={t("generate.describePlaceholder")}
 								value={describeText}
 								onChange={(e) => setDescribeText(e.target.value)}
 								rows={5}
@@ -369,9 +371,9 @@ function TemplatesGeneratePage() {
 					)}
 					{inputTab === "text" && (
 						<div className="space-y-2">
-							<Label>Paste content to create a template from</Label>
+							<Label>{t("generate.textLabel")}</Label>
 							<Textarea
-								placeholder="Paste an article, process document, checklist, or any content that describes a project workflow..."
+								placeholder={t("generate.textPlaceholder")}
 								value={pasteText}
 								onChange={(e) => setPasteText(e.target.value)}
 								rows={8}
@@ -381,24 +383,26 @@ function TemplatesGeneratePage() {
 					)}
 					{inputTab === "document" && (
 						<div className="space-y-2">
-							<Label>Upload a document (PDF, DOCX, TXT, MD)</Label>
+							<Label>{t("generate.documentLabel")}</Label>
 							<Input type="file" accept=".pdf,.docx,.txt,.md" onChange={handleFileUpload} />
 							{extractContent.isPending && (
-								<p className="text-sm text-muted-foreground">Extracting content...</p>
+								<p className="text-sm text-muted-foreground">{t("generate.extractingContent")}</p>
 							)}
 							{extractedContent && (
 								<p className="text-sm text-green-600">
-									Content extracted ({extractedContent.length.toLocaleString()} characters)
+									{t("generate.contentExtracted", {
+										count: extractedContent.length.toLocaleString(),
+									})}
 								</p>
 							)}
 						</div>
 					)}
 					{inputTab === "url" && (
 						<div className="space-y-2">
-							<Label>Enter a URL to extract content from</Label>
+							<Label>{t("generate.urlLabel")}</Label>
 							<Input
 								type="url"
-								placeholder="https://example.com/article"
+								placeholder={t("generate.urlPlaceholder")}
 								value={urlText}
 								onChange={(e) => setUrlText(e.target.value)}
 							/>
@@ -407,9 +411,9 @@ function TemplatesGeneratePage() {
 
 					{/* Optional title hint */}
 					<div className="space-y-2">
-						<Label className="text-muted-foreground">Template title (optional)</Label>
+						<Label className="text-muted-foreground">{t("generate.titleHintLabel")}</Label>
 						<Input
-							placeholder="e.g., SaaS Product Launch"
+							placeholder={t("generate.titleHintPlaceholder")}
 							value={titleHint}
 							onChange={(e) => setTitleHint(e.target.value)}
 						/>
@@ -421,7 +425,7 @@ function TemplatesGeneratePage() {
 						className="w-full"
 						size="lg"
 					>
-						{classify.isPending ? "Analyzing..." : "Continue"}
+						{classify.isPending ? t("generate.analyzing") : t("generate.continue")}
 					</Button>
 				</div>
 			</div>
@@ -529,7 +533,7 @@ function TemplatesGeneratePage() {
 					} catch {
 						setPageState({
 							step: "error",
-							message: "Failed to save the generated template. Please try again.",
+							message: t("generate.errorSaveGenerated"),
 							retryAction: () => setPageState({ step: "input" }),
 						});
 					}
@@ -573,6 +577,7 @@ function TemplateQuestionStep({
 	onGenerate,
 	isPending,
 }: TemplateQuestionStepProps) {
+	const { t } = useTranslation("templates");
 	const [answers, setAnswers] = useState<AnswerValues>(() => {
 		const activeRound = rounds.find((r) => r.round === currentRound);
 		return activeRound?.answers ?? {};
@@ -602,7 +607,7 @@ function TemplateQuestionStep({
 								<div className="flex-1" />
 							)}
 							<Button size="lg" onClick={onGenerate} disabled={isPending}>
-								{isPending ? "Generating..." : "Generate Template"}
+								{isPending ? t("generate.generating") : t("generate.generateTemplate")}
 							</Button>
 						</div>
 						{readiness?.summary && (
@@ -616,9 +621,7 @@ function TemplateQuestionStep({
 
 			<div className={hasCompletedRounds ? "pt-20" : ""}>
 				<h2 className="mb-1 text-lg font-semibold">{classification.suggested_title}</h2>
-				<p className="mb-6 text-sm text-muted-foreground">
-					Answer these questions to help us create a better template.
-				</p>
+				<p className="mb-6 text-sm text-muted-foreground">{t("generate.questionsIntro")}</p>
 
 				{/* Completed rounds (read-only) */}
 				{rounds
@@ -626,13 +629,13 @@ function TemplateQuestionStep({
 					.map((r) => (
 						<div key={r.round} className="mb-6 rounded-lg border bg-muted/30 p-4">
 							<p className="mb-2 text-xs font-medium text-muted-foreground">
-								Round {r.round} (completed)
+								{t("generate.roundCompleted", { round: r.round })}
 							</p>
 							{r.questions.map((q) => (
 								<div key={q.id} className="mb-2">
 									<p className="text-sm font-medium">{q.text}</p>
 									<p className="text-sm text-muted-foreground">
-										{r.answers[q.id] || "(not answered)"}
+										{r.answers[q.id] || t("generate.notAnswered")}
 									</p>
 								</div>
 							))}
@@ -655,20 +658,18 @@ function TemplateQuestionStep({
 							disabled={!allRequiredAnswered || isPending}
 							className="w-full"
 						>
-							{isPending ? "Submitting..." : "Submit Answers"}
+							{isPending ? t("generate.submitting") : t("generate.submitAnswers")}
 						</Button>
 					</div>
 				) : (
 					!isPending && (
-						<p className="text-center text-sm text-muted-foreground">
-							All questions answered. Click "Generate Template" above to proceed.
-						</p>
+						<p className="text-center text-sm text-muted-foreground">{t("generate.allAnswered")}</p>
 					)
 				)}
 
 				{isPending && (
 					<div className="flex items-center justify-center py-8">
-						<p className="text-sm text-muted-foreground">Generating follow-up questions...</p>
+						<p className="text-sm text-muted-foreground">{t("generate.generatingFollowUp")}</p>
 					</div>
 				)}
 			</div>
@@ -685,6 +686,7 @@ interface TemplateQuestionFieldProps {
 }
 
 function TemplateQuestionField({ question, value, onChange }: TemplateQuestionFieldProps) {
+	const { t } = useTranslation("templates");
 	const options = question.options ?? [];
 
 	if (question.type === "multiselect") {
@@ -763,7 +765,7 @@ function TemplateQuestionField({ question, value, onChange }: TemplateQuestionFi
 			<Textarea
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
-				placeholder="Type your answer..."
+				placeholder={t("generate.answerPlaceholder")}
 				rows={2}
 				className="resize-none"
 			/>
@@ -792,6 +794,7 @@ function TemplateGeneratingStep({
 	onComplete,
 	onAbort,
 }: TemplateGeneratingStepProps) {
+	const { t } = useTranslation("templates");
 	const didCompleteRef = useRef(false);
 
 	const sseBody = useRef({
@@ -852,19 +855,22 @@ function TemplateGeneratingStep({
 		switch (stream.phase) {
 			case "idle":
 			case "connecting":
-				return "Preparing template generation...";
+				return t("generate.phasePreparing");
 			case "researching":
-				return "Researching best practices...";
+				return t("generate.phaseResearching");
 			case "skeleton":
-				return "Building template structure...";
+				return t("generate.phaseSkeleton");
 			case "enriching":
-				return `Adding details... (${stream.enrichedCount}/${stream.totalCount})`;
+				return t("generate.phaseEnriching", {
+					enriched: stream.enrichedCount,
+					total: stream.totalCount,
+				});
 			case "complete":
-				return "Template ready!";
+				return t("generate.phaseComplete");
 			case "error":
-				return "Generation failed";
+				return t("generate.phaseError");
 			default:
-				return "Processing...";
+				return t("generate.phaseProcessing");
 		}
 	})();
 
@@ -896,9 +902,9 @@ function TemplateGeneratingStep({
 				{stream.phase === "error" && (
 					<div className="flex justify-center gap-2">
 						<Button variant="outline" onClick={onAbort}>
-							Back
+							{t("generate.back")}
 						</Button>
-						<Button onClick={() => stream.start()}>Try Again</Button>
+						<Button onClick={() => stream.start()}>{t("generate.tryAgain")}</Button>
 					</div>
 				)}
 			</div>

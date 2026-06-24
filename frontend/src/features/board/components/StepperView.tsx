@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Network } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useSubtaskMutations } from "../hooks/use-subtask-mutations";
@@ -23,6 +24,7 @@ interface StepperViewProps {
 }
 
 export function StepperView({ board, focusTaskId, onSwitchToAdvanced }: StepperViewProps) {
+	const { t } = useTranslation("board");
 	const navigate = useNavigate();
 	const { updateTask } = useTaskMutations(board.id);
 	const { updateSubtask } = useSubtaskMutations(board.id);
@@ -73,7 +75,7 @@ export function StepperView({ board, focusTaskId, onSwitchToAdvanced }: StepperV
 
 	const setTaskStatus = (task: TaskResponse, newStatus: string) => {
 		if (task.is_locked) {
-			toast.info("Complete prerequisites first");
+			toast.info(t("stepperView.completePrerequisitesFirst"));
 			return;
 		}
 		updateTask.mutate({ taskId: task.id, data: { status: newStatus } });
@@ -115,18 +117,20 @@ export function StepperView({ board, focusTaskId, onSwitchToAdvanced }: StepperV
 		return (
 			<div className="relative flex h-full flex-col items-center justify-center p-6 text-center">
 				<div className="max-w-md space-y-4">
-					<h2 className="text-xl font-semibold">No tasks yet</h2>
+					<h2 className="text-xl font-semibold">{t("stepperView.noTasksYet")}</h2>
 					<p className="text-muted-foreground">
-						This board has no tasks to step through.
-						{onSwitchToAdvanced ? " Open the full DAG to see the whole plan." : ""}
+						{t("stepperView.noTasksDescription")}
+						{onSwitchToAdvanced ? t("stepperView.noTasksDescriptionWithDag") : ""}
 					</p>
 					{onSwitchToAdvanced ? (
 						<Button onClick={onSwitchToAdvanced}>
 							<Network className="mr-1.5 h-4 w-4" />
-							View full DAG
+							{t("stepperView.viewFullDag")}
 						</Button>
 					) : (
-						<Button onClick={() => navigate({ to: "/" })}>Back to dashboard</Button>
+						<Button onClick={() => navigate({ to: "/" })}>
+							{t("stepperView.backToDashboard")}
+						</Button>
 					)}
 				</div>
 			</div>
@@ -139,18 +143,16 @@ export function StepperView({ board, focusTaskId, onSwitchToAdvanced }: StepperV
 			<div className="relative flex h-full flex-col items-center justify-center p-6 text-center">
 				<div className="max-w-md space-y-4">
 					<p className="text-5xl">🏆</p>
-					<h2 className="text-2xl font-bold">All done!</h2>
-					<p className="text-muted-foreground">
-						Every task on this board is complete. Nice work reaching your goal.
-					</p>
+					<h2 className="text-2xl font-bold">{t("stepperView.allDone")}</h2>
+					<p className="text-muted-foreground">{t("stepperView.allDoneDescription")}</p>
 					<div className="flex justify-center gap-2">
 						<Button variant="outline" onClick={() => navigate({ to: "/" })}>
-							Back to dashboard
+							{t("stepperView.backToDashboard")}
 						</Button>
 						{onSwitchToAdvanced && (
 							<Button onClick={onSwitchToAdvanced}>
 								<Network className="mr-1.5 h-4 w-4" />
-								View full DAG
+								{t("stepperView.viewFullDag")}
 							</Button>
 						)}
 					</div>
@@ -174,16 +176,18 @@ export function StepperView({ board, focusTaskId, onSwitchToAdvanced }: StepperV
 						/>
 					</div>
 					<span className="shrink-0 text-xs font-medium text-muted-foreground">
-						{doneTasks}/{totalTasks} done
+						{t("stepperView.done", { done: doneTasks, total: totalTasks })}
 					</span>
 				</div>
 				<div className="flex items-center justify-between gap-2">
 					<div className="flex flex-col">
 						<span className="text-sm font-medium">
-							Step {currentIndex + 1} of {steps.length}
+							{t("stepperView.step", { current: currentIndex + 1, total: steps.length })}
 						</span>
 						{!canGoNext && !isLastStep && (
-							<span className="text-xs text-muted-foreground">Complete this task to continue</span>
+							<span className="text-xs text-muted-foreground">
+								{t("stepperView.completeToContinue")}
+							</span>
 						)}
 					</div>
 					<div className="flex items-center gap-1">
@@ -192,19 +196,19 @@ export function StepperView({ board, focusTaskId, onSwitchToAdvanced }: StepperV
 							size="sm"
 							onClick={goPrev}
 							disabled={currentIndex <= 0}
-							title="Previous task"
+							title={t("stepperView.previousTask")}
 						>
 							<ChevronLeft className="h-4 w-4" />
-							<span className="hidden sm:inline">Previous</span>
+							<span className="hidden sm:inline">{t("stepperView.previous")}</span>
 						</Button>
 						<Button
 							variant="outline"
 							size="sm"
 							onClick={goNext}
 							disabled={!canGoNext}
-							title={canGoNext ? "Next task" : "Complete this task to continue"}
+							title={canGoNext ? t("stepperView.nextTask") : t("stepperView.completeToContinue")}
 						>
-							<span className="hidden sm:inline">Next</span>
+							<span className="hidden sm:inline">{t("stepperView.next")}</span>
 							<ChevronRight className="h-4 w-4" />
 						</Button>
 					</div>

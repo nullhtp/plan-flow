@@ -1,5 +1,6 @@
 import { Handle, Position } from "@xyflow/react";
 import { Clock } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { TemplateTaskNodeData } from "./TemplateDagView";
 
 const priorityDots: Record<string, string> = {
@@ -14,6 +15,7 @@ interface TemplateTaskNodeProps {
 }
 
 export function TemplateTaskNode({ data, selected }: TemplateTaskNodeProps) {
+	const { t } = useTranslation("templates");
 	const { task } = data;
 	const subtaskCount = task.subtasks?.length ?? 0;
 
@@ -52,7 +54,9 @@ export function TemplateTaskNode({ data, selected }: TemplateTaskNodeProps) {
 						</span>
 					)}
 					{subtaskCount > 0 && (
-						<span className="text-xs text-muted-foreground">{subtaskCount} subtasks</span>
+						<span className="text-xs text-muted-foreground">
+							{t("taskNode.subtaskCount", { count: subtaskCount })}
+						</span>
 					)}
 				</div>
 			</div>

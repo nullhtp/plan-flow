@@ -1,6 +1,7 @@
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { Brain, Eye, ListChecks, Network, Save, Share2 } from "lucide-react";
 import { type KeyboardEvent, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useUpdateBoardEndpointApiBoardsBoardIdPatch } from "@/api/generated/boards/boards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ export const boardDetailRoute = createRoute({
 });
 
 function BoardDetailPage() {
+	const { t } = useTranslation("board");
 	const { boardId } = boardDetailRoute.useParams();
 	const search = boardDetailRoute.useSearch();
 	const navigate = useNavigate();
@@ -95,7 +97,7 @@ function BoardDetailPage() {
 		return (
 			<div className="flex min-h-screen items-center justify-center p-4">
 				<ErrorDisplay
-					message="Could not load this board."
+					message={t("boardDetail.couldNotLoad")}
 					onRetry={() => boardQuery.refetch()}
 					isRetrying={boardQuery.isRefetching}
 				/>
@@ -164,10 +166,10 @@ function BoardDetailPage() {
 									? "bg-primary text-primary-foreground shadow-sm"
 									: "text-muted-foreground hover:text-foreground"
 							}`}
-							title="Guided one-task-at-a-time view"
+							title={t("boardDetail.guidedView")}
 						>
 							<ListChecks className="h-3.5 w-3.5" />
-							<span className="hidden sm:inline">Simple</span>
+							<span className="hidden sm:inline">{t("boardDetail.simple")}</span>
 						</button>
 						<button
 							type="button"
@@ -177,10 +179,10 @@ function BoardDetailPage() {
 									? "bg-primary text-primary-foreground shadow-sm"
 									: "text-muted-foreground hover:text-foreground"
 							}`}
-							title="Full task graph"
+							title={t("boardDetail.fullTaskGraph")}
 						>
 							<Network className="h-3.5 w-3.5" />
-							<span className="hidden sm:inline">Advanced</span>
+							<span className="hidden sm:inline">{t("boardDetail.advanced")}</span>
 						</button>
 					</div>
 				)}
@@ -196,10 +198,10 @@ function BoardDetailPage() {
 									? "bg-primary text-primary-foreground shadow-sm"
 									: "text-muted-foreground hover:text-foreground"
 							}`}
-							title="Show actionable tasks only"
+							title={t("boardDetail.showActionableOnly")}
 						>
 							<Eye className="h-3.5 w-3.5" />
-							<span className="hidden sm:inline">Focus</span>
+							<span className="hidden sm:inline">{t("boardDetail.focus")}</span>
 						</button>
 						<button
 							type="button"
@@ -209,10 +211,10 @@ function BoardDetailPage() {
 									? "bg-primary text-primary-foreground shadow-sm"
 									: "text-muted-foreground hover:text-foreground"
 							}`}
-							title="Show all tasks"
+							title={t("boardDetail.showAllTasks")}
 						>
 							<Network className="h-3.5 w-3.5" />
-							<span className="hidden sm:inline">Full DAG</span>
+							<span className="hidden sm:inline">{t("boardDetail.fullDag")}</span>
 						</button>
 					</div>
 				)}
@@ -223,15 +225,15 @@ function BoardDetailPage() {
 						size="sm"
 						className="gap-1.5 shrink-0"
 						onClick={() => setShowSharePanel((v) => !v)}
-						title="Share board"
+						title={t("boardDetail.shareBoard")}
 					>
 						<Share2 className="h-4 w-4" />
-						<span className="hidden sm:inline">Share</span>
+						<span className="hidden sm:inline">{t("boardDetail.share")}</span>
 					</Button>
 				)}
 				{boardData.role === "collaborator" && (
 					<span className="shrink-0 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700">
-						Shared with you
+						{t("boardDetail.sharedWithYou")}
 					</span>
 				)}
 				{!isSimpleMode && (
@@ -257,14 +259,16 @@ function BoardDetailPage() {
 									},
 								);
 							}}
-							title="Save as template"
+							title={t("boardDetail.saveAsTemplateTitle")}
 							disabled={
 								!boardData.tasks || boardData.tasks.length === 0 || createTemplate.isPending
 							}
 						>
 							<Save className="h-4 w-4" />
 							<span className="hidden sm:inline">
-								{createTemplate.isPending ? "Saving..." : "Save as Template"}
+								{createTemplate.isPending
+									? t("boardDetail.saving")
+									: t("boardDetail.saveAsTemplate")}
 							</span>
 						</Button>
 						<Button
@@ -272,10 +276,10 @@ function BoardDetailPage() {
 							size="sm"
 							className="gap-1.5 shrink-0"
 							onClick={() => setShowMemorySidebar((v) => !v)}
-							title="Board memories"
+							title={t("boardDetail.boardMemories")}
 						>
 							<Brain className="h-4 w-4" />
-							<span className="hidden sm:inline">Memories</span>
+							<span className="hidden sm:inline">{t("boardDetail.memories")}</span>
 						</Button>
 					</>
 				)}

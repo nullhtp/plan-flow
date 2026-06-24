@@ -1,6 +1,7 @@
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSubBoardQuestionsEndpointApiTasksTaskIdSubBoardQuestionsPost } from "@/api/generated/boards/boards";
 import type { QuestionSchema } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,7 @@ function QuestionField({
 	onChange: (value: string | string[] | number) => void;
 	disabled: boolean;
 }) {
+	const { t } = useTranslation("board");
 	const options = question.options ?? [];
 	const hasOptions = options.length > 0;
 
@@ -99,7 +101,7 @@ function QuestionField({
 					id={question.id}
 					value={stringValue}
 					onChange={(e) => onChange(e.target.value)}
-					placeholder="Type your answer..."
+					placeholder={t("boardExpand.typeAnswer")}
 					disabled={disabled}
 				/>
 			</QuestionFieldWrapper>
@@ -160,6 +162,7 @@ function QuestionField({
 // ── Page Component ──────────────────────────────────────
 
 function BoardExpandTaskPage() {
+	const { t } = useTranslation("board");
 	const { boardId, taskId } = boardExpandTaskRoute.useParams();
 	const navigate = useNavigate();
 	const boardQuery = useBoard(boardId);
@@ -180,19 +183,19 @@ function BoardExpandTaskPage() {
 					// Task already has a sub-board — handled in the board-loaded effect
 					setPageState({
 						step: "error",
-						message: "A sub-board already exists for this task.",
+						message: t("boardExpand.subBoardExists"),
 						canRetry: false,
 					});
 				} else if (err.status === 422) {
 					setPageState({
 						step: "error",
-						message: "Sub-boards cannot be nested. This task belongs to a sub-board.",
+						message: t("boardExpand.subBoardsCannotBeNested"),
 						canRetry: false,
 					});
 				} else {
 					setPageState({
 						step: "error",
-						message: "Failed to generate questions. Please try again.",
+						message: t("boardExpand.failedQuestions"),
 						canRetry: true,
 					});
 				}
@@ -211,7 +214,7 @@ function BoardExpandTaskPage() {
 		if (boardQuery.isError || !boardQuery.data) {
 			setPageState({
 				step: "error",
-				message: "Could not load the board. The task may not exist or you may not have access.",
+				message: t("boardExpand.couldNotLoadBoard"),
 				canRetry: false,
 			});
 			return;
@@ -223,7 +226,7 @@ function BoardExpandTaskPage() {
 		if (!task) {
 			setPageState({
 				step: "error",
-				message: "Task not found on this board.",
+				message: t("boardExpand.taskNotFound"),
 				canRetry: false,
 			});
 			return;
@@ -243,7 +246,7 @@ function BoardExpandTaskPage() {
 		if (board.parent_task_id) {
 			setPageState({
 				step: "error",
-				message: "Sub-boards cannot be nested. This task belongs to a sub-board.",
+				message: t("boardExpand.subBoardsCannotBeNested"),
 				canRetry: false,
 			});
 			return;
@@ -258,13 +261,14 @@ function BoardExpandTaskPage() {
 		taskId,
 		navigate,
 		questionsQuery.mutate,
+		t,
 	]);
 
 	// Derive task and board info from query data
 	const board = boardQuery.data?.data as BoardResponse | undefined;
 	const task = board?.tasks.find((t) => t.id === taskId);
-	const taskTitle = task?.title ?? "Task";
-	const boardTitle = board?.title ?? "Board";
+	const taskTitle = task?.title ?? t("boardExpand.defaultTaskTitle");
+	const boardTitle = board?.title ?? t("boardExpand.defaultBoardTitle");
 
 	function handleChange(questionId: string, value: string | string[] | number) {
 		setValues((prev) => ({ ...prev, [questionId]: value }));
@@ -298,7 +302,9 @@ function BoardExpandTaskPage() {
 	const contextHeader = (
 		<div className="text-center space-y-1 mb-6">
 			<h1 className="text-2xl font-semibold tracking-tight">{taskTitle}</h1>
-			<p className="text-sm text-muted-foreground">Expanding task from {boardTitle}</p>
+			<p className="text-sm text-muted-foreground">
+				{t("boardExpand.expandingTaskFrom", { board: boardTitle })}
+			</p>
 		</div>
 	);
 
@@ -310,7 +316,7 @@ function BoardExpandTaskPage() {
 					{contextHeader}
 					<div className="flex items-center justify-center gap-2">
 						<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-						<span className="text-sm text-muted-foreground">Loading...</span>
+						<span className="text-sm text-muted-foreground">{t("boardExpand.loading")}</span>
 					</div>
 				</div>
 			</div>
@@ -325,7 +331,9 @@ function BoardExpandTaskPage() {
 					{contextHeader}
 					<div className="flex items-center justify-center gap-2">
 						<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-						<span className="text-sm text-muted-foreground">Preparing questions...</span>
+						<span className="text-sm text-muted-foreground">
+							{t("boardExpand.preparingQuestions")}
+						</span>
 					</div>
 				</div>
 			</div>
@@ -339,10 +347,10 @@ function BoardExpandTaskPage() {
 				<Card className="w-full max-w-2xl">
 					<CardHeader>
 						<CardTitle className="text-2xl">{taskTitle}</CardTitle>
-						<p className="text-sm text-muted-foreground">Expanding task from {boardTitle}</p>
 						<p className="text-sm text-muted-foreground">
-							Answer a few questions to help generate a detailed task board.
+							{t("boardExpand.expandingTaskFrom", { board: boardTitle })}
 						</p>
+						<p className="text-sm text-muted-foreground">{t("boardExpand.answerQuestions")}</p>
 					</CardHeader>
 					<CardContent>
 						<form onSubmit={handleSubmit} className="space-y-6">
@@ -361,10 +369,10 @@ function BoardExpandTaskPage() {
 									variant="outline"
 									onClick={() => navigate({ to: "/boards/$boardId", params: { boardId } })}
 								>
-									Cancel
+									{t("boardExpand.cancel")}
 								</Button>
 								<Button type="submit" className="flex-1" disabled={!isValid()}>
-									Generate Board
+									{t("boardExpand.generateBoard")}
 								</Button>
 							</div>
 						</form>
@@ -416,7 +424,7 @@ function BoardExpandTaskPage() {
 							variant="outline"
 							onClick={() => navigate({ to: "/boards/$boardId", params: { boardId } })}
 						>
-							Back to Board
+							{t("boardExpand.backToBoard")}
 						</Button>
 					</div>
 				</div>

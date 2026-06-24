@@ -1,5 +1,6 @@
 import { createRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { GoalResponse, QuestionSchema, ReadinessSchema } from "@/api/generated/model";
 import { BoardGenerationProgress } from "@/features/goals/components/board-generation-progress";
 import { DynamicQuestionForm, type Round } from "@/features/goals/components/dynamic-question-form";
@@ -65,6 +66,7 @@ export const goalDetailRoute = createRoute({
 });
 
 function GoalDetailPage() {
+	const { t } = useTranslation("goals");
 	const { goalId } = goalDetailRoute.useParams();
 	const goalQuery = useGoal(goalId);
 	const submitAnswers = useSubmitAnswers();
@@ -84,7 +86,7 @@ function GoalDetailPage() {
 	if (goalQuery.isLoading) {
 		return (
 			<div className="flex min-h-screen items-center justify-center p-4">
-				<LoadingState message="Loading goal..." />
+				<LoadingState message={t("detailPage.loadingGoal")} />
 			</div>
 		);
 	}
@@ -93,7 +95,7 @@ function GoalDetailPage() {
 		return (
 			<div className="flex min-h-screen items-center justify-center p-4">
 				<ErrorDisplay
-					message="Could not load this goal. It may not exist or you may not have access."
+					message={t("detailPage.loadError")}
 					onRetry={() => goalQuery.refetch()}
 					isRetrying={goalQuery.isRefetching}
 				/>

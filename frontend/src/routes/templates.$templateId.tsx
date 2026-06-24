@@ -1,6 +1,7 @@
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { Plus, Save } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/features/auth/hooks/use-auth";
@@ -71,6 +72,7 @@ function serializeSnapshot(snapshot: GraphSnapshot): string {
 // ── Component ──
 
 function TemplateDetailPage() {
+	const { t } = useTranslation("templates");
 	const { templateId } = templateDetailRoute.useParams();
 	const navigate = useNavigate();
 	const { user } = useAuth();
@@ -177,7 +179,7 @@ function TemplateDetailPage() {
 	const handleAddTask = useCallback(() => {
 		const newTask: StreamedTemplateTask = {
 			id: crypto.randomUUID(),
-			title: "New Task",
+			title: t("detail.newTask"),
 			description: "",
 			is_goal_node: false,
 			priority: null,
@@ -187,7 +189,7 @@ function TemplateDetailPage() {
 		};
 		setTasks((prev) => [...prev, newTask]);
 		setSelectedTaskId(newTask.id);
-	}, []);
+	}, [t]);
 
 	const handleSave = useCallback(() => {
 		const payload = {
@@ -221,7 +223,7 @@ function TemplateDetailPage() {
 	if (simpleModeLoading || isSimpleMode) {
 		return (
 			<div className="flex min-h-screen items-center justify-center">
-				<p className="text-muted-foreground">Loading...</p>
+				<p className="text-muted-foreground">{t("detail.loadingSimpleMode")}</p>
 			</div>
 		);
 	}
@@ -229,7 +231,7 @@ function TemplateDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="flex min-h-screen items-center justify-center">
-				<p className="text-muted-foreground">Loading template...</p>
+				<p className="text-muted-foreground">{t("detail.loadingTemplate")}</p>
 			</div>
 		);
 	}
@@ -237,7 +239,7 @@ function TemplateDetailPage() {
 	if (!template) {
 		return (
 			<div className="flex min-h-screen items-center justify-center">
-				<p className="text-muted-foreground">Template not found.</p>
+				<p className="text-muted-foreground">{t("detail.notFound")}</p>
 			</div>
 		);
 	}
@@ -252,7 +254,7 @@ function TemplateDetailPage() {
 						className="mb-1 text-sm text-muted-foreground hover:underline"
 						onClick={() => navigate({ to: "/", search: { tab: "templates" } })}
 					>
-						&larr; Back to Templates
+						&larr; {t("detail.backToTemplates")}
 					</button>
 
 					{/* Title */}
@@ -284,7 +286,7 @@ function TemplateDetailPage() {
 								}}
 								className="rounded-full bg-muted px-3 py-1 text-sm"
 							>
-								<option value="">No category</option>
+								<option value="">{t("detail.noCategory")}</option>
 								{categories.map((cat) => (
 									<option key={cat.id} value={cat.id}>
 										{cat.name}
@@ -296,8 +298,8 @@ function TemplateDetailPage() {
 								<span className="rounded-full bg-muted px-3 py-1">{template.category.name}</span>
 							)
 						)}
-						<span>{template.task_count} tasks</span>
-						<span>by {template.creator.email}</span>
+						<span>{t("detail.taskCount", { count: template.task_count })}</span>
+						<span>{t("detail.byCreator", { email: template.creator.email })}</span>
 						{isOwner ? (
 							<select
 								value={template.visibility}
@@ -306,8 +308,8 @@ function TemplateDetailPage() {
 								}}
 								className="rounded-full bg-muted px-3 py-1 text-sm capitalize"
 							>
-								<option value="private">Private</option>
-								<option value="public">Public</option>
+								<option value="private">{t("detail.private")}</option>
+								<option value="public">{t("detail.public")}</option>
 							</select>
 						) : (
 							<span className="capitalize">{template.visibility}</span>
@@ -324,7 +326,7 @@ function TemplateDetailPage() {
 									handleMetadataSave("description", editDescription || null);
 								}
 							}}
-							placeholder="Add a description..."
+							placeholder={t("detail.descriptionPlaceholder")}
 							rows={1}
 							className="mt-2 w-full max-w-2xl resize-none border-none bg-transparent p-0 text-sm text-muted-foreground shadow-none outline-none focus:ring-0"
 						/>
@@ -338,17 +340,17 @@ function TemplateDetailPage() {
 					{isOwner && (
 						<Button onClick={handleAddTask} variant="outline" size="sm">
 							<Plus className="mr-1.5 h-4 w-4" />
-							Add Task
+							{t("detail.addTask")}
 						</Button>
 					)}
 					{isOwner && isDirty && (
 						<Button onClick={handleSave} disabled={updateStructure.isPending} variant="default">
 							<Save className="mr-1.5 h-4 w-4" />
-							{updateStructure.isPending ? "Saving..." : "Save Changes"}
+							{updateStructure.isPending ? t("detail.saving") : t("detail.saveChanges")}
 						</Button>
 					)}
 					<Button onClick={() => setShowUseDialog(true)} variant="outline">
-						Use Template
+						{t("detail.useTemplate")}
 					</Button>
 				</div>
 			</header>
@@ -356,8 +358,10 @@ function TemplateDetailPage() {
 			{/* Save error */}
 			{updateStructure.isError && (
 				<div className="border-b border-destructive/30 bg-destructive/10 px-6 py-2 text-sm text-destructive">
-					Failed to save:{" "}
-					{updateStructure.error instanceof Error ? updateStructure.error.message : "Unknown error"}
+					{t("detail.saveFailed")}{" "}
+					{updateStructure.error instanceof Error
+						? updateStructure.error.message
+						: t("detail.unknownError")}
 				</div>
 			)}
 
@@ -376,7 +380,7 @@ function TemplateDetailPage() {
 						/>
 					) : (
 						<div className="flex h-full items-center justify-center">
-							<p className="text-muted-foreground">No tasks in this template.</p>
+							<p className="text-muted-foreground">{t("detail.noTasks")}</p>
 						</div>
 					)}
 				</div>

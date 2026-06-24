@@ -1,0 +1,15 @@
+{
+	"memory": "Память",
+	"loading": "Загрузка...",
+	"memoryRemoved": "Воспоминание удалено",
+	"viewInSettings": "Открыть в настройках",
+	"boardMemories": "Память доски",
+	"loadingMemories": "Загрузка памяти...",
+	"noRelevantMemories": "Для этой доски нет подходящих воспоминаний.",
+	"save": "Сохранить",
+	"cancel": "Отмена",
+	"editMemory": "Изменить воспоминание",
+	"deleteMemory": "Удалить воспоминание",
+	"deleteConfirm": "Удалить это воспоминание?",
+	"manageAllMemories": "Управление всеми воспоминаниями"
+}
