@@ -22,10 +22,13 @@ export function TemplatesGallery() {
 	// instead of navigating to the (hidden) template editor.
 	const [useTemplateTarget, setUseTemplateTarget] = useState<TemplateListItemResponse | null>(null);
 	const categories = useCategoriesData();
+	// Simple mode shows only public templates with no search/category filtering;
+	// advanced controls drive these values otherwise.
+	const effectiveTab = isSimpleMode ? "public" : tab;
 	const { data, isLoading } = useTemplates({
-		visibility: tab,
-		category: selectedCategory,
-		search: search || undefined,
+		visibility: effectiveTab,
+		category: isSimpleMode ? null : selectedCategory,
+		search: isSimpleMode ? undefined : search || undefined,
 		page,
 		perPage: 20,
 	});
@@ -42,48 +45,54 @@ export function TemplatesGallery() {
 
 	return (
 		<div>
-			{/* Secondary toggle */}
-			<div className="mb-4 flex gap-2">
-				<Button
-					variant={tab === "public" ? "default" : "outline"}
-					size="sm"
-					onClick={() => {
-						setTab("public");
-						setPage(1);
-					}}
-				>
-					{t("gallery.publicTemplates")}
-				</Button>
-				<Button
-					variant={tab === "mine" ? "default" : "outline"}
-					size="sm"
-					onClick={() => {
-						setTab("mine");
-						setPage(1);
-					}}
-				>
-					{t("gallery.myTemplates")}
-				</Button>
-			</div>
+			{/* Advanced browsing controls — hidden in Simple mode, which shows
+			    only public templates without search or category filtering. */}
+			{!isSimpleMode && (
+				<>
+					{/* Secondary toggle */}
+					<div className="mb-4 flex gap-2">
+						<Button
+							variant={tab === "public" ? "default" : "outline"}
+							size="sm"
+							onClick={() => {
+								setTab("public");
+								setPage(1);
+							}}
+						>
+							{t("gallery.publicTemplates")}
+						</Button>
+						<Button
+							variant={tab === "mine" ? "default" : "outline"}
+							size="sm"
+							onClick={() => {
+								setTab("mine");
+								setPage(1);
+							}}
+						>
+							{t("gallery.myTemplates")}
+						</Button>
+					</div>
 
-			{/* Search */}
-			<div className="mb-4">
-				<Input
-					placeholder={t("gallery.searchPlaceholder")}
-					value={search}
-					onChange={(e) => handleSearch(e.target.value)}
-					className="max-w-sm"
-				/>
-			</div>
+					{/* Search */}
+					<div className="mb-4">
+						<Input
+							placeholder={t("gallery.searchPlaceholder")}
+							value={search}
+							onChange={(e) => handleSearch(e.target.value)}
+							className="max-w-sm"
+						/>
+					</div>
 
-			{/* Category filter */}
-			<div className="mb-6">
-				<CategoryFilter
-					categories={categories}
-					selected={selectedCategory}
-					onSelect={handleCategoryChange}
-				/>
-			</div>
+					{/* Category filter */}
+					<div className="mb-6">
+						<CategoryFilter
+							categories={categories}
+							selected={selectedCategory}
+							onSelect={handleCategoryChange}
+						/>
+					</div>
+				</>
+			)}
 
 			{/* Template grid */}
 			{isLoading ? (
@@ -106,7 +115,7 @@ export function TemplatesGallery() {
 
 					{data && data.items.length === 0 && (
 						<p className="mt-8 text-center text-muted-foreground">
-							{tab === "mine" ? t("gallery.emptyMine") : t("gallery.emptyPublic")}
+							{effectiveTab === "mine" ? t("gallery.emptyMine") : t("gallery.emptyPublic")}
 						</p>
 					)}
 
