@@ -1,0 +1,17 @@
+# pnpm settings live here (the "pnpm" field in package.json is ignored by pnpm 11+).
+# This file is copied into the Docker build before `pnpm install`, so CI honors it too.
+
+# Mirror the CI supply-chain policy: don't resolve packages published less than
+# 24h ago, so the committed lockfile always passes `pnpm install --frozen-lockfile`.
+minimumReleaseAge: 1440
+
+# Record an explicit build-script decision for every dependency that ships one,
+# otherwise pnpm fails non-interactive installs with ERR_PNPM_IGNORED_BUILDS.
+# pnpm 11+ reads `allowBuilds`; the two lists keep pnpm 10 working too.
+allowBuilds:
+  esbuild: true # needs its install script to place the native binary used by `vite build`
+  msw: false # dev-only mock worker; no build step needed for the production image
+onlyBuiltDependencies:
+  - esbuild
+ignoredBuiltDependencies:
+  - msw
