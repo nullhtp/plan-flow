@@ -4,8 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@tanstack/react-router", () => ({
 	useNavigate: () => vi.fn(),
 }));
-// Chat pulls in react-query/API — stub it out for these structural tests.
+// Chat and artifacts pull in react-query/API — stub them out for these structural tests.
 vi.mock("../components/TaskChat", () => ({ TaskChat: () => <div data-testid="chat" /> }));
+vi.mock("../components/TaskArtifacts", () => ({
+	TaskArtifacts: () => <div data-testid="artifacts" />,
+}));
 
 import { StepCard } from "../components/StepCard";
 import type { TaskResponse } from "../types";

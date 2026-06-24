@@ -3,6 +3,7 @@ import { Check, ExternalLink, Layers, Lock, Sparkles } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { TaskResponse } from "@/features/board/types";
+import { TaskArtifacts } from "./TaskArtifacts";
 import { TaskChat } from "./TaskChat";
 
 interface StepCardProps {
@@ -147,6 +148,9 @@ export function StepCard({ task, allTasks, boardId, onSetStatus, onToggleSubtask
 					</div>
 				</div>
 			) : null}
+
+			{/* Artifacts */}
+			<TaskArtifacts taskId={task.id} />
 
 			{/* AI chat */}
 			<div ref={chatRef}>
