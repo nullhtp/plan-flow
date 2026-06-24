@@ -1,5 +1,5 @@
 import { createRoute, useNavigate } from "@tanstack/react-router";
-import { Brain, Eye, Network, Save, Share2 } from "lucide-react";
+import { Brain, Eye, ListChecks, Network, Save, Share2 } from "lucide-react";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import { useUpdateBoardEndpointApiBoardsBoardIdPatch } from "@/api/generated/boards/boards";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,9 @@ import { BreadcrumbNav } from "@/features/board/components/BreadcrumbNav";
 import type { BoardViewMode } from "@/features/board/components/DagView";
 import { DagView } from "@/features/board/components/DagView";
 import { SharePanel } from "@/features/board/components/SharePanel";
+import { StepperView } from "@/features/board/components/StepperView";
 import { useBoard } from "@/features/board/hooks/use-board";
+import { useInterfaceMode } from "@/features/board/hooks/use-interface-mode";
 import type { BoardResponse } from "@/features/board/types";
 import { isTaskHiddenInFocus } from "@/features/board/utils/board-filters";
 import { ErrorDisplay } from "@/features/goals/components/error-display";
@@ -46,13 +48,17 @@ function BoardDetailPage() {
 	const [showSharePanel, setShowSharePanel] = useState(false);
 	const createTemplate = useCreateTemplate();
 
-	// View mode: default is "focus" when view param is absent
+	// Top-level interface mode: Simple (stepper) vs Advanced (DAG). Default Simple.
+	const { mode, setMode } = useInterfaceMode();
+
+	// View mode: default is "focus" when view param is absent (only used in Advanced)
 	const viewMode: BoardViewMode = search.view === "full" ? "full" : "focus";
 
-	// Edge case: if selected task is hidden in focus mode, auto-switch to full
 	const board = boardQuery.data?.data as BoardResponse | undefined;
+
+	// Edge case: if selected task is hidden in focus mode, auto-switch to full
 	useEffect(() => {
-		if (!board || viewMode !== "focus" || !search.task) return;
+		if (mode !== "advanced" || !board || viewMode !== "focus" || !search.task) return;
 		const selectedTask = board.tasks.find((t) => t.id === search.task);
 		if (selectedTask && isTaskHiddenInFocus(selectedTask)) {
 			navigate({
@@ -62,7 +68,7 @@ function BoardDetailPage() {
 				replace: true,
 			});
 		}
-	}, [board, viewMode, search, boardId, navigate]);
+	}, [board, mode, viewMode, search, boardId, navigate]);
 
 	const setViewMode = (mode: BoardViewMode) => {
 		navigate({
@@ -140,35 +146,67 @@ function BoardDetailPage() {
 					</div>
 					{boardData.user_meta && <BoardMetaInfo userMeta={boardData.user_meta} />}
 				</div>
-				{/* View Mode Toggle */}
+				{/* Interface Mode Toggle: Simple (stepper) vs Advanced (DAG) */}
 				<div className="flex shrink-0 rounded-lg border p-0.5">
 					<button
 						type="button"
-						onClick={() => setViewMode("focus")}
+						onClick={() => setMode("simple")}
 						className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-							viewMode === "focus"
+							mode === "simple"
 								? "bg-primary text-primary-foreground shadow-sm"
 								: "text-muted-foreground hover:text-foreground"
 						}`}
-						title="Show actionable tasks only"
+						title="Guided one-task-at-a-time view"
 					>
-						<Eye className="h-3.5 w-3.5" />
-						<span className="hidden sm:inline">Focus</span>
+						<ListChecks className="h-3.5 w-3.5" />
+						<span className="hidden sm:inline">Simple</span>
 					</button>
 					<button
 						type="button"
-						onClick={() => setViewMode("full")}
+						onClick={() => setMode("advanced")}
 						className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-							viewMode === "full"
+							mode === "advanced"
 								? "bg-primary text-primary-foreground shadow-sm"
 								: "text-muted-foreground hover:text-foreground"
 						}`}
-						title="Show all tasks"
+						title="Full task graph"
 					>
 						<Network className="h-3.5 w-3.5" />
-						<span className="hidden sm:inline">Full DAG</span>
+						<span className="hidden sm:inline">Advanced</span>
 					</button>
 				</div>
+
+				{/* DAG View Mode Toggle (Advanced only) */}
+				{mode === "advanced" && (
+					<div className="flex shrink-0 rounded-lg border p-0.5">
+						<button
+							type="button"
+							onClick={() => setViewMode("focus")}
+							className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+								viewMode === "focus"
+									? "bg-primary text-primary-foreground shadow-sm"
+									: "text-muted-foreground hover:text-foreground"
+							}`}
+							title="Show actionable tasks only"
+						>
+							<Eye className="h-3.5 w-3.5" />
+							<span className="hidden sm:inline">Focus</span>
+						</button>
+						<button
+							type="button"
+							onClick={() => setViewMode("full")}
+							className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+								viewMode === "full"
+									? "bg-primary text-primary-foreground shadow-sm"
+									: "text-muted-foreground hover:text-foreground"
+							}`}
+							title="Show all tasks"
+						>
+							<Network className="h-3.5 w-3.5" />
+							<span className="hidden sm:inline">Full DAG</span>
+						</button>
+					</div>
+				)}
 				{boardData.role === "owner" && !boardData.parent_task_id && (
 					<Button
 						variant={showSharePanel ? "default" : "outline"}
@@ -227,9 +265,17 @@ function BoardDetailPage() {
 				</Button>
 			</div>
 
-			{/* DAG Graph View */}
+			{/* Board body: Simple stepper or Advanced DAG */}
 			<div className="flex-1 overflow-hidden">
-				<DagView board={boardData} viewMode={viewMode} />
+				{mode === "simple" ? (
+					<StepperView
+						board={boardData}
+						focusTaskId={search.task}
+						onSwitchToAdvanced={() => setMode("advanced")}
+					/>
+				) : (
+					<DagView board={boardData} viewMode={viewMode} />
+				)}
 			</div>
 
 			{/* Memory Sidebar */}
