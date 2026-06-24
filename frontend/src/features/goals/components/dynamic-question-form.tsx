@@ -11,6 +11,7 @@ import {
 	serializeMultiselectValue,
 	serializeOptionValue,
 } from "@/shared/components/question-fields";
+import { useSimpleMode } from "@/shared/hooks/use-simple-mode";
 import { GenerateFooter } from "./generate-footer";
 
 type AnswerValues = Record<string, string | string[] | number>;
@@ -147,7 +148,15 @@ function QuestionField({
 
 // --- Collapsible read-only round section ---
 
-function CompletedRound({ round, onEdit }: { round: Round; onEdit: (roundNum: number) => void }) {
+function CompletedRound({
+	round,
+	onEdit,
+	simple = false,
+}: {
+	round: Round;
+	onEdit: (roundNum: number) => void;
+	simple?: boolean;
+}) {
 	const [expanded, setExpanded] = useState(false);
 	const answeredCount = Object.keys(round.answers).length;
 
@@ -156,6 +165,21 @@ function CompletedRound({ round, onEdit }: { round: Round; onEdit: (roundNum: nu
 		if (value === undefined || value === "") return "Not answered";
 		if (Array.isArray(value)) return value.join(", ");
 		return String(value);
+	}
+
+	// Simple mode: a plain, always-visible read-only summary with no expand/Edit.
+	if (simple) {
+		return (
+			<div className="space-y-3 rounded-lg border bg-muted/30 px-4 py-3">
+				<p className="text-sm font-medium text-muted-foreground">Your answers</p>
+				{round.questions.map((q) => (
+					<div key={q.id} className="space-y-1">
+						<p className="text-sm font-medium">{q.text}</p>
+						<p className="text-sm text-muted-foreground">{formatAnswer(q)}</p>
+					</div>
+				))}
+			</div>
+		);
 	}
 
 	return (
@@ -244,6 +268,7 @@ export function DynamicQuestionForm({
 	isPending,
 	isLoadingFollowUp,
 }: DynamicQuestionFormProps) {
+	const { isSimpleMode } = useSimpleMode();
 	const newQuestionsRef = useRef<HTMLFormElement>(null);
 
 	const [values, setValues] = useState<AnswerValues>(() => {
@@ -299,10 +324,15 @@ export function DynamicQuestionForm({
 				</p>
 			</div>
 
-			{/* Completed rounds as collapsible read-only sections */}
+			{/* Completed rounds — collapsible+editable normally, plain read-only in Simple mode */}
 			<div className="space-y-4">
 				{completedRounds.map((round) => (
-					<CompletedRound key={round.round} round={round} onEdit={onEditRound} />
+					<CompletedRound
+						key={round.round}
+						round={round}
+						onEdit={onEditRound}
+						simple={isSimpleMode}
+					/>
 				))}
 			</div>
 
@@ -323,7 +353,9 @@ export function DynamicQuestionForm({
 			{!isLoadingFollowUp && activeQuestions.length > 0 && (
 				<form ref={newQuestionsRef} onSubmit={handleSubmit} className="space-y-6">
 					{currentRound > 1 && (
-						<p className="text-sm font-medium text-muted-foreground">Round {currentRound}</p>
+						<p className="text-sm font-medium text-muted-foreground">
+							{isSimpleMode ? "A few more questions" : `Round ${currentRound}`}
+						</p>
 					)}
 					{activeQuestions.map((question) => (
 						<QuestionField
@@ -342,7 +374,12 @@ export function DynamicQuestionForm({
 
 			{/* Sticky generate footer - visible after first round is answered */}
 			{hasCompletedRounds && (
-				<GenerateFooter readiness={readiness} onGenerate={onGenerate} isPending={isPending} />
+				<GenerateFooter
+					readiness={readiness}
+					onGenerate={onGenerate}
+					isPending={isPending}
+					simple={isSimpleMode}
+				/>
 			)}
 		</div>
 	);

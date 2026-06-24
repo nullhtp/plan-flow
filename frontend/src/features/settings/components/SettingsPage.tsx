@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
 	getGetMemoriesApiMemoriesGetQueryKey,
 	getGetStatsApiMemoriesStatsGetQueryKey,
@@ -12,6 +13,8 @@ import {
 } from "@/api/generated/memories/memories";
 import type { MemoryResponse } from "@/api/generated/model";
 import {
+	getGetSettingsApiSettingsGetQueryKey,
+	type getSettingsApiSettingsGetResponse,
 	useGetSettingsApiSettingsGet,
 	usePatchSettingsApiSettingsPatch,
 } from "@/api/generated/settings/settings";
@@ -65,9 +68,11 @@ export function SettingsPage() {
 	const deleteMemory = useDeleteMemoryByIdApiMemoriesMemoryIdDelete();
 	const bulkDelete = useBulkDeleteApiMemoriesDelete();
 
+	const settingsKey = getGetSettingsApiSettingsGetQueryKey();
 	const settingsData = settingsQuery.data?.data as Record<string, unknown> | undefined;
 	const memoriesData = memoriesQuery.data?.data as Record<string, unknown> | undefined;
 	const memoryEnabled = (settingsData?.memory_enabled as boolean) ?? true;
+	const simpleMode = (settingsData?.simple_mode as boolean) ?? true;
 	const memories = (memoriesData?.items ?? []) as MemoryResponse[];
 	const totalMemories = (memoriesData?.total as number) ?? 0;
 	const totalPages = Math.ceil(totalMemories / 20);
@@ -81,7 +86,30 @@ export function SettingsPage() {
 	const handleToggleMemory = () => {
 		patchSettings.mutate(
 			{ data: { memory_enabled: !memoryEnabled } },
-			{ onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/settings"] }) },
+			{ onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKey }) },
+		);
+	};
+
+	// Optimistically write simple_mode into the settings cache so the toggle flips
+	// immediately; rolled back on error.
+	const writeSimpleMode = (next: boolean) => {
+		queryClient.setQueryData<getSettingsApiSettingsGetResponse>(settingsKey, (old) =>
+			old && old.status === 200 ? { ...old, data: { ...old.data, simple_mode: next } } : old,
+		);
+	};
+
+	const handleToggleSimpleMode = () => {
+		const next = !simpleMode;
+		writeSimpleMode(next);
+		patchSettings.mutate(
+			{ data: { simple_mode: next } },
+			{
+				onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKey }),
+				onError: () => {
+					writeSimpleMode(!next);
+					toast.error("Failed to update setting");
+				},
+			},
 		);
 	};
 
@@ -131,6 +159,26 @@ export function SettingsPage() {
 			</header>
 
 			<main className="mx-auto w-full max-w-4xl flex-1 space-y-6 p-6">
+				{/* Simple Mode Toggle (master switch) */}
+				<Card className="p-6">
+					<div className="flex items-center justify-between">
+						<div>
+							<h2 className="text-lg font-semibold">Simple mode</h2>
+							<p className="text-sm text-muted-foreground">
+								Simplify the whole app — hide advanced controls and guide you step by step. Turn it
+								off to access the full interface.
+							</p>
+						</div>
+						<Button
+							variant={simpleMode ? "default" : "outline"}
+							onClick={handleToggleSimpleMode}
+							disabled={patchSettings.isPending}
+						>
+							{simpleMode ? "Enabled" : "Disabled"}
+						</Button>
+					</div>
+				</Card>
+
 				{/* Memory Toggle */}
 				<Card className="p-6">
 					<div className="flex items-center justify-between">
@@ -151,144 +199,149 @@ export function SettingsPage() {
 					</div>
 				</Card>
 
-				{/* Memory Stats */}
-				{stats && (
-					<Card className="p-6">
-						<h3 className="mb-3 font-semibold">Memory Statistics</h3>
-						<div className="flex gap-6 text-sm">
-							<div title="Total number of memories stored by the AI across all categories">
-								<span className="text-muted-foreground">Total: </span>
-								<span className="font-medium">{stats.total as number}</span>
-							</div>
-							{Object.entries((stats.by_category ?? {}) as Record<string, number>).map(
-								([cat, count]) => (
-									<div
-										key={cat}
-										title={CATEGORY_TOOLTIPS[cat] ?? cat}
-										className="cursor-help border-b border-dotted border-muted-foreground/40"
-									>
-										<span className="text-muted-foreground">{cat}: </span>
-										<span className="font-medium">{count as number}</span>
+				{/* Memory management — hidden in Simple mode */}
+				{!simpleMode && (
+					<>
+						{/* Memory Stats */}
+						{stats && (
+							<Card className="p-6">
+								<h3 className="mb-3 font-semibold">Memory Statistics</h3>
+								<div className="flex gap-6 text-sm">
+									<div title="Total number of memories stored by the AI across all categories">
+										<span className="text-muted-foreground">Total: </span>
+										<span className="font-medium">{stats.total as number}</span>
 									</div>
-								),
+									{Object.entries((stats.by_category ?? {}) as Record<string, number>).map(
+										([cat, count]) => (
+											<div
+												key={cat}
+												title={CATEGORY_TOOLTIPS[cat] ?? cat}
+												className="cursor-help border-b border-dotted border-muted-foreground/40"
+											>
+												<span className="text-muted-foreground">{cat}: </span>
+												<span className="font-medium">{count as number}</span>
+											</div>
+										),
+									)}
+								</div>
+							</Card>
+						)}
+
+						{/* Memory List Controls */}
+						<div className="flex items-center gap-3">
+							<Input
+								placeholder="Search memories..."
+								value={searchQuery}
+								onChange={(e) => {
+									setSearchQuery(e.target.value);
+									setPage(1);
+								}}
+								className="max-w-xs"
+							/>
+							<select
+								className="rounded-md border px-3 py-2 text-sm"
+								value={categoryFilter ?? ""}
+								onChange={(e) => {
+									setCategoryFilter(e.target.value || undefined);
+									setPage(1);
+								}}
+							>
+								<option value="">All categories</option>
+								{CATEGORIES.map((cat) => (
+									<option key={cat} value={cat}>
+										{cat}
+									</option>
+								))}
+							</select>
+							<div className="flex-1" />
+							<Button
+								variant="outline"
+								onClick={handleBulkDelete}
+								disabled={bulkDelete.isPending || totalMemories === 0}
+							>
+								{categoryFilter ? `Clear "${categoryFilter}"` : "Clear All Memories"}
+							</Button>
+						</div>
+
+						{/* Memory List */}
+						<div className="space-y-2">
+							{memories.map((memory) => (
+								<Card key={memory.id} className="p-4">
+									{editingId === memory.id ? (
+										<div className="space-y-2">
+											<Input
+												value={editContent}
+												onChange={(e) => setEditContent(e.target.value)}
+												autoFocus
+											/>
+											<div className="flex gap-2">
+												<Button size="sm" onClick={handleSaveEdit} disabled={patchMemory.isPending}>
+													Save
+												</Button>
+												<Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
+													Cancel
+												</Button>
+											</div>
+										</div>
+									) : (
+										<div className="flex items-start justify-between gap-4">
+											<div className="flex-1">
+												<p className="text-sm">{memory.content}</p>
+												<div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+													<span className="rounded bg-muted px-1.5 py-0.5">{memory.category}</span>
+													<span>{memory.source_stage}</span>
+													<span>{new Date(memory.created_at).toLocaleDateString()}</span>
+												</div>
+											</div>
+											<div className="flex gap-1">
+												<Button size="sm" variant="outline" onClick={() => handleEdit(memory)}>
+													Edit
+												</Button>
+												<Button
+													size="sm"
+													variant="outline"
+													onClick={() => handleDelete(memory.id)}
+													disabled={deleteMemory.isPending}
+												>
+													Delete
+												</Button>
+											</div>
+										</div>
+									)}
+								</Card>
+							))}
+							{memories.length === 0 && (
+								<p className="py-8 text-center text-muted-foreground">
+									{searchQuery ? "No memories match your search." : "No memories stored yet."}
+								</p>
 							)}
 						</div>
-					</Card>
-				)}
 
-				{/* Memory List Controls */}
-				<div className="flex items-center gap-3">
-					<Input
-						placeholder="Search memories..."
-						value={searchQuery}
-						onChange={(e) => {
-							setSearchQuery(e.target.value);
-							setPage(1);
-						}}
-						className="max-w-xs"
-					/>
-					<select
-						className="rounded-md border px-3 py-2 text-sm"
-						value={categoryFilter ?? ""}
-						onChange={(e) => {
-							setCategoryFilter(e.target.value || undefined);
-							setPage(1);
-						}}
-					>
-						<option value="">All categories</option>
-						{CATEGORIES.map((cat) => (
-							<option key={cat} value={cat}>
-								{cat}
-							</option>
-						))}
-					</select>
-					<div className="flex-1" />
-					<Button
-						variant="outline"
-						onClick={handleBulkDelete}
-						disabled={bulkDelete.isPending || totalMemories === 0}
-					>
-						{categoryFilter ? `Clear "${categoryFilter}"` : "Clear All Memories"}
-					</Button>
-				</div>
-
-				{/* Memory List */}
-				<div className="space-y-2">
-					{memories.map((memory) => (
-						<Card key={memory.id} className="p-4">
-							{editingId === memory.id ? (
-								<div className="space-y-2">
-									<Input
-										value={editContent}
-										onChange={(e) => setEditContent(e.target.value)}
-										autoFocus
-									/>
-									<div className="flex gap-2">
-										<Button size="sm" onClick={handleSaveEdit} disabled={patchMemory.isPending}>
-											Save
-										</Button>
-										<Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
-											Cancel
-										</Button>
-									</div>
-								</div>
-							) : (
-								<div className="flex items-start justify-between gap-4">
-									<div className="flex-1">
-										<p className="text-sm">{memory.content}</p>
-										<div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-											<span className="rounded bg-muted px-1.5 py-0.5">{memory.category}</span>
-											<span>{memory.source_stage}</span>
-											<span>{new Date(memory.created_at).toLocaleDateString()}</span>
-										</div>
-									</div>
-									<div className="flex gap-1">
-										<Button size="sm" variant="outline" onClick={() => handleEdit(memory)}>
-											Edit
-										</Button>
-										<Button
-											size="sm"
-											variant="outline"
-											onClick={() => handleDelete(memory.id)}
-											disabled={deleteMemory.isPending}
-										>
-											Delete
-										</Button>
-									</div>
-								</div>
-							)}
-						</Card>
-					))}
-					{memories.length === 0 && (
-						<p className="py-8 text-center text-muted-foreground">
-							{searchQuery ? "No memories match your search." : "No memories stored yet."}
-						</p>
-					)}
-				</div>
-
-				{/* Pagination */}
-				{totalPages > 1 && (
-					<div className="flex items-center justify-center gap-2">
-						<Button
-							size="sm"
-							variant="outline"
-							disabled={page <= 1}
-							onClick={() => setPage((p) => p - 1)}
-						>
-							Previous
-						</Button>
-						<span className="text-sm text-muted-foreground">
-							Page {page} of {totalPages}
-						</span>
-						<Button
-							size="sm"
-							variant="outline"
-							disabled={page >= totalPages}
-							onClick={() => setPage((p) => p + 1)}
-						>
-							Next
-						</Button>
-					</div>
+						{/* Pagination */}
+						{totalPages > 1 && (
+							<div className="flex items-center justify-center gap-2">
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={page <= 1}
+									onClick={() => setPage((p) => p - 1)}
+								>
+									Previous
+								</Button>
+								<span className="text-sm text-muted-foreground">
+									Page {page} of {totalPages}
+								</span>
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={page >= totalPages}
+									onClick={() => setPage((p) => p + 1)}
+								>
+									Next
+								</Button>
+							</div>
+						)}
+					</>
 				)}
 			</main>
 		</div>

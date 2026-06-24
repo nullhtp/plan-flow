@@ -12,12 +12,13 @@ import { DagView } from "@/features/board/components/DagView";
 import { SharePanel } from "@/features/board/components/SharePanel";
 import { StepperView } from "@/features/board/components/StepperView";
 import { useBoard } from "@/features/board/hooks/use-board";
-import { useInterfaceMode } from "@/features/board/hooks/use-interface-mode";
+import { type InterfaceMode, useInterfaceMode } from "@/features/board/hooks/use-interface-mode";
 import type { BoardResponse } from "@/features/board/types";
 import { isTaskHiddenInFocus } from "@/features/board/utils/board-filters";
 import { ErrorDisplay } from "@/features/goals/components/error-display";
 import { BoardMemorySidebar } from "@/features/memory/components/BoardMemorySidebar";
 import { useCreateTemplate } from "@/features/templates/hooks/use-template-mutations";
+import { useSimpleMode } from "@/shared/hooks/use-simple-mode";
 import { authenticatedRoute } from "./_authenticated";
 
 type BoardSearchParams = {
@@ -48,8 +49,12 @@ function BoardDetailPage() {
 	const [showSharePanel, setShowSharePanel] = useState(false);
 	const createTemplate = useCreateTemplate();
 
-	// Top-level interface mode: Simple (stepper) vs Advanced (DAG). Default Simple.
-	const { mode, setMode } = useInterfaceMode();
+	// Global Simple mode is the master switch. When on, every board renders the
+	// guided stepper and the per-session board toggles are hidden. When off, the
+	// per-session preference (localStorage) governs and defaults to Advanced.
+	const { isSimpleMode } = useSimpleMode();
+	const { mode: sessionMode, setMode } = useInterfaceMode();
+	const mode: InterfaceMode = isSimpleMode ? "simple" : sessionMode;
 
 	// View mode: default is "focus" when view param is absent (only used in Advanced)
 	const viewMode: BoardViewMode = search.view === "full" ? "full" : "focus";
@@ -146,35 +151,39 @@ function BoardDetailPage() {
 					</div>
 					{boardData.user_meta && <BoardMetaInfo userMeta={boardData.user_meta} />}
 				</div>
-				{/* Interface Mode Toggle: Simple (stepper) vs Advanced (DAG) */}
-				<div className="flex shrink-0 rounded-lg border p-0.5">
-					<button
-						type="button"
-						onClick={() => setMode("simple")}
-						className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-							mode === "simple"
-								? "bg-primary text-primary-foreground shadow-sm"
-								: "text-muted-foreground hover:text-foreground"
-						}`}
-						title="Guided one-task-at-a-time view"
-					>
-						<ListChecks className="h-3.5 w-3.5" />
-						<span className="hidden sm:inline">Simple</span>
-					</button>
-					<button
-						type="button"
-						onClick={() => setMode("advanced")}
-						className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-							mode === "advanced"
-								? "bg-primary text-primary-foreground shadow-sm"
-								: "text-muted-foreground hover:text-foreground"
-						}`}
-						title="Full task graph"
-					>
-						<Network className="h-3.5 w-3.5" />
-						<span className="hidden sm:inline">Advanced</span>
-					</button>
-				</div>
+				{/* Interface Mode Toggle: Simple (stepper) vs Advanced (DAG).
+					Only shown when global Simple mode is off; otherwise the stepper
+					is forced and this per-session control is hidden. */}
+				{!isSimpleMode && (
+					<div className="flex shrink-0 rounded-lg border p-0.5">
+						<button
+							type="button"
+							onClick={() => setMode("simple")}
+							className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+								mode === "simple"
+									? "bg-primary text-primary-foreground shadow-sm"
+									: "text-muted-foreground hover:text-foreground"
+							}`}
+							title="Guided one-task-at-a-time view"
+						>
+							<ListChecks className="h-3.5 w-3.5" />
+							<span className="hidden sm:inline">Simple</span>
+						</button>
+						<button
+							type="button"
+							onClick={() => setMode("advanced")}
+							className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+								mode === "advanced"
+									? "bg-primary text-primary-foreground shadow-sm"
+									: "text-muted-foreground hover:text-foreground"
+							}`}
+							title="Full task graph"
+						>
+							<Network className="h-3.5 w-3.5" />
+							<span className="hidden sm:inline">Advanced</span>
+						</button>
+					</div>
+				)}
 
 				{/* DAG View Mode Toggle (Advanced only) */}
 				{mode === "advanced" && (
@@ -207,7 +216,8 @@ function BoardDetailPage() {
 						</button>
 					</div>
 				)}
-				{boardData.role === "owner" && !boardData.parent_task_id && (
+				{/* Power actions (Share, Save as Template, Memories) are hidden in Simple mode. */}
+				{!isSimpleMode && boardData.role === "owner" && !boardData.parent_task_id && (
 					<Button
 						variant={showSharePanel ? "default" : "outline"}
 						size="sm"
@@ -224,45 +234,51 @@ function BoardDetailPage() {
 						Shared with you
 					</span>
 				)}
-				<Button
-					variant="outline"
-					size="sm"
-					className="gap-1.5 shrink-0"
-					onClick={() => {
-						createTemplate.mutate(
-							{
-								board_id: boardData.id,
-								title: boardData.title,
-								visibility: "private",
-							},
-							{
-								onSuccess: (template) => {
-									navigate({
-										to: "/templates/$templateId",
-										params: { templateId: template.id },
-									});
-								},
-							},
-						);
-					}}
-					title="Save as template"
-					disabled={!boardData.tasks || boardData.tasks.length === 0 || createTemplate.isPending}
-				>
-					<Save className="h-4 w-4" />
-					<span className="hidden sm:inline">
-						{createTemplate.isPending ? "Saving..." : "Save as Template"}
-					</span>
-				</Button>
-				<Button
-					variant={showMemorySidebar ? "default" : "outline"}
-					size="sm"
-					className="gap-1.5 shrink-0"
-					onClick={() => setShowMemorySidebar((v) => !v)}
-					title="Board memories"
-				>
-					<Brain className="h-4 w-4" />
-					<span className="hidden sm:inline">Memories</span>
-				</Button>
+				{!isSimpleMode && (
+					<>
+						<Button
+							variant="outline"
+							size="sm"
+							className="gap-1.5 shrink-0"
+							onClick={() => {
+								createTemplate.mutate(
+									{
+										board_id: boardData.id,
+										title: boardData.title,
+										visibility: "private",
+									},
+									{
+										onSuccess: (template) => {
+											navigate({
+												to: "/templates/$templateId",
+												params: { templateId: template.id },
+											});
+										},
+									},
+								);
+							}}
+							title="Save as template"
+							disabled={
+								!boardData.tasks || boardData.tasks.length === 0 || createTemplate.isPending
+							}
+						>
+							<Save className="h-4 w-4" />
+							<span className="hidden sm:inline">
+								{createTemplate.isPending ? "Saving..." : "Save as Template"}
+							</span>
+						</Button>
+						<Button
+							variant={showMemorySidebar ? "default" : "outline"}
+							size="sm"
+							className="gap-1.5 shrink-0"
+							onClick={() => setShowMemorySidebar((v) => !v)}
+							title="Board memories"
+						>
+							<Brain className="h-4 w-4" />
+							<span className="hidden sm:inline">Memories</span>
+						</Button>
+					</>
+				)}
 			</div>
 
 			{/* Board body: Simple stepper or Advanced DAG */}
@@ -271,7 +287,7 @@ function BoardDetailPage() {
 					<StepperView
 						board={boardData}
 						focusTaskId={search.task}
-						onSwitchToAdvanced={() => setMode("advanced")}
+						onSwitchToAdvanced={isSimpleMode ? undefined : () => setMode("advanced")}
 					/>
 				) : (
 					<DagView board={boardData} viewMode={viewMode} />

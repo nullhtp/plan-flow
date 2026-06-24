@@ -7,6 +7,7 @@ import { useBoardListData } from "@/features/board/hooks/use-board-list";
 import { TemplatesGallery } from "@/features/templates/components/TemplatesGallery";
 import { CreationCard } from "@/shared/components/creation-card";
 import { UserDropdown } from "@/shared/components/user-dropdown";
+import { useSimpleMode } from "@/shared/hooks/use-simple-mode";
 import { authenticatedRoute } from "./_authenticated";
 
 type IndexSearchParams = {
@@ -66,46 +67,54 @@ function IndexPage() {
 }
 
 function BoardsTabContent() {
+	const { isSimpleMode } = useSimpleMode();
 	const [view, setView] = useState<"mine" | "shared">("mine");
 	const boards = useBoardListData();
 	const sharedBoards = useBoardListData(true);
 
+	// In Simple mode the My/Shared toggle is hidden and only owned boards are shown.
+	const showShared = !isSimpleMode && view === "shared";
+
 	return (
 		<div>
-			{/* Secondary toggle */}
-			<div className="mb-4 flex gap-2">
-				<Button
-					variant={view === "mine" ? "default" : "outline"}
-					size="sm"
-					onClick={() => setView("mine")}
-				>
-					My Boards
-				</Button>
-				<Button
-					variant={view === "shared" ? "default" : "outline"}
-					size="sm"
-					onClick={() => setView("shared")}
-				>
-					Shared with Me
-				</Button>
-			</div>
+			{/* Secondary toggle — hidden in Simple mode */}
+			{!isSimpleMode && (
+				<div className="mb-4 flex gap-2">
+					<Button
+						variant={view === "mine" ? "default" : "outline"}
+						size="sm"
+						onClick={() => setView("mine")}
+					>
+						My Boards
+					</Button>
+					<Button
+						variant={view === "shared" ? "default" : "outline"}
+						size="sm"
+						onClick={() => setView("shared")}
+					>
+						Shared with Me
+					</Button>
+				</div>
+			)}
 
-			{view === "mine" ? (
+			{showShared ? (
+				sharedBoards.length > 0 ? (
+					<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+						{sharedBoards.map((board) => (
+							<BoardCard key={board.id} board={board} />
+						))}
+					</div>
+				) : (
+					<div className="flex flex-col items-center justify-center py-20">
+						<p className="text-muted-foreground">No shared boards yet.</p>
+					</div>
+				)
+			) : (
 				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 					<CreationCard label="New Board" href="/goals/new" />
 					{boards.map((board) => (
-						<BoardCard key={board.id} board={board} />
+						<BoardCard key={board.id} board={board} simple={isSimpleMode} />
 					))}
-				</div>
-			) : sharedBoards.length > 0 ? (
-				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-					{sharedBoards.map((board) => (
-						<BoardCard key={board.id} board={board} />
-					))}
-				</div>
-			) : (
-				<div className="flex flex-col items-center justify-center py-20">
-					<p className="text-muted-foreground">No shared boards yet.</p>
 				</div>
 			)}
 		</div>

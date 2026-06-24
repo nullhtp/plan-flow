@@ -14,8 +14,12 @@ interface StepperViewProps {
 	board: BoardResponse;
 	/** Deep-linked task (from `?task=`) to land on. */
 	focusTaskId?: string;
-	/** Switch the board to Advanced (DAG) mode. */
-	onSwitchToAdvanced: () => void;
+	/**
+	 * Switch the board to Advanced (DAG) mode. Only provided when the user can
+	 * reach Advanced from the board (i.e. global Simple mode is off); omitted when
+	 * Simple mode owns the board, in which case the "View full DAG" CTA is hidden.
+	 */
+	onSwitchToAdvanced?: () => void;
 }
 
 export function StepperView({ board, focusTaskId, onSwitchToAdvanced }: StepperViewProps) {
@@ -113,12 +117,17 @@ export function StepperView({ board, focusTaskId, onSwitchToAdvanced }: StepperV
 				<div className="max-w-md space-y-4">
 					<h2 className="text-xl font-semibold">No tasks yet</h2>
 					<p className="text-muted-foreground">
-						This board has no tasks to step through. Open the full DAG to see the whole plan.
+						This board has no tasks to step through.
+						{onSwitchToAdvanced ? " Open the full DAG to see the whole plan." : ""}
 					</p>
-					<Button onClick={onSwitchToAdvanced}>
-						<Network className="mr-1.5 h-4 w-4" />
-						View full DAG
-					</Button>
+					{onSwitchToAdvanced ? (
+						<Button onClick={onSwitchToAdvanced}>
+							<Network className="mr-1.5 h-4 w-4" />
+							View full DAG
+						</Button>
+					) : (
+						<Button onClick={() => navigate({ to: "/" })}>Back to dashboard</Button>
+					)}
 				</div>
 			</div>
 		);
@@ -138,10 +147,12 @@ export function StepperView({ board, focusTaskId, onSwitchToAdvanced }: StepperV
 						<Button variant="outline" onClick={() => navigate({ to: "/" })}>
 							Back to dashboard
 						</Button>
-						<Button onClick={onSwitchToAdvanced}>
-							<Network className="mr-1.5 h-4 w-4" />
-							View full DAG
-						</Button>
+						{onSwitchToAdvanced && (
+							<Button onClick={onSwitchToAdvanced}>
+								<Network className="mr-1.5 h-4 w-4" />
+								View full DAG
+							</Button>
+						)}
 					</div>
 				</div>
 				<Celebration show={showCelebration} />

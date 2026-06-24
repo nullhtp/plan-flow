@@ -33,6 +33,7 @@ import {
 	serializeMultiselectValue,
 	serializeOptionValue,
 } from "@/shared/components/question-fields";
+import { useSimpleMode } from "@/shared/hooks/use-simple-mode";
 import { authenticatedRoute } from "./_authenticated";
 
 type AnswerValues = Record<string, string>;
@@ -84,6 +85,14 @@ function TemplatesGeneratePage() {
 	const extractContent = useExtractContent();
 	const saveTemplate = useSaveGeneratedTemplate();
 	const categories = useCategoriesData();
+
+	// Authoring templates is hidden in Simple mode; redirect back to the gallery.
+	const { isSimpleMode, isLoading: simpleModeLoading } = useSimpleMode();
+	useEffect(() => {
+		if (!simpleModeLoading && isSimpleMode) {
+			navigate({ to: "/", search: { tab: "templates" }, replace: true });
+		}
+	}, [simpleModeLoading, isSimpleMode, navigate]);
 
 	const [pageState, setPageState] = useState<PageState>({ step: "input" });
 	const [inputTab, setInputTab] = useState<InputTab>("describe");
@@ -291,6 +300,15 @@ function TemplatesGeneratePage() {
 	}
 
 	// ── Render ───────────────────────────────────────────
+
+	// Don't flash the authoring UI while Simple mode resolves / before redirect.
+	if (simpleModeLoading || isSimpleMode) {
+		return (
+			<div className="flex min-h-screen items-center justify-center p-4">
+				<LoadingState />
+			</div>
+		);
+	}
 
 	if (pageState.step === "input") {
 		const canSubmit =

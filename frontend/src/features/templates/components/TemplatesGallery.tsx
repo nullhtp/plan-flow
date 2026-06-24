@@ -2,16 +2,23 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CreationCard } from "@/shared/components/creation-card";
+import { useSimpleMode } from "@/shared/hooks/use-simple-mode";
 import { useCategoriesData } from "../hooks/use-categories";
 import { useTemplates } from "../hooks/use-templates";
+import type { TemplateListItemResponse } from "../types";
 import { CategoryFilter } from "./CategoryFilter";
 import { TemplateCard } from "./TemplateCard";
+import { UseTemplateDialog } from "./UseTemplateDialog";
 
 export function TemplatesGallery() {
+	const { isSimpleMode } = useSimpleMode();
 	const [tab, setTab] = useState<"public" | "mine">("public");
 	const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 	const [search, setSearch] = useState("");
 	const [page, setPage] = useState(1);
+	// In Simple mode, selecting a template opens the create-board dialog directly
+	// instead of navigating to the (hidden) template editor.
+	const [useTemplateTarget, setUseTemplateTarget] = useState<TemplateListItemResponse | null>(null);
 	const categories = useCategoriesData();
 	const { data, isLoading } = useTemplates({
 		visibility: tab,
@@ -82,9 +89,14 @@ export function TemplatesGallery() {
 			) : (
 				<>
 					<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-						<CreationCard label="Create Template" href="/templates/generate" />
+						{/* Authoring a template is hidden in Simple mode. */}
+						{!isSimpleMode && <CreationCard label="Create Template" href="/templates/generate" />}
 						{data?.items.map((template) => (
-							<TemplateCard key={template.id} template={template} />
+							<TemplateCard
+								key={template.id}
+								template={template}
+								onSelect={isSimpleMode ? setUseTemplateTarget : undefined}
+							/>
 						))}
 					</div>
 
@@ -119,6 +131,15 @@ export function TemplatesGallery() {
 						</div>
 					)}
 				</>
+			)}
+
+			{useTemplateTarget && (
+				<UseTemplateDialog
+					templateId={useTemplateTarget.id}
+					templateTitle={useTemplateTarget.title}
+					open
+					onClose={() => setUseTemplateTarget(null)}
+				/>
 			)}
 		</div>
 	);

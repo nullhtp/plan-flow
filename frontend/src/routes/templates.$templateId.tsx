@@ -15,6 +15,7 @@ import {
 	useUpdateTemplateStructure,
 } from "@/features/templates/hooks/use-template-mutations";
 import type { TemplateTaskResponse } from "@/features/templates/types";
+import { useSimpleMode } from "@/shared/hooks/use-simple-mode";
 import { authenticatedRoute } from "./_authenticated";
 
 export const templateDetailRoute = createRoute({
@@ -77,6 +78,15 @@ function TemplateDetailPage() {
 	const updateStructure = useUpdateTemplateStructure(templateId);
 	const updateTemplate = useUpdateTemplate(templateId);
 	const categories = useCategoriesData();
+
+	// Simple mode hides template viewing/editing — only creating a board from a
+	// template is allowed, so redirect the editor route back to the gallery.
+	const { isSimpleMode, isLoading: simpleModeLoading } = useSimpleMode();
+	useEffect(() => {
+		if (!simpleModeLoading && isSimpleMode) {
+			navigate({ to: "/", search: { tab: "templates" }, replace: true });
+		}
+	}, [simpleModeLoading, isSimpleMode, navigate]);
 
 	const [showUseDialog, setShowUseDialog] = useState(false);
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -205,6 +215,16 @@ function TemplateDetailPage() {
 	);
 
 	// ── Render ──
+
+	// While Simple mode resolves (or if it's on), don't flash the editor — the
+	// effect above redirects Simple-mode users to the gallery.
+	if (simpleModeLoading || isSimpleMode) {
+		return (
+			<div className="flex min-h-screen items-center justify-center">
+				<p className="text-muted-foreground">Loading...</p>
+			</div>
+		);
+	}
 
 	if (isLoading) {
 		return (

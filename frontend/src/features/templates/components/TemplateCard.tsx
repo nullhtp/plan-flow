@@ -4,22 +4,32 @@ import type { TemplateListItemResponse } from "../types";
 
 interface TemplateCardProps {
 	template: TemplateListItemResponse;
+	/**
+	 * Override the default click behavior (open the template editor). In Simple
+	 * mode this is used to start the create-board-from-template flow directly.
+	 */
+	onSelect?: (template: TemplateListItemResponse) => void;
 }
 
-export function TemplateCard({ template }: TemplateCardProps) {
+export function TemplateCard({ template, onSelect }: TemplateCardProps) {
 	const navigate = useNavigate();
+
+	const activate = () => {
+		if (onSelect) {
+			onSelect(template);
+			return;
+		}
+		navigate({ to: "/templates/$templateId", params: { templateId: template.id } });
+	};
 
 	return (
 		<Card
 			className="cursor-pointer transition-shadow hover:shadow-md"
-			onClick={() =>
-				navigate({ to: "/templates/$templateId", params: { templateId: template.id } })
-			}
+			onClick={activate}
 			role="button"
 			tabIndex={0}
 			onKeyDown={(e) => {
-				if (e.key === "Enter")
-					navigate({ to: "/templates/$templateId", params: { templateId: template.id } });
+				if (e.key === "Enter") activate();
 			}}
 		>
 			<CardHeader className="pb-2">

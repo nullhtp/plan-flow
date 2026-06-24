@@ -7,27 +7,27 @@ afterEach(() => {
 });
 
 describe("useInterfaceMode", () => {
-	it("defaults to simple when nothing is stored", () => {
-		const { result } = renderHook(() => useInterfaceMode());
-		expect(result.current.mode).toBe("simple");
-	});
-
-	it("reads a previously stored advanced preference", () => {
-		window.localStorage.setItem(INTERFACE_MODE_STORAGE_KEY, "advanced");
+	it("defaults to advanced when nothing is stored", () => {
 		const { result } = renderHook(() => useInterfaceMode());
 		expect(result.current.mode).toBe("advanced");
+	});
+
+	it("reads a previously stored simple preference", () => {
+		window.localStorage.setItem(INTERFACE_MODE_STORAGE_KEY, "simple");
+		const { result } = renderHook(() => useInterfaceMode());
+		expect(result.current.mode).toBe("simple");
 	});
 
 	it("persists the choice to localStorage", () => {
 		const { result } = renderHook(() => useInterfaceMode());
-		act(() => result.current.setMode("advanced"));
-		expect(result.current.mode).toBe("advanced");
-		expect(window.localStorage.getItem(INTERFACE_MODE_STORAGE_KEY)).toBe("advanced");
+		act(() => result.current.setMode("simple"));
+		expect(result.current.mode).toBe("simple");
+		expect(window.localStorage.getItem(INTERFACE_MODE_STORAGE_KEY)).toBe("simple");
 	});
 
-	it("treats unknown stored values as simple", () => {
+	it("treats unknown stored values as advanced", () => {
 		window.localStorage.setItem(INTERFACE_MODE_STORAGE_KEY, "garbage");
 		const { result } = renderHook(() => useInterfaceMode());
-		expect(result.current.mode).toBe("simple");
+		expect(result.current.mode).toBe("advanced");
 	});
 });
