@@ -22,6 +22,7 @@ async def update_user_settings(
     user_id: str,
     *,
     memory_enabled: bool | None = None,
+    simple_mode: bool | None = None,
 ) -> UserSettings:
     """Update user settings with provided values."""
     repo = SettingsRepository(session)
@@ -29,5 +30,7 @@ async def update_user_settings(
 
     if memory_enabled is not None:
         user_settings.memory_enabled = memory_enabled
+    if simple_mode is not None:
+        user_settings.simple_mode = simple_mode
 
     return await repo.update(user_settings)

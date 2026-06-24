@@ -11,6 +11,9 @@ class UserSettingsResponse(BaseModel):
     memory_enabled: bool = Field(
         description="Whether AI memory is enabled for this user"
     )
+    simple_mode: bool = Field(
+        description="Whether the simplified interface is enabled for this user"
+    )
 
 
 class UserSettingsUpdateRequest(BaseModel):
@@ -19,4 +22,8 @@ class UserSettingsUpdateRequest(BaseModel):
     memory_enabled: bool | None = Field(
         default=None,
         description="Toggle AI memory on/off for this user",
+    )
+    simple_mode: bool | None = Field(
+        default=None,
+        description="Toggle the simplified interface on/off for this user",
     )

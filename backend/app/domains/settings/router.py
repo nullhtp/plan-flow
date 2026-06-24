@@ -22,7 +22,10 @@ async def get_settings(
 ) -> UserSettingsResponse:
     """Get current user settings."""
     settings = await get_user_settings(session, current_user.id)
-    return UserSettingsResponse(memory_enabled=settings.memory_enabled)
+    return UserSettingsResponse(
+        memory_enabled=settings.memory_enabled,
+        simple_mode=settings.simple_mode,
+    )
 
 
 @router.patch("", response_model=UserSettingsResponse)
@@ -36,5 +39,9 @@ async def patch_settings(
         session,
         current_user.id,
         memory_enabled=body.memory_enabled,
+        simple_mode=body.simple_mode,
     )
-    return UserSettingsResponse(memory_enabled=settings.memory_enabled)
+    return UserSettingsResponse(
+        memory_enabled=settings.memory_enabled,
+        simple_mode=settings.simple_mode,
+    )
